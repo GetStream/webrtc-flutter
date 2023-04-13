@@ -3,7 +3,7 @@ import 'package:collection/collection.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:stream_webrtc_flutter/flutter_webrtc.dart';
 
 class VideoSize {
   VideoSize(this.width, this.height);

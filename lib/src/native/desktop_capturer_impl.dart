@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:flutter_webrtc/src/native/event_channel.dart';
+import 'package:stream_webrtc_flutter/src/native/event_channel.dart';
 
 import '../desktop_capturer.dart';
 import 'utils.dart';

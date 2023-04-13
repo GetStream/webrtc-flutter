@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:stream_webrtc_flutter/flutter_webrtc.dart';
 
 class ThumbnailWidget extends StatefulWidget {
   const ThumbnailWidget(

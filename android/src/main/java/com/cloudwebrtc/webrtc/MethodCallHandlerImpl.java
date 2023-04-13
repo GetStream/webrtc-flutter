@@ -37,6 +37,7 @@ import org.webrtc.DefaultVideoDecoderFactory;
 import org.webrtc.DtmfSender;
 import org.webrtc.EglBase;
 import org.webrtc.IceCandidate;
+import org.webrtc.Loggable;
 import org.webrtc.Logging;
 import org.webrtc.MediaConstraints;
 import org.webrtc.MediaConstraints.KeyValuePair;
@@ -57,7 +58,6 @@ import org.webrtc.PeerConnection.TcpCandidatePolicy;
 import org.webrtc.PeerConnectionFactory;
 import org.webrtc.PeerConnectionFactory.InitializationOptions;
 import org.webrtc.PeerConnectionFactory.Options;
-import org.webrtc.RtpCapabilities;
 import org.webrtc.RtpSender;
 import org.webrtc.SdpObserver;
 import org.webrtc.SessionDescription;
@@ -144,6 +144,9 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
 
     PeerConnectionFactory.initialize(
             InitializationOptions.builder(context)
+                    .setInjectableLogger((message, severity, tag) -> {
+                      Log.v(tag, ">>> " + message);
+                    }, Logging.Severity.LS_VERBOSE)
                     .setEnableInternalTracer(true)
                     .createInitializationOptions());
 
@@ -159,7 +162,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
             .createAudioDeviceModule();
 
     getUserMediaImpl.audioDeviceModule = (JavaAudioDeviceModule) audioDeviceModule;
-
+    //Logging.enableLogToDebugOutput(Logging.Severity.LS_VERBOSE);
     mFactory = PeerConnectionFactory.builder()
             .setOptions(new Options())
             .setVideoEncoderFactory(new SimulcastVideoEncoderFactoryWrapper(eglContext, true, true))
@@ -708,71 +711,20 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         break;
       }
       case "getRtpSenderCapabilities": {
-        String kind = call.argument("kind");
-        MediaStreamTrack.MediaType mediaType = MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO;
-        if (kind.equals("video")) {
-          mediaType = MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO;
-        }
-        RtpCapabilities capabilities = mFactory.getRtpSenderCapabilities(mediaType);
-        result.success(capabilitiestoMap(capabilities).toMap());
+        result.notImplemented();
         break;
       }
       case "getRtpReceiverCapabilities": {
-        String kind = call.argument("kind");
-        MediaStreamTrack.MediaType mediaType = MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO;
-        if (kind.equals("video")) {
-          mediaType = MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO;
-        }
-        RtpCapabilities capabilities = mFactory.getRtpReceiverCapabilities(mediaType);
-        result.success(capabilitiestoMap(capabilities).toMap());
+        result.notImplemented();
         break;
       }
       case "setCodecPreferences":
-        String peerConnectionId = call.argument("peerConnectionId");
-        List<Map<String, Object>> codecs = call.argument("codecs");
-        String transceiverId = call.argument("transceiverId");
-        rtpTransceiverSetCodecPreferences(peerConnectionId, transceiverId, codecs, result);
+        result.notImplemented();
         break;
       default:
         result.notImplemented();
         break;
     }
-  }
-
-  private ConstraintsMap capabilitiestoMap(RtpCapabilities capabilities) {
-    ConstraintsMap capabilitiesMap = new ConstraintsMap();
-    ConstraintsArray codecArr = new ConstraintsArray();
-    for(RtpCapabilities.CodecCapability codec : capabilities.codecs){
-      ConstraintsMap codecMap = new ConstraintsMap();
-      codecMap.putString("mimeType", codec.mimeType);
-      codecMap.putInt("clockRate", codec.clockRate);
-      if(codec.numChannels != null)
-        codecMap.putInt("channels", codec.numChannels);
-      List<String> sdpFmtpLineArr = new ArrayList<>();
-      for(Map.Entry<String, String> entry : codec.parameters.entrySet()) {
-        if(entry.getKey().length() > 0) {
-          sdpFmtpLineArr.add(entry.getKey() + "=" + entry.getValue());
-        } else {
-          sdpFmtpLineArr.add(entry.getValue());
-        }
-      }
-      if(sdpFmtpLineArr.size() > 0)
-        codecMap.putString("sdpFmtpLine", String.join(";", sdpFmtpLineArr));
-      codecArr.pushMap(codecMap);
-    }
-    ConstraintsArray headerExtensionsArr = new ConstraintsArray();
-    for(RtpCapabilities.HeaderExtensionCapability headerExtension : capabilities.headerExtensions){
-      ConstraintsMap headerExtensionMap = new ConstraintsMap();
-      headerExtensionMap.putString("uri", headerExtension.getUri());
-      headerExtensionMap.putInt("id", headerExtension.getPreferredId());
-      headerExtensionMap.putBoolean("encrypted", headerExtension.getPreferredEncrypted());
-      headerExtensionsArr.pushMap(headerExtensionMap);
-    }
-    capabilitiesMap.putArray("codecs", codecArr.toArrayList());
-    capabilitiesMap.putArray("headerExtensions", headerExtensionsArr.toArrayList());
-    ConstraintsArray fecMechanismsArr = new ConstraintsArray();
-    capabilitiesMap.putArray("fecMechanisms", fecMechanismsArr.toArrayList());
-    return capabilitiesMap;
   }
 
   private PeerConnection getPeerConnection(String id) {
@@ -1805,15 +1757,6 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       resultError("rtpTransceiverSetDirection", "peerConnection is null", result);
     } else {
       pco.rtpTransceiverSetDirection(direction, transceiverId, result);
-    }
-  }
-
-  public void rtpTransceiverSetCodecPreferences(String peerConnectionId, String transceiverId, List<Map<String, Object>> codecs, Result result) {
-    PeerConnectionObserver pco = mPeerConnectionObservers.get(peerConnectionId);
-    if (pco == null || pco.getPeerConnection() == null) {
-      resultError("setCodecPreferences", "peerConnection is null", result);
-    } else {
-      pco.rtpTransceiverSetCodecPreferences(transceiverId, codecs, result);
     }
   }
 

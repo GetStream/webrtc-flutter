@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter_webrtc/src/native/mediadevices_impl.dart';
+import 'package:stream_webrtc_flutter/src/native/mediadevices_impl.dart';
 import 'package:webrtc_interface/webrtc_interface.dart';
 
 import '../desktop_capturer.dart';

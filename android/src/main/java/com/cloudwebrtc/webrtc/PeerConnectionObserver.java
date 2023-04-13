@@ -17,8 +17,6 @@ import java.lang.reflect.Field;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -35,7 +33,6 @@ import org.webrtc.MediaStreamTrack;
 import org.webrtc.PeerConnection;
 import org.webrtc.RTCStats;
 import org.webrtc.RTCStatsReport;
-import org.webrtc.RtpCapabilities;
 import org.webrtc.RtpParameters;
 import org.webrtc.RtpReceiver;
 import org.webrtc.RtpSender;
@@ -1005,44 +1002,6 @@ class PeerConnectionObserver implements PeerConnection.Observer, EventChannel.St
       return;
     }
     transceiver.setDirection(stringToTransceiverDirection(direction));
-    result.success(null);
-  }
-
-  public void rtpTransceiverSetCodecPreferences(String transceiverId, List<Map<String, Object>> codecs, Result result) {
-    RtpTransceiver transceiver = getRtpTransceiverById(transceiverId);
-    if (transceiver == null) {
-      resultError("rtpTransceiverSetCodecPreferences", "transceiver is null", result);
-      return;
-    }
-    List<RtpCapabilities.CodecCapability> preferedCodecs = new ArrayList<>();
-    for (Map<String, Object> codec : codecs) {
-      RtpCapabilities.CodecCapability codecCapability = new RtpCapabilities.CodecCapability();
-      String mimeType = (String) codec.get("mimeType");
-      List<String> mimeTypeParts = Arrays.asList(mimeType.split("/"));
-      codecCapability.name = mimeTypeParts.get(1);
-      codecCapability.kind = stringToMediaType(mimeTypeParts.get(0));
-      codecCapability.mimeType = mimeType;
-      codecCapability.clockRate = (int) codec.get("clockRate");
-      if (codec.get("numChannels") != null)
-        codecCapability.numChannels = (int) codec.get("numChannels");
-      if (codec.get("sdpFmtpLine") != null) {
-        String sdpFmtpLine = (String) codec.get("sdpFmtpLine");
-        codecCapability.parameters = new HashMap<>();
-        List<String> parameters = Arrays.asList(sdpFmtpLine.split(";"));
-        for (String parameter : parameters) {
-          if (parameter.contains("=")) {
-            List<String> parameterParts = Arrays.asList(parameter.split("="));
-            codecCapability.parameters.put(parameterParts.get(0), parameterParts.get(1));
-          } else {
-            codecCapability.parameters.put("", parameter);
-          }
-        }
-      } else {
-        codecCapability.parameters = new HashMap<>();
-      }
-      preferedCodecs.add(codecCapability);
-    }
-    transceiver.setCodecPreferences(preferedCodecs);
     result.success(null);
   }
 
