@@ -1,6 +1,10 @@
 # Changelog
 
 --------------------------------------------
+[0.12.2+1] - 2024-11-26
+
+* [iOS/Android] Added video effects support
+
 [0.12.2] - 2024-11-26
 
 * [Dart] fix: race condition during video renderer initialization. (#1692)

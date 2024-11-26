@@ -1,5 +1,5 @@
-import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:sdp_transform/sdp_transform.dart' as sdp_transform;
+import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart';
 
 void setPreferredCodec(RTCSessionDescription description,
     {String audio = 'opus', String video = 'vp8'}) {

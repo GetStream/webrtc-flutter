@@ -1,4 +1,4 @@
-import '../flutter_webrtc.dart';
+import '../stream_webrtc_flutter.dart';
 
 class MediaDevices {
   @Deprecated(
