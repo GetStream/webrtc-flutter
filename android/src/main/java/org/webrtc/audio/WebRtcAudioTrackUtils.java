@@ -3,7 +3,7 @@ package org.webrtc.audio;
 import android.media.AudioTrack;
 import android.util.Log;
 
-import com.cloudwebrtc.webrtc.record.AudioTrackInterceptor;
+import io.getstream.webrtc.flutter.record.AudioTrackInterceptor;
 
 import org.webrtc.audio.JavaAudioDeviceModule.SamplesReadyCallback;
 

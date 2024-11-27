@@ -1,3 +1,3 @@
 # Flutter WebRTC
--keep class com.cloudwebrtc.webrtc.** { *; }
+-keep class io.getstream.webrtc.flutter.** { *; }
 -keep class org.webrtc.** { *; }

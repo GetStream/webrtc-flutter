@@ -1,4 +1,4 @@
-group 'com.cloudwebrtc.webrtc'
+group 'io.getstream.webrtc.flutter'
 version '1.0-SNAPSHOT'
 
 buildscript {
@@ -27,7 +27,7 @@ apply plugin: 'kotlin-android'
 
 android {
     if (project.android.hasProperty("namespace")) {
-        namespace 'com.cloudwebrtc.webrtc'
+        namespace 'io.getstream.webrtc.flutter'
     }
     compileSdkVersion 31
 
