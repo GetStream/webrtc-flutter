@@ -18,7 +18,6 @@ class RTCFactoryNative extends RTCFactory {
 
   static final RTCFactory instance = RTCFactoryNative._internal();
 
-  @override
   Future<void> setVideoEffects(String trackId, List<String> names) async {
     await WebRTC.invokeMethod('setVideoEffects', {
       'trackId': trackId,
@@ -102,7 +101,8 @@ Future<void> setVideoEffects(
   String trackId, {
   required List<String> names,
 }) async {
-  return RTCFactoryNative.instance.setVideoEffects(trackId, names);
+  return (RTCFactoryNative.instance as RTCFactoryNative)
+      .setVideoEffects(trackId, names);
 }
 
 Future<RTCPeerConnection> createPeerConnection(
