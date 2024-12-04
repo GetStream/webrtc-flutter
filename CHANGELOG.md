@@ -1,6 +1,10 @@
 # Changelog
 
 --------------------------------------------
+[0.12.3] - 2024-11-29
+
+* [iOS/Android/macOS] feat: Expose AV Processing and Sink native APIs.
+
 [0.12.2+1] - 2024-11-26
 
 * [iOS/Android] Added video effects support

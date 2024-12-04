@@ -6,10 +6,12 @@
 
 #import <Foundation/Foundation.h>
 #import <WebRTC/WebRTC.h>
+#import "LocalTrack.h"
 
 @class VideoEffectProcessor;
 @class FlutterRTCVideoRenderer;
 @class FlutterRTCFrameCapturer;
+@class AudioManager;
 
 void postEvent(FlutterEventSink _Nonnull sink, id _Nullable event);
 
@@ -30,7 +32,7 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 @property(nonatomic, strong) RTCPeerConnectionFactory* _Nullable peerConnectionFactory;
 @property(nonatomic, strong) NSMutableDictionary<NSString*, RTCPeerConnection*>* _Nullable peerConnections;
 @property(nonatomic, strong) NSMutableDictionary<NSString*, RTCMediaStream*>* _Nullable localStreams;
-@property(nonatomic, strong) NSMutableDictionary<NSString*, RTCMediaStreamTrack*>* _Nullable localTracks;
+@property(nonatomic, strong) NSMutableDictionary<NSString*, id<LocalTrack>>* _Nullable localTracks;
 @property(nonatomic, strong) NSMutableDictionary<NSNumber*, FlutterRTCVideoRenderer*>* _Nullable renders;
 @property(nonatomic, strong)
     NSMutableDictionary<NSString*, CapturerStopHandler>* _Nullable videoCapturerStopHandlers;
@@ -54,6 +56,8 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 @property(nonatomic) NSInteger _lastTargetHeight;
 @property(nonatomic) NSInteger _lastTargetFps;
 
+@property(nonatomic, strong) AudioManager* _Nullable audioManager;
+
 - (void)mediaStreamTrackSetVideoEffects:(nonnull NSString *)trackId 
                                   names:(nonnull NSArray<NSString *> *)names;
 - (RTCMediaStream* _Nullable)streamForId:(NSString* _Nonnull)streamId peerConnectionId:(NSString* _Nullable)peerConnectionId;
@@ -63,6 +67,8 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 - (NSDictionary* _Nullable)mediaTrackToMap:(RTCMediaStreamTrack* _Nonnull)track;
 - (NSDictionary* _Nullable)receiverToMap:(RTCRtpReceiver* _Nonnull)receiver;
 - (NSDictionary* _Nullable)transceiverToMap:(RTCRtpTransceiver* _Nonnull)transceiver;
+
+- (RTCMediaStreamTrack* _Nullable)remoteTrackForId:(NSString* _Nonnull)trackId;
 
 - (BOOL)hasLocalAudioTrack;
 - (void)ensureAudioSession;

@@ -1,9 +1,7 @@
 name: stream_webrtc_flutter
 description: Flutter WebRTC plugin for iOS/Android/Destkop/Web, based on GoogleWebRTC.
-version: 0.12.2+1
+version: 0.12.3
 homepage: https://github.com/GetStream/webrtc-flutter
-unlisted: true
-
 environment:
   sdk: '>=3.3.0 <4.0.0'
   flutter: '>=1.22.0'
