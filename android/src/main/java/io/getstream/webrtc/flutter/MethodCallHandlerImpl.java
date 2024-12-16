@@ -546,6 +546,16 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         result.success(null);
         break;
       }
+      case "trackClone": {
+        String trackId = call.argument("trackId");
+        String peerConnectionId = call.argument("peerConnectionId");
+        
+
+        ConstraintsMap map = getUserMediaImpl.cloneTrack(trackId);
+
+        result.success(map.toMap());
+        break;
+      }
       case "restartIce": {
         String peerConnectionId = call.argument("peerConnectionId");
         restartIce(peerConnectionId);

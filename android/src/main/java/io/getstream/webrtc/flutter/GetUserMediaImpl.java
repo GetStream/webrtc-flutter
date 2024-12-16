@@ -116,6 +116,7 @@ class GetUserMediaImpl {
     private final Map<String, VideoCapturerInfo> mVideoCapturers = new HashMap<>();
     private final Map<String, SurfaceTextureHelper> mSurfaceTextureHelpers = new HashMap<>();
     private final Map<String, VideoSource> mVideoSources = new HashMap<>();
+    private final Map<String, AudioSource> mAudioSources = new HashMap<>();
     
     private final StateProvider stateProvider;
     private final Context applicationContext;
@@ -382,6 +383,8 @@ class GetUserMediaImpl {
         String trackId = stateProvider.getNextTrackUUID();
         PeerConnectionFactory pcFactory = stateProvider.getPeerConnectionFactory();
         AudioSource audioSource = pcFactory.createAudioSource(audioConstraints);
+
+        mAudioSources.put(trackId, audioSource);
 
         if (deviceId != null) {
             try {
@@ -710,6 +713,47 @@ class GetUserMediaImpl {
         }
 
         return null;
+    }
+
+    public ConstraintsMap cloneTrack(String trackId) {
+        String newTrackId = stateProvider.getNextTrackUUID();
+        LocalTrack originalLocalTrack = stateProvider.getLocalTrack(trackId);
+
+        PeerConnectionFactory pcFactory = stateProvider.getPeerConnectionFactory();
+        ConstraintsMap trackParams = new ConstraintsMap();
+
+        if (originalLocalTrack instanceof LocalVideoTrack) {
+            VideoSource videoSource = mVideoSources.get(trackId);
+
+            mSurfaceTextureHelpers.put(newTrackId, mSurfaceTextureHelpers.get(trackId));
+            mVideoSources.put(newTrackId, videoSource);
+
+            VideoTrack track = pcFactory.createVideoTrack(newTrackId, videoSource);
+            LocalVideoTrack localVideoTrack = new LocalVideoTrack(track);
+
+            videoSource.setVideoProcessor(localVideoTrack);
+            stateProvider.putLocalTrack(track.id(),localVideoTrack);
+
+            trackParams.putBoolean("enabled", track.enabled());
+            trackParams.putString("kind", "video");
+            trackParams.putString("readyState", track.state().toString());
+        } else {
+            AudioSource audioSource = mAudioSources.get(trackId);
+
+            AudioTrack track = pcFactory.createAudioTrack(trackId, audioSource);
+
+            stateProvider.putLocalTrack(track.id(), new LocalAudioTrack(track));
+
+            trackParams.putBoolean("enabled", track.enabled());
+            trackParams.putString("kind", "audio");
+            trackParams.putString("readyState", track.state().toString());
+        }
+
+        trackParams.putString("id", newTrackId);
+        trackParams.putString("label", newTrackId);
+        trackParams.putBoolean("remote", false);
+
+        return trackParams;
     }
 
     private ConstraintsMap getUserVideo(ConstraintsMap constraints, MediaStream mediaStream) {

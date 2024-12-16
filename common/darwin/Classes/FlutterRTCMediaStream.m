@@ -321,6 +321,58 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
   return 0;
 }
 
+- (RTCMediaStreamTrack*)cloneTrack:(nonnull NSString*)trackId {
+    NSString* newTrackId = [[NSUUID UUID] UUIDString];
+
+    RTCMediaStreamTrack *originalTrack = [self trackForId:trackId peerConnectionId: nil];
+    LocalVideoTrack* originalLocalTrack = self.localTracks[trackId];
+
+    if ([originalTrack.kind isEqualToString:@"audio"]) {
+      RTCVideoTrack *originalAudioTrack = (RTCAudioTrack *)originalTrack;
+
+      RTCAudioTrack* audioTrack = [self.peerConnectionFactory audioTrackWithTrackId:trackId];
+      LocalAudioTrack *localAudioTrack = [[LocalAudioTrack alloc] initWithTrack:audioTrack];
+
+      audioTrack.settings = originalAudioTrack.settings;
+      [self.localTracks setObject:localAudioTrack forKey:newTrackId];
+
+      for (NSString* streamId in self.localStreams) {
+        RTCMediaStream* stream = [self.localStreams objectForKey:streamId];
+        for (RTCAudioTrack* track in stream.audioTracks) {
+          if ([trackId isEqualToString:track.trackId]) {
+            [stream addAudioTrack:audioTrack];
+          }
+        }
+      }
+
+      return audioTrack;
+    } else if ([originalTrack.kind isEqualToString:@"video"]) {
+      RTCVideoTrack *originalVideoTrack = (RTCVideoTrack *)originalTrack;
+      RTCVideoSource *videoSource = originalVideoTrack.source;
+
+      RTCVideoTrack* videoTrack = [self.peerConnectionFactory videoTrackWithSource:videoSource
+                                                                  trackId:newTrackId];
+      LocalVideoTrack *localVideoTrack = [[LocalVideoTrack alloc] initWithTrack:videoTrack 
+                                                                  videoProcessing:originalLocalTrack.processing];
+
+      videoTrack.settings = originalVideoTrack.settings;
+      [self.localTracks setObject:localVideoTrack forKey:newTrackId];
+
+      for (NSString* streamId in self.localStreams) {
+        RTCMediaStream* stream = [self.localStreams objectForKey:streamId];
+        for (RTCVideoTrack* track in stream.videoTracks) {
+          if ([trackId isEqualToString:trackId]) {
+              [stream addVideoTrack:videoTrack];
+            }
+        }
+      }
+
+      return videoTrack;
+    }
+
+  return originalTrack;
+}
+
 /**
  * Initializes a new {@link RTCVideoTrack} which satisfies specific constraints,
  * adds it to a specific {@link RTCMediaStream}, and reports success to a

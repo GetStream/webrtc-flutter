@@ -921,7 +921,15 @@ bypassVoiceProcessing:(BOOL)bypassVoiceProcessing {
       audioSource.volume = [volume doubleValue];
     }
     result(nil);
-  } else if ([@"setMicrophoneMute" isEqualToString:call.method]) {
+  } 
+  else if ([@"trackClone" isEqualToString:call.method]){
+    NSDictionary* argsMap = call.arguments;
+    NSString* trackId = argsMap[@"trackId"];
+    RTCMediaStreamTrack* track = [self cloneTrack:trackId];
+    
+    result([self mediaTrackToMap:track]);
+  }
+  else if ([@"setMicrophoneMute" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* trackId = argsMap[@"trackId"];
     NSNumber* mute = argsMap[@"mute"];
