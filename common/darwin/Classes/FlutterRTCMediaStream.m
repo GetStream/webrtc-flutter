@@ -327,8 +327,8 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     RTCMediaStreamTrack *originalTrack = [self trackForId:trackId peerConnectionId: nil];
     LocalVideoTrack* originalLocalTrack = self.localTracks[trackId];
 
-    if ([originalTrack.kind isEqualToString:@"audio"]) {
-      RTCVideoTrack *originalAudioTrack = (RTCAudioTrack *)originalTrack;
+    if (originalTrack != nil && [originalTrack.kind isEqualToString:@"audio"]) {
+      RTCAudioTrack *originalAudioTrack = (RTCAudioTrack *)originalTrack;
 
       RTCAudioTrack* audioTrack = [self.peerConnectionFactory audioTrackWithTrackId:trackId];
       LocalAudioTrack *localAudioTrack = [[LocalAudioTrack alloc] initWithTrack:audioTrack];
@@ -346,7 +346,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
       }
 
       return audioTrack;
-    } else if ([originalTrack.kind isEqualToString:@"video"]) {
+    } else if (originalTrack != nil && [originalTrack.kind isEqualToString:@"video"]) {
       RTCVideoTrack *originalVideoTrack = (RTCVideoTrack *)originalTrack;
       RTCVideoSource *videoSource = originalVideoTrack.source;
 
