@@ -129,4 +129,21 @@ class MediaStreamTrackNative extends MediaStreamTrack {
       <String, dynamic>{'trackId': _trackId},
     );
   }
+
+  @override
+  Future<MediaStreamTrack> clone() async {
+    final response = await WebRTC.invokeMethod(
+      'trackClone',
+      <String, dynamic>{
+        'trackId': _trackId,
+        'peerConnectionId': _peerConnectionId,
+      },
+    );
+
+    if (response == null) {
+      throw Exception('clone return null, something wrong');
+    }
+
+    return MediaStreamTrackNative.fromMap(response, peerConnectionId);
+  }
 }
