@@ -1,6 +1,10 @@
 # Changelog
 
 --------------------------------------------
+[0.12.3+1] - 2024-12-18
+
+* [iOS/Android] Added clone() method to MediaStreamTrack.
+
 [0.12.3] - 2024-11-29
 
 * [iOS/Android/macOS] feat: Expose AV Processing and Sink native APIs.

@@ -739,8 +739,9 @@ class GetUserMediaImpl {
             trackParams.putString("readyState", track.state().toString());
         } else {
             AudioSource audioSource = mAudioSources.get(trackId);
-
-            AudioTrack track = pcFactory.createAudioTrack(trackId, audioSource);
+            mAudioSources.put(newTrackId, audioSource);
+            
+            AudioTrack track = pcFactory.createAudioTrack(newTrackId, audioSource);
 
             stateProvider.putLocalTrack(track.id(), new LocalAudioTrack(track));
 
