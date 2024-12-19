@@ -702,7 +702,7 @@ bypassVoiceProcessing:(BOOL)bypassVoiceProcessing {
         }
       }
     }
-    [_localTracks removeObjectForKey:trackId];
+    // [_localTracks removeObjectForKey:trackId];
     if (audioTrack) {
       [self ensureAudioSession];
     }

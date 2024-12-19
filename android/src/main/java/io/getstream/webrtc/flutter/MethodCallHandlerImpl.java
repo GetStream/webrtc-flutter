@@ -1573,7 +1573,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     if (track instanceof LocalVideoTrack) {
       getUserMediaImpl.removeVideoCapturer(trackId);
     }
-    localTracks.remove(trackId);
+    // localTracks.remove(trackId);
   }
 
   public void mediaStreamTrackSetEnabled(final String id, final boolean enabled, String peerConnectionId) {
