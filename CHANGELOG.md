@@ -1,6 +1,25 @@
 # Changelog
 
 --------------------------------------------
+[0.12.5+hotfix.2] - 2024-12-25
+
+* [iOS] fix: Audio route issue for iOS.
+
+[0.12.5+hotfix.1] - 2024-12-25
+
+* [iOS/macOS] fix: Pass MediaConstraints for getUserAudio.
+
+[0.12.5] - 2024-12-23
+
+* [iOS/Android] Fixed buf for screen capture.
+* [Android] Fixed first frame flickering.
+
+[0.12.4] - 2024-12-16
+
+* [iOS/Android] add FocusMode/ExposureMode settings for mobile. (#1435)
+* [Dart] fix compiler errors.
+* [eLinux] add $ORIGIN to rpath in elinux (#1720).
+
 [0.12.3+1] - 2024-12-18
 
 * [iOS/Android] Added clone() method to MediaStreamTrack.
