@@ -2,8 +2,8 @@
 # To learn more about a Podspec see http://guides.cocoapods.org/syntax/podspec.html
 #
 Pod::Spec.new do |s|
-  s.name             = 'flutter_webrtc'
-  s.version          = '0.12.3+3'
+  s.name             = 'stream_webrtc_flutter'
+  s.version          = '0.12.5+1'
   s.summary          = 'Flutter WebRTC plugin for macOS.'
   s.description      = <<-DESC
 A new flutter plugin project.
