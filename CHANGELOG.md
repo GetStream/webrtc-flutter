@@ -3,6 +3,10 @@
 --------------------------------------------
 [0.12.5+1] - 2025-01-10
 
+* [Web] Added missing `setVideoEffects()` method to `factory_impl.dart`. (not supported for now)
+
+[0.12.5+1] - 2025-01-10
+
 * [Android] Fixed clone method for screenshare tracks
 
 [0.12.5+hotfix.2] - 2024-12-25
