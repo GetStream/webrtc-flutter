@@ -51,8 +51,8 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 @property(nonatomic, strong) AVAudioSessionPort _Nullable preferredInput;
 @property (nonatomic, strong) VideoEffectProcessor* videoEffectProcessor;
 
-@property(nonatomic, strong) NSString *focusMode;
-@property(nonatomic, strong) NSString *exposureMode;
+@property(nonatomic, strong) NSString * _Nonnull focusMode;
+@property(nonatomic, strong) NSString * _Nonnull exposureMode;
 
 @property(nonatomic) BOOL _usingFrontCamera;
 @property(nonatomic) NSInteger _lastTargetWidth;
