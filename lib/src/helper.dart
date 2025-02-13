@@ -3,7 +3,6 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../stream_webrtc_flutter.dart';
-import 'native/audio_management.dart';
 
 class Helper {
   static Future<List<MediaDeviceInfo>> enumerateDevices(String type) async {

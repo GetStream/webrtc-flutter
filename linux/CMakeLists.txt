@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-set(PROJECT_NAME "flutter_webrtc")
+set(PROJECT_NAME "stream_webrtc_flutter")
 project(${PROJECT_NAME} LANGUAGES CXX)
 
 set(PLUGIN_NAME "${PROJECT_NAME}_plugin")
@@ -20,7 +20,7 @@ add_library(${PLUGIN_NAME} SHARED
   "../common/cpp/src/flutter_webrtc.cc"
   "../common/cpp/src/flutter_webrtc_base.cc"
   "../common/cpp/src/flutter_common.cc"
-  "flutter_webrtc_plugin.cc"
+  "stream_webrtc_flutter_plugin.cc"
   "flutter/core_implementations.cc"
   "flutter/standard_codec.cc"
   "flutter/plugin_registrar.cc"

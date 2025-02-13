@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-set(PROJECT_NAME "flutter_webrtc")
+set(PROJECT_NAME "stream_webrtc_flutter")
 project(${PROJECT_NAME} LANGUAGES CXX)
 
 # This value is used when generating builds using this plugin, so it must
