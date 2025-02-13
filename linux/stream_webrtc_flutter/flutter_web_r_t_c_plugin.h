@@ -15,7 +15,7 @@ typedef struct {
   GObjectClass parent_class;
 } FlutterWebrtcPluginClass;
 
-FLUTTER_PLUGIN_EXPORT GType flutter_webrtc_plugin_get_type();
+FLUTTER_PLUGIN_EXPORT GType stream_webrtc_flutter_plugin_get_type();
 
 FLUTTER_PLUGIN_EXPORT void flutter_web_r_t_c_plugin_register_with_registrar(
     FlPluginRegistrar* registrar);

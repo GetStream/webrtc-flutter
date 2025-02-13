@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.15)
-set(PROJECT_NAME "flutter_webrtc")
+set(PROJECT_NAME "stream_webrtc_flutter")
 project(${PROJECT_NAME} LANGUAGES CXX)
 
 # This value is used when generating builds using this plugin, so it must
 # not be changed
-set(PLUGIN_NAME "flutter_webrtc_plugin")
+set(PLUGIN_NAME "stream_webrtc_flutter_plugin")
 
 add_definitions(-DLIB_WEBRTC_API_DLL)
 add_definitions(-DRTC_DESKTOP_DEVICE)
@@ -21,7 +21,7 @@ add_library(${PLUGIN_NAME} SHARED
   "../common/cpp/src/flutter_webrtc.cc"
   "../common/cpp/src/flutter_webrtc_base.cc"
   "../third_party/uuidxx/uuidxx.cc"
-  "flutter_webrtc_plugin.cc"
+  "stream_webrtc_flutter_plugin.cc"
 )
 
 include_directories(

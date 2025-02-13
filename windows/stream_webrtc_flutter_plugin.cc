@@ -1,13 +1,11 @@
-#include "flutter_webrtc/flutter_web_r_t_c_plugin.h"
+#include "stream_webrtc_flutter/flutter_web_r_t_c_plugin.h"
 
 #include "flutter_common.h"
 #include "flutter_webrtc.h"
 
 const char* kChannelName = "FlutterWebRTC.Method";
 
-//#if defined(_WINDOWS)
-
-namespace flutter_webrtc_plugin {
+namespace stream_webrtc_flutter_plugin {
 
 // A webrtc plugin for windows/linux.
 class FlutterWebRTCPluginImpl : public FlutterWebRTCPlugin {
@@ -63,11 +61,12 @@ class FlutterWebRTCPluginImpl : public FlutterWebRTCPlugin {
   TextureRegistrar* textures_;
 };
 
-}  // namespace flutter_webrtc_plugin
+}  // namespace stream_webrtc_flutter_plugin
+
 
 void FlutterWebRTCPluginRegisterWithRegistrar(
     FlutterDesktopPluginRegistrarRef registrar) {
   static auto* plugin_registrar = new flutter::PluginRegistrar(registrar);
-  flutter_webrtc_plugin::FlutterWebRTCPluginImpl::RegisterWithRegistrar(
+  stream_webrtc_flutter_plugin::FlutterWebRTCPluginImpl::RegisterWithRegistrar(
       plugin_registrar);
 }
