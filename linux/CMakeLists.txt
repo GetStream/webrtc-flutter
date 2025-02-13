@@ -55,7 +55,7 @@ set(flutter_webrtc_bundled_libraries
   PARENT_SCOPE
 )
 
-# Add $ORIGIN to RPATH so that lib/libflutter_webrtc_plugin.so can find lib/libwebrtc.so at runtime
+# Add $ORIGIN to RPATH so that lib/libstream_webrtc_flutter_plugin.so can find lib/libwebrtc.so at runtime
 set_property(
     TARGET ${PLUGIN_NAME}
     PROPERTY BUILD_RPATH

@@ -5,7 +5,7 @@
 
 const char* kChannelName = "FlutterWebRTC.Method";
 
-namespace flutter_webrtc_plugin {
+namespace stream_webrtc_flutter_plugin {
 
 // A webrtc plugin for windows/linux.
 class FlutterWebRTCPluginImpl : public FlutterWebRTCPlugin {
@@ -61,12 +61,12 @@ class FlutterWebRTCPluginImpl : public FlutterWebRTCPlugin {
   TextureRegistrar* textures_;
 };
 
-}  // namespace flutter_webrtc_plugin
+}  // namespace stream_webrtc_flutter_plugin
 
 
 void FlutterWebRTCPluginRegisterWithRegistrar(
     FlutterDesktopPluginRegistrarRef registrar) {
   static auto* plugin_registrar = new flutter::PluginRegistrar(registrar);
-  flutter_webrtc_plugin::FlutterWebRTCPluginImpl::RegisterWithRegistrar(
+  stream_webrtc_flutter_plugin::FlutterWebRTCPluginImpl::RegisterWithRegistrar(
       plugin_registrar);
 }
