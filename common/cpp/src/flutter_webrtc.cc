@@ -1,6 +1,6 @@
 #include "flutter_webrtc.h"
 
-#include "flutter_webrtc/flutter_web_r_t_c_plugin.h"
+#include "stream_webrtc_flutter/flutter_web_r_t_c_plugin.h"
 
 namespace stream_webrtc_flutter_plugin {
 
