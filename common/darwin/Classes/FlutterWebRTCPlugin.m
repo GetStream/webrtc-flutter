@@ -1602,7 +1602,13 @@ bypassVoiceProcessing:(BOOL)bypassVoiceProcessing {
             result(@NO);
             return;
         }
-        
+
+        #if TARGET_OS_OSX
+            NSLog(@"configureMultitaskingCameraAccess: Multitasking camera access is not available on macOS.");
+            result(@NO);
+            return;
+        #endif
+
         if (@available(iOS 16.0, *)) {
             BOOL shouldChange = session.multitaskingCameraAccessEnabled != enable;
             BOOL canChange = !enable || (enable && session.isMultitaskingCameraAccessSupported);
