@@ -1607,31 +1607,31 @@ bypassVoiceProcessing:(BOOL)bypassVoiceProcessing {
             NSLog(@"configureMultitaskingCameraAccess: Multitasking camera access is not available on macOS.");
             result(@NO);
             return;
-        #endif
+        #else
+            if (@available(iOS 16.0, *)) {
+                BOOL shouldChange = session.multitaskingCameraAccessEnabled != enable;
+                BOOL canChange = !enable || (enable && session.isMultitaskingCameraAccessSupported);
 
-        if (@available(iOS 16.0, *)) {
-            BOOL shouldChange = session.multitaskingCameraAccessEnabled != enable;
-            BOOL canChange = !enable || (enable && session.isMultitaskingCameraAccessSupported);
+                if (shouldChange && canChange) {
+                    [session beginConfiguration];
+                    [session setMultitaskingCameraAccessEnabled:enable];
+                    [session commitConfiguration];
 
-            if (shouldChange && canChange) {
-                [session beginConfiguration];
-                [session setMultitaskingCameraAccessEnabled:enable];
-                [session commitConfiguration];
-
-                result(enable ? @YES : @NO);
-            } else {
-                if (!canChange) {
-                    NSLog(@"configureMultitaskingCameraAccess: Multitasking camera access is not supported on this device.");
-                    result(@NO);
-                } else {
-                    NSLog(@"configureMultitaskingCameraAccess: Multitasking camera access is already %@.", enable ? @"enabled" : @"disabled");
                     result(enable ? @YES : @NO);
+                } else {
+                    if (!canChange) {
+                        NSLog(@"configureMultitaskingCameraAccess: Multitasking camera access is not supported on this device.");
+                        result(@NO);
+                    } else {
+                        NSLog(@"configureMultitaskingCameraAccess: Multitasking camera access is already %@.", enable ? @"enabled" : @"disabled");
+                        result(enable ? @YES : @NO);
+                    }
                 }
+            } else {
+                NSLog(@"configureMultitaskingCameraAccess: Multitasking camera access requires iOS 16 or later.");
+                result(@NO);
             }
-        } else {
-            NSLog(@"configureMultitaskingCameraAccess: Multitasking camera access requires iOS 16 or later.");
-            result(@NO);
-        }
+        #endif
     }
     @catch (NSException *exception) {
         NSLog(@"configureMultitaskingCameraAccess: Exception occurred: %@ - %@", exception.name, exception.reason);
