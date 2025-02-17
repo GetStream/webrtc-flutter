@@ -180,15 +180,15 @@ class Helper {
     }
   }
 
-  static Future<bool> configureIOSMultitaskingCameraAccess(bool enable) async {
+  static Future<bool> enableIOSMultitaskingCameraAccess(bool enable) async {
     if (WebRTC.platformIsIOS) {
       return await WebRTC.invokeMethod(
-        'configureIOSMultitaskingCameraAccess',
+        'enableIOSMultitaskingCameraAccess',
         <String, dynamic>{'enable': enable},
       );
     } else {
       throw Exception(
-          'configureIOSMultitaskingCameraAccess is only supported for iOS');
+          'enableIOSMultitaskingCameraAccess is only supported for iOS');
     }
   }
 }
