@@ -2,6 +2,10 @@
 
 --------------------------------------------
 
+[0.12.9+1] - 2025-02-17
+
+* [iOS] Added helper method `configureIOSMultitaskingCameraAccess` to enable/disable Multitasking Camrea Access on iOS
+
 [0.12.9] - 2025-02-13
 
 * [iOS] feat: Add option to start capture without broadcast picker (#1764)
