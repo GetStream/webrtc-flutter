@@ -179,4 +179,16 @@ class Helper {
       throw Exception('requestCapturePermission only support for Android');
     }
   }
+
+  static Future<bool> enableIOSMultitaskingCameraAccess(bool enable) async {
+    if (WebRTC.platformIsIOS) {
+      return await WebRTC.invokeMethod(
+        'enableIOSMultitaskingCameraAccess',
+        <String, dynamic>{'enable': enable},
+      );
+    } else {
+      throw Exception(
+          'enableIOSMultitaskingCameraAccess is only supported for iOS');
+    }
+  }
 }

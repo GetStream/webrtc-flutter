@@ -853,7 +853,12 @@ bypassVoiceProcessing:(BOOL)bypassVoiceProcessing {
       result(nil);
     }
 #endif
-     else if ([@"mediaStreamTrackHasTorch" isEqualToString:call.method]) {
+  else if ([@"enableIOSMultitaskingCameraAccess" isEqualToString:call.method]) {
+    NSDictionary* argsMap = call.arguments;
+    BOOL enable = [argsMap[@"enable"] boolValue];
+
+    [self enableMultitaskingCameraAccess:enable result:result];
+  } else if ([@"mediaStreamTrackHasTorch" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* trackId = argsMap[@"trackId"];
     id<LocalTrack> track = self.localTracks[trackId];
@@ -1586,8 +1591,52 @@ bypassVoiceProcessing:(BOOL)bypassVoiceProcessing {
   } else {
     NSLog(@"mediaStreamTrackSetVideoEffects: track not found");
   }
+}
 
+- (void)enableMultitaskingCameraAccess:(BOOL)enable result:(FlutterResult)result
+{
+    @try {
+        AVCaptureSession *session = self.videoCapturer.captureSession;
+        if (session == nil) {
+            NSLog(@"enableMultitaskingCameraAccess: Capture session is nil.");
+            result(@NO);
+            return;
+        }
 
+        #if TARGET_OS_OSX
+            NSLog(@"enableMultitaskingCameraAccess: Multitasking camera access is not available on macOS.");
+            result(@NO);
+            return;
+        #else
+            if (@available(iOS 16.0, *)) {
+                BOOL shouldChange = session.multitaskingCameraAccessEnabled != enable;
+                BOOL canChange = !enable || (enable && session.isMultitaskingCameraAccessSupported);
+
+                if (shouldChange && canChange) {
+                    [session beginConfiguration];
+                    [session setMultitaskingCameraAccessEnabled:enable];
+                    [session commitConfiguration];
+
+                    result(enable ? @YES : @NO);
+                } else {
+                    if (!canChange) {
+                        NSLog(@"enableMultitaskingCameraAccess: Multitasking camera access is not supported on this device.");
+                        result(@NO);
+                    } else {
+                        NSLog(@"enableMultitaskingCameraAccess: Multitasking camera access is already %@.", enable ? @"enabled" : @"disabled");
+                        result(enable ? @YES : @NO);
+                    }
+                }
+            } else {
+                NSLog(@"enableMultitaskingCameraAccess: Multitasking camera access requires iOS 16 or later.");
+                result(@NO);
+            }
+        #endif
+    }
+    @catch (NSException *exception) {
+        NSLog(@"enableMultitaskingCameraAccess: Exception occurred: %@ - %@", exception.name, exception.reason);
+        result(@NO);
+    }
 }
 
 - (void)mediaStreamGetTracks:(NSString*)streamId result:(FlutterResult)result {
