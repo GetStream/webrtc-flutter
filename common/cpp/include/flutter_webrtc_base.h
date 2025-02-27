@@ -119,6 +119,8 @@ class FlutterWebRTCBase {
       data_channel_observers_;
   std::map<std::string, std::shared_ptr<FlutterPeerConnectionObserver>>
       peerconnection_observers_;
+  std::map<std::string, scoped_refptr<RTCVideoSource>> video_sources_;
+  std::map<std::string, scoped_refptr<RTCAudioSource>> audio_sources_;
   mutable std::mutex mutex_;
 
   void lock() { mutex_.lock(); }
