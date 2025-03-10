@@ -49,7 +49,7 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 @property(nonatomic, strong) RTCCameraVideoCapturer* _Nullable videoCapturer;
 @property(nonatomic, strong) FlutterRTCFrameCapturer* _Nullable frameCapturer;
 @property(nonatomic, strong) AVAudioSessionPort _Nullable preferredInput;
-@property (nonatomic, strong) VideoEffectProcessor* videoEffectProcessor;
+@property (nonatomic, strong) VideoEffectProcessor* _Nullable videoEffectProcessor;
 
 @property(nonatomic, strong) NSString * _Nonnull focusMode;
 @property(nonatomic, strong) NSString * _Nonnull exposureMode;

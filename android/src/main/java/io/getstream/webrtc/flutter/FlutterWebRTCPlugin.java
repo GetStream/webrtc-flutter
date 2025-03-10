@@ -11,6 +11,7 @@ import androidx.lifecycle.DefaultLifecycleObserver;
 import androidx.lifecycle.Lifecycle;
 import androidx.lifecycle.LifecycleOwner;
 
+import io.getstream.webrtc.flutter.audio.AudioProcessingFactoryProvider;
 import io.getstream.webrtc.flutter.audio.AudioProcessingController;
 import io.getstream.webrtc.flutter.audio.AudioSwitchManager;
 import io.getstream.webrtc.flutter.utils.AnyThreadSink;
@@ -49,8 +50,12 @@ public class FlutterWebRTCPlugin implements FlutterPlugin, ActivityAware, EventC
 
     public static FlutterWebRTCPlugin sharedSingleton;
 
-    public AudioProcessingController getAudioProcessingController() {
-        return methodCallHandler.audioProcessingController;
+    public void setAudioProcessingFactoryProvider(AudioProcessingFactoryProvider provider) {
+        methodCallHandler.audioProcessingFactoryProvider = provider;
+    }
+
+    public AudioProcessingFactoryProvider getAudioProcessingFactoryProvider() {
+        return methodCallHandler.audioProcessingFactoryProvider;
     }
 
     public MediaStreamTrack getTrackForId(String trackId, String peerConnectionId) {
