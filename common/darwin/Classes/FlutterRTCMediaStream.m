@@ -341,9 +341,10 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     LocalVideoTrack* originalLocalTrack = self.localTracks[trackId];
 
     if (originalTrack != nil && [originalTrack.kind isEqualToString:@"audio"]) {
-      RTCAudioTrack *originalAudioTrack = (RTCAudioTrack *)originalTrack;
+      RTCAudioTrack* originalAudioTrack = (RTCAudioTrack *)originalTrack;
+      RTCAudioSource* originalAudioSource = originalAudioTrack.source;
 
-      RTCAudioTrack* audioTrack = [self.peerConnectionFactory audioTrackWithTrackId:trackId];
+      RTCAudioTrack* audioTrack = [self.peerConnectionFactory audioTrackWithSource:originalAudioSource trackId:newTrackId];
       LocalAudioTrack *localAudioTrack = [[LocalAudioTrack alloc] initWithTrack:audioTrack];
 
       audioTrack.settings = originalAudioTrack.settings;
