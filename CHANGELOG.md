@@ -1,6 +1,11 @@
 
 # Changelog
 
+[0.2.0] - 2025-03-11
+
+* [Android/iOS] Now using Stream's native WebRTC builds for improved performance and compatibility.
+* [Android] Introduced `AudioProcessingFactoryProvider` and updated `AudioProcessingController` to implement it, enabling enhanced customization of audio processing.
+
 [0.12.12] - 2025-03-09
 
 * [Android] feat: Migrate to the new Surface API. (#1726)
