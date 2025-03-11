@@ -1,6 +1,20 @@
+
 # Changelog
 
---------------------------------------------
+[0.12.12] - 2025-03-09
+
+* [Android] feat: Migrate to the new Surface API. (#1726)
+* [Chore] chore: fix sponsors logo and links.
+
+[0.12.11] - 2025-02-23
+
+* [web] bump version for dart_webrtc.
+* [web] fix: compile error for web with --wasm.
+
+[0.12.10] - 2025-02-18
+
+* [web] bump version for dart_webrtc.
+* [web] fix: compile error for web with --wasm.
 
 [0.12.9+1] - 2025-02-17
 
