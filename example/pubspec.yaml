@@ -19,7 +19,6 @@ dependencies:
   stream_webrtc_flutter:
     path: ../
 
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
