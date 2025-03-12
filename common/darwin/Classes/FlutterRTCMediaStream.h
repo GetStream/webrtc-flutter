@@ -7,7 +7,7 @@
 
 @interface FlutterWebRTCPlugin (RTCMediaStream)
 
-- (RTCVideoTrack*)cloneTrack:(nonnull NSString*)trackId;
+- (RTCVideoTrack* _Nullable)cloneTrack:(nonnull NSString*)trackId;
 
 - (void)getUserMedia:(nonnull NSDictionary*)constraints result:(nonnull FlutterResult)result;
 

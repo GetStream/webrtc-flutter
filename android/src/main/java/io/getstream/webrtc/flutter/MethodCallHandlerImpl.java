@@ -21,11 +21,12 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 
 import io.getstream.webrtc.flutter.audio.AudioDeviceKind;
+import io.getstream.webrtc.flutter.audio.AudioProcessingFactoryProvider;
 import io.getstream.webrtc.flutter.audio.AudioProcessingController;
 import io.getstream.webrtc.flutter.audio.AudioSwitchManager;
 import io.getstream.webrtc.flutter.audio.AudioUtils;
 import io.getstream.webrtc.flutter.audio.LocalAudioTrack;
-import io.getstream.webrtc.flutter.audio.PlaybackSamplesReadyCallbackAdapter;
+// import io.getstream.webrtc.flutter.audio.PlaybackSamplesReadyCallbackAdapter;
 import io.getstream.webrtc.flutter.audio.RecordSamplesReadyCallbackAdapter;
 import io.getstream.webrtc.flutter.record.AudioChannel;
 import io.getstream.webrtc.flutter.record.FrameCapturer;
@@ -111,7 +112,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
 
   public RecordSamplesReadyCallbackAdapter recordSamplesReadyCallbackAdapter;
 
-  public PlaybackSamplesReadyCallbackAdapter playbackSamplesReadyCallbackAdapter;
+  // public PlaybackSamplesReadyCallbackAdapter playbackSamplesReadyCallbackAdapter;
 
   /**
    * The implementation of {@code getUserMedia} extracted into a separate file in order to reduce
@@ -131,7 +132,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
 
   private CustomVideoDecoderFactory videoDecoderFactory;
 
-  public AudioProcessingController audioProcessingController;
+  public AudioProcessingFactoryProvider audioProcessingFactoryProvider;
 
   MethodCallHandlerImpl(Context context, BinaryMessenger messenger, TextureRegistry textureRegistry) {
     this.context = context;
@@ -199,7 +200,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     JavaAudioDeviceModule.Builder audioDeviceModuleBuilder = JavaAudioDeviceModule.builder(context);
 
     recordSamplesReadyCallbackAdapter = new RecordSamplesReadyCallbackAdapter();
-    playbackSamplesReadyCallbackAdapter = new PlaybackSamplesReadyCallbackAdapter();
+    // playbackSamplesReadyCallbackAdapter = new PlaybackSamplesReadyCallbackAdapter();
 
     if(bypassVoiceProcessing) {
       audioDeviceModuleBuilder.setUseHardwareAcousticEchoCanceler(false)
@@ -216,7 +217,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     }
 
     audioDeviceModuleBuilder.setSamplesReadyCallback(recordSamplesReadyCallbackAdapter);
-    audioDeviceModuleBuilder.setPlaybackSamplesReadyCallback(playbackSamplesReadyCallbackAdapter);
+    // audioDeviceModuleBuilder.setPlaybackSamplesReadyCallback(playbackSamplesReadyCallbackAdapter);
 
     recordSamplesReadyCallbackAdapter.addCallback(getUserMediaImpl.inputSamplesInterceptor);
 
@@ -267,9 +268,12 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     videoEncoderFactory.setForceSWCodec(forceSWCodec);
     videoEncoderFactory.setForceSWCodecList(forceSWCodecList);
 
-    audioProcessingController = new AudioProcessingController();
 
-    factoryBuilder.setAudioProcessingFactory(audioProcessingController.externalAudioProcessingFactory);
+    if(audioProcessingFactoryProvider == null) {
+        audioProcessingFactoryProvider = new AudioProcessingController();
+    }
+
+    factoryBuilder.setAudioProcessingFactory(audioProcessingFactoryProvider.getFactory());
 
     mFactory = factoryBuilder
             .setAudioDeviceModule(audioDeviceModule)
