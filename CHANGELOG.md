@@ -1,12 +1,11 @@
 
 # Changelog
+
+[0.12.12+2] - 2025-03-12
+* [Android] fix: fixed video not rendered after resume from background.
+
 [0.12.12+1] - 2025-03-11
 * [web] downgrade dart_webrtc dependency
-
-[0.2.0] - 2025-03-11
-
-* [Android/iOS] Now using Stream's native WebRTC builds for improved performance and compatibility.
-* [Android] Introduced `AudioProcessingFactoryProvider` and updated `AudioProcessingController` to implement it, enabling enhanced customization of audio processing.
 
 [0.12.12] - 2025-03-09
 
