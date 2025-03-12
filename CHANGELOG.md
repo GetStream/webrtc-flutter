@@ -1,5 +1,7 @@
 
 # Changelog
+[0.12.12+1] - 2025-03-11
+* [web] downgrade dart_webrtc dependency
 
 [0.2.0] - 2025-03-11
 
