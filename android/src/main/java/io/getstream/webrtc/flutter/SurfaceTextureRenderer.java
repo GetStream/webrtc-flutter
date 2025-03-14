@@ -122,14 +122,14 @@ public class SurfaceTextureRenderer extends EglRenderer {
               }
 
               @Override
-              public void onSurfaceDestroyed() {
-                surfaceDestroyed();
+              public void onSurfaceCleanup() {
+                surfaceCleanup();
               }
             }
     );
   }
 
-  public void surfaceDestroyed() {
+  public void surfaceCleanup() {
     ThreadUtils.checkIsOnMainThread();
     final CountDownLatch completionLatch = new CountDownLatch(1);
     releaseEglSurface(completionLatch::countDown);
