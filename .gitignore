@@ -43,6 +43,7 @@ example/ios/Flutter/flutter_export_environment.sh
 .pub/
 /build/
 /android/.gradle/
+**/android/app/.cxx
 
 
 android/.classpath
