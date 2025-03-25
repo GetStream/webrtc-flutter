@@ -1,6 +1,10 @@
 
 # Changelog
 
+[1.0.0-dev.1] - 2025-03-14
+* Switched native webrtc dependencies for iOS and Android to Stream's internal builds
+* Replaced deprecated `onSurfaceDestroyed` with `onSurfaceCleanup` in `SurfaceTextureRenderer`
+
 [0.12.12+2] - 2025-03-12
 * [Android] fix: fixed video not rendered after resume from background.
 
