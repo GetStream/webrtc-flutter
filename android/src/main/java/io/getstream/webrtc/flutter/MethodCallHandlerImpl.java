@@ -333,8 +333,9 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
             forceSWCodecList.add(v.toString());
           }
         } else {
-          // disable HW Codec for VP9 by default.
+          // disable HW Codec for VP9 and AV1 by default.
           forceSWCodecList.add("VP9");
+          forceSWCodecList.add("AV1");
         }
 
         ConstraintsMap androidAudioConfiguration = null;
