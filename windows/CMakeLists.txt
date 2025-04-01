@@ -21,7 +21,7 @@ add_library(${PLUGIN_NAME} SHARED
   "../common/cpp/src/flutter_webrtc.cc"
   "../common/cpp/src/flutter_webrtc_base.cc"
   "../third_party/uuidxx/uuidxx.cc"
-  "stream_webrtc_flutter_plugin.cc"
+  "stream_webrtc_flutter_plugin.cc"  "task_runner_windows.cc"
 )
 
 include_directories(

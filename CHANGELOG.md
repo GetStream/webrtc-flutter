@@ -1,6 +1,12 @@
 
 # Changelog
 
+[1.0.0] - 2025-03-31
+* Bumped StreamWebRTC version to 125.6422.065
+* Synced flutter-webrtc v0.13.0
+	* [All] feat: add getBufferedAmount for DataChannel.
+	* [Windows] fix: fixed non-platform thread call error.
+
 [1.0.0-dev.1] - 2025-03-14
 * Switched native webrtc dependencies for iOS and Android to Stream's internal builds
 * Replaced deprecated `onSurfaceDestroyed` with `onSurfaceCleanup` in `SurfaceTextureRenderer`
