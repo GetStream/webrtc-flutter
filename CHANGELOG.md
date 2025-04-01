@@ -1,6 +1,9 @@
 
 # Changelog
 
+[1.0.1] - 2025-04-01
+* Fixed the dart_webrtc version constraint
+
 [1.0.0] - 2025-03-31
 * Bumped StreamWebRTC version to 125.6422.065
 * Synced flutter-webrtc v0.13.0
