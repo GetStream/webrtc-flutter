@@ -1,6 +1,12 @@
 
 # Changelog
 
+[1.0.2] - 2025-03-03
+* Synced flutter-webrtc v0.13.1
+	* [Android] fix: remove setPreferredInputDevice when getUserAduio. (#1808)
+	* [Web] fix: race condition in RTCVideoRenderer for Web (#1805)
+	* [Android] fix: Migrate from onSurfaceDestroyed to onSurfaceCleanup for SurfaceProducer.Callback. (#1806)
+
 [1.0.1] - 2025-04-01
 * Fixed the dart_webrtc version constraint
 

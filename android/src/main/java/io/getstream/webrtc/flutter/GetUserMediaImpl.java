@@ -376,16 +376,6 @@ public class GetUserMediaImpl {
 
         mAudioSources.put(trackId, audioSource);
 
-        if (deviceId != null) {
-            try {
-                if (VERSION.SDK_INT >= VERSION_CODES.M) {
-                    setPreferredInputDevice(deviceId);
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "setPreferredInputDevice failed", e);
-            }
-        }
-
         AudioTrack track = pcFactory.createAudioTrack(trackId, audioSource);
         stream.addTrack(track);
 
