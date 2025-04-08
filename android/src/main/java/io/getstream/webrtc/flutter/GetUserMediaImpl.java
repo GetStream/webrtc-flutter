@@ -515,6 +515,7 @@ public class GetUserMediaImpl {
         VideoCapturer videoCapturer = null;
         videoCapturer =
                 new OrientationAwareScreenCapturer(
+                        applicationContext,
                         mediaProjectionData,
                         new MediaProjection.Callback() {
                             @Override

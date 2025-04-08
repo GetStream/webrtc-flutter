@@ -20,7 +20,11 @@ import android.media.projection.MediaProjectionManager;
 import android.os.Looper;
 import android.os.Handler;
 import android.os.Build;
+import android.os.Bundle;
 import android.view.Display;
+import android.util.Log;
+import android.content.Context;
+import android.content.res.Configuration;
 
 /**
  * An copy of ScreenCapturerAndroid to capture the screen content while being aware of device orientation
@@ -46,6 +50,7 @@ public class OrientationAwareScreenCapturer implements VideoCapturer, VideoSink 
     private MediaProjectionManager mediaProjectionManager;
     private WindowManager windowManager;
     private boolean isPortrait;
+    private Context context;
 
     /**
      * Constructs a new Screen Capturer.
@@ -56,10 +61,12 @@ public class OrientationAwareScreenCapturer implements VideoCapturer, VideoSink 
      * @param mediaProjectionCallback             MediaProjection callback to implement application specific
      *                                            logic in events such as when the user revokes a previously granted capture permission.
      **/
-    public OrientationAwareScreenCapturer(Intent mediaProjectionPermissionResultData,
+    public OrientationAwareScreenCapturer(Context context,
+                                          Intent mediaProjectionPermissionResultData,
                                           MediaProjection.Callback mediaProjectionCallback) {
         this.mediaProjectionPermissionResultData = mediaProjectionPermissionResultData;
         this.mediaProjectionCallback = mediaProjectionCallback;
+        this.context = context;
     }
 
     public void onFrame(VideoFrame frame) {
@@ -76,9 +83,7 @@ public class OrientationAwareScreenCapturer implements VideoCapturer, VideoSink 
     }
 
     private boolean isDeviceOrientationPortrait() {
-        final int surfaceRotation = windowManager.getDefaultDisplay().getRotation();
-
-        return surfaceRotation != Surface.ROTATION_90 && surfaceRotation != Surface.ROTATION_270;
+        return context.getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
     }
 
 
