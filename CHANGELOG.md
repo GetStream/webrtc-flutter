@@ -1,6 +1,10 @@
 
 # Changelog
 
+[1.0.3] - 2025-04-08
+* Synced flutter-webrtc v0.13.1+hotfix.1
+	* [Android] fix: Fix `clearAndroidCommunicationDevice` call blocking.
+
 [1.0.2] - 2025-03-03
 * Synced flutter-webrtc v0.13.1
 	* [Android] fix: remove setPreferredInputDevice when getUserAduio. (#1808)
