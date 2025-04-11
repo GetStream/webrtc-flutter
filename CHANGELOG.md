@@ -1,6 +1,9 @@
 
 # Changelog
 
+[1.0.3] - 2025-04-11
+* Reverted to using `onSurfaceDestroyed` in `SurfaceTextureRenderer` for compatibility with Flutter 3.27.
+
 [1.0.2] - 2025-04-08
 * [Android] Fixed orientation aware screen sharing to work with landscape-first devices
 * Synced flutter-webrtc v0.13.1+hotfix.1
