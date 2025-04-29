@@ -1,6 +1,12 @@
 
 # Changelog
 
+[1.0.4] - 2025-04-29
+* Synced flutter-webrtc v0.13.2
+	* [iOS/Android]feat: Media Recorder implementation Android and iOS (#1810)
+	* [Wndows] fix: Pickup registrar for plugin by plugin registrar manager (#1752)
+	* [Linux] fix: add task runner for linux. (#1821)
+
 [1.0.3] - 2025-04-11
 * Reverted to using `onSurfaceDestroyed` in `SurfaceTextureRenderer` for compatibility with Flutter 3.27.
 
