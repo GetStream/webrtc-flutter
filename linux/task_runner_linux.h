@@ -6,7 +6,7 @@
 #include <queue>
 #include "task_runner.h"
 
-namespace flutter_webrtc_plugin {
+namespace stream_webrtc_flutter_plugin {
 
 class TaskRunnerLinux : public TaskRunner {
  public:
@@ -21,6 +21,6 @@ class TaskRunnerLinux : public TaskRunner {
   std::queue<TaskClosure> tasks_;
 };
 
-}  // namespace flutter_webrtc_plugin
+}  // namespace stream_webrtc_flutter_plugin
 
 #endif  // PACKAGES_FLUTTER_WEBRTC_LINUX_TASK_RUNNER_LINUX_H_

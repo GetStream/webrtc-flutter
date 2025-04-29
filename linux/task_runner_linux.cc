@@ -2,7 +2,7 @@
 
 #include <glib.h>
 
-namespace flutter_webrtc_plugin {
+namespace stream_webrtc_flutter_plugin {
 
 void TaskRunnerLinux::EnqueueTask(TaskClosure task) {
   {
@@ -28,4 +28,4 @@ void TaskRunnerLinux::EnqueueTask(TaskClosure task) {
   }
 }
 
-}  // namespace flutter_webrtc_plugin
+}  // namespace stream_webrtc_flutter_plugin
