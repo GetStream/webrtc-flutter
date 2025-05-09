@@ -4,10 +4,10 @@ import androidx.annotation.Nullable;
 
 import io.getstream.webrtc.flutter.LocalTrack;
 
-import org.webrtc.VideoFrame;
-import org.webrtc.VideoProcessor;
-import org.webrtc.VideoSink;
-import org.webrtc.VideoTrack;
+import io.getstream.webrtc.VideoFrame;
+import io.getstream.webrtc.VideoProcessor;
+import io.getstream.webrtc.VideoSink;
+import io.getstream.webrtc.VideoTrack;
 
 import java.util.ArrayList;
 import java.util.List;

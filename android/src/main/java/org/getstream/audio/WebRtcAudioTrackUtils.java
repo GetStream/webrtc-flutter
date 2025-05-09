@@ -1,11 +1,11 @@
-package org.webrtc.audio;
+package io.getstream.webrtc.audio;
 
 import android.media.AudioTrack;
 import android.util.Log;
 
 import io.getstream.webrtc.flutter.record.AudioTrackInterceptor;
 
-import org.webrtc.audio.JavaAudioDeviceModule.SamplesReadyCallback;
+import io.getstream.webrtc.audio.JavaAudioDeviceModule.SamplesReadyCallback;
 
 import java.lang.reflect.Field;
 
