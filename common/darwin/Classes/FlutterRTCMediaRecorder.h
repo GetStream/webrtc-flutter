@@ -3,7 +3,7 @@
 #elif TARGET_OS_OSX
 #import <FlutterMacOS/FlutterMacOS.h>
 #endif
-#import <WebRTC/WebRTC.h>
+#import <StreamWebRTC/StreamWebRTC.h>
 
 @import Foundation;
 @import AVFoundation;

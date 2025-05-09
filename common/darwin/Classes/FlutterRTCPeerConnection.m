@@ -4,7 +4,7 @@
 #import "FlutterRTCDataChannel.h"
 #import "FlutterWebRTCPlugin.h"
 
-#import <WebRTC/WebRTC.h>
+#import <StreamWebRTC/StreamWebRTC.h>
 
 @implementation RTCPeerConnection (Flutter)
 

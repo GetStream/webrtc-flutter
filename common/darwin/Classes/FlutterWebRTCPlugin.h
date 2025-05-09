@@ -5,7 +5,7 @@
 #endif
 
 #import <Foundation/Foundation.h>
-#import <WebRTC/WebRTC.h>
+#import <StreamWebRTC/StreamWebRTC.h>
 #import "LocalTrack.h"
 
 @class VideoEffectProcessor;

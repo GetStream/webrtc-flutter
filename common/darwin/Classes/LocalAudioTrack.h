@@ -1,4 +1,4 @@
-#import <WebRTC/WebRTC.h>
+#import <StreamWebRTC/StreamWebRTC.h>
 #import "AudioProcessingAdapter.h"
 #import "LocalTrack.h"
 

@@ -1,4 +1,4 @@
-#import <WebRTC/WebRTC.h>
+#import <StreamWebRTC/StreamWebRTC.h>
 #import "FlutterRTCMediaRecorder.h"
 #import "FlutterRTCAudioSink.h"
 #import "FlutterRTCFrameCapturer.h"

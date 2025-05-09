@@ -1,4 +1,4 @@
-#import <WebRTC/RTCVideoSource.h>
+#import <StreamWebRTC/RTCVideoSource.h>
 
 #import "VideoFrameProcessor.h"
 
