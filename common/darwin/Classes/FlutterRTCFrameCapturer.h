@@ -1,4 +1,4 @@
-#import <WebRTC/WebRTC.h>
+#import <StreamWebRTC/StreamWebRTC.h>
 
 #if TARGET_OS_IPHONE
 #import <Flutter/Flutter.h>
