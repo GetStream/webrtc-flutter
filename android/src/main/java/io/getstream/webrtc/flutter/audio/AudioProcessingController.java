@@ -1,8 +1,7 @@
 package io.getstream.webrtc.flutter.audio;
 
-import org.webrtc.AudioProcessingFactory;
-import org.webrtc.ExternalAudioProcessingFactory;
-import io.getstream.webrtc.flutter.audio.AudioProcessingFactoryProvider;
+import io.getstream.webrtc.AudioProcessingFactory;
+import io.getstream.webrtc.ExternalAudioProcessingFactory;
 
 public class AudioProcessingController implements AudioProcessingFactoryProvider {
     /**
