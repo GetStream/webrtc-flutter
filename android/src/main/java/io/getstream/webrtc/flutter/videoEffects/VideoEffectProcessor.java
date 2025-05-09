@@ -1,9 +1,9 @@
 package io.getstream.webrtc.flutter.videoEffects;
 
-import org.webrtc.SurfaceTextureHelper;
-import org.webrtc.VideoFrame;
-import org.webrtc.VideoProcessor;
-import org.webrtc.VideoSink;
+import io.getstream.webrtc.SurfaceTextureHelper;
+import io.getstream.webrtc.VideoFrame;
+import io.getstream.webrtc.VideoProcessor;
+import io.getstream.webrtc.VideoSink;
 
 import java.util.List;
 

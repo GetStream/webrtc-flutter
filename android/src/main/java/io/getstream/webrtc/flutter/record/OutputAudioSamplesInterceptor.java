@@ -1,7 +1,7 @@
 package io.getstream.webrtc.flutter.record;
 
-import org.webrtc.audio.JavaAudioDeviceModule;
-import org.webrtc.audio.WebRtcAudioTrackUtils;
+import io.getstream.webrtc.audio.JavaAudioDeviceModule;
+import io.getstream.webrtc.audio.WebRtcAudioTrackUtils;
 
 public class OutputAudioSamplesInterceptor extends AudioSamplesInterceptor {
     private final JavaAudioDeviceModule audioDeviceModule;

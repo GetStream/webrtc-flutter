@@ -1,6 +1,6 @@
 package io.getstream.webrtc.flutter.audio;
 
-import org.webrtc.audio.JavaAudioDeviceModule;
+import io.getstream.webrtc.audio.JavaAudioDeviceModule;
 
 import java.util.ArrayList;
 import java.util.List;

@@ -1,6 +1,6 @@
 package io.getstream.webrtc.flutter.audio;
 
-import org.webrtc.ExternalAudioProcessingFactory;
+import io.getstream.webrtc.ExternalAudioProcessingFactory;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;

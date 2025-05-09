@@ -6,8 +6,8 @@ import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.os.Build;
 
-import org.webrtc.audio.JavaAudioDeviceModule.AudioSamples;
-import org.webrtc.audio.JavaAudioDeviceModule.SamplesReadyCallback;
+import io.getstream.webrtc.audio.JavaAudioDeviceModule.AudioSamples;
+import io.getstream.webrtc.audio.JavaAudioDeviceModule.SamplesReadyCallback;
 
 import java.nio.ByteBuffer;
 

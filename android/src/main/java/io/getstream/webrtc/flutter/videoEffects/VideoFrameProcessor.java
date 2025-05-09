@@ -1,7 +1,7 @@
 package io.getstream.webrtc.flutter.videoEffects;
 
-import org.webrtc.SurfaceTextureHelper;
-import org.webrtc.VideoFrame;
+import io.getstream.webrtc.SurfaceTextureHelper;
+import io.getstream.webrtc.VideoFrame;
 
 /**
  * Interface contains process method to process VideoFrame.
