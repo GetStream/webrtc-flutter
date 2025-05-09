@@ -9,10 +9,10 @@ import android.graphics.YuvImage;
 import android.os.Handler;
 import android.os.Looper;
 
-import org.webrtc.VideoFrame;
-import org.webrtc.VideoSink;
-import org.webrtc.VideoTrack;
-import org.webrtc.YuvHelper;
+import io.getstream.webrtc.VideoFrame;
+import io.getstream.webrtc.VideoSink;
+import io.getstream.webrtc.VideoTrack;
+import io.getstream.webrtc.YuvHelper;
 
 import java.io.File;
 import java.io.FileOutputStream;

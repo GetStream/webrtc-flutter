@@ -24,9 +24,9 @@ import io.getstream.webrtc.flutter.GetUserMediaImpl;
 import io.getstream.webrtc.flutter.utils.AnyThreadResult;
 import io.getstream.webrtc.flutter.video.VideoCapturerInfo;
 
-import org.webrtc.Camera1Capturer;
-import org.webrtc.Camera2Capturer;
-import org.webrtc.CameraEnumerationAndroid;
+import io.getstream.webrtc.Camera1Capturer;
+import io.getstream.webrtc.Camera2Capturer;
+import io.getstream.webrtc.CameraEnumerationAndroid;
 
 import java.lang.reflect.Field;
 import java.util.List;

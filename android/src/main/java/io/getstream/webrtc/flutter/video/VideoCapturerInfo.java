@@ -1,6 +1,6 @@
 package io.getstream.webrtc.flutter.video;
 
-import org.webrtc.VideoCapturer;
+import io.getstream.webrtc.VideoCapturer;
 
 public class VideoCapturerInfo {
     public VideoCapturer capturer;

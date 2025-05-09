@@ -1,14 +1,14 @@
-package org.webrtc.video;
+package io.getstream.webrtc.video;
 
 import androidx.annotation.Nullable;
 
 import io.getstream.webrtc.flutter.SimulcastVideoEncoderFactoryWrapper;
 
-import org.webrtc.EglBase;
-import org.webrtc.SoftwareVideoEncoderFactory;
-import org.webrtc.VideoCodecInfo;
-import org.webrtc.VideoEncoder;
-import org.webrtc.VideoEncoderFactory;
+import io.getstream.webrtc.EglBase;
+import io.getstream.webrtc.SoftwareVideoEncoderFactory;
+import io.getstream.webrtc.VideoCodecInfo;
+import io.getstream.webrtc.VideoEncoder;
+import io.getstream.webrtc.VideoEncoderFactory;
 
 import java.util.ArrayList;
 import java.util.List;

@@ -1,6 +1,6 @@
 package io.getstream.webrtc.flutter.audio;
 
-import org.webrtc.AudioProcessingFactory;
+import io.getstream.webrtc.AudioProcessingFactory;
 
 // Define the common interface
 public interface AudioProcessingFactoryProvider {

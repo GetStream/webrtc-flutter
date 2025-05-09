@@ -2,7 +2,7 @@ package io.getstream.webrtc.flutter.utils;
 
 import android.os.Build;
 
-import org.webrtc.EglBase;
+import io.getstream.webrtc.EglBase;
 
 public class EglUtils {
     /**
