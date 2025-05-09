@@ -1,11 +1,11 @@
 package io.getstream.webrtc.flutter;
 
-import org.webrtc.SurfaceTextureHelper;
-import org.webrtc.CapturerObserver;
-import org.webrtc.ThreadUtils;
-import org.webrtc.VideoCapturer;
-import org.webrtc.VideoFrame;
-import org.webrtc.VideoSink;
+import io.getstream.webrtc.SurfaceTextureHelper;
+import io.getstream.webrtc.CapturerObserver;
+import io.getstream.webrtc.ThreadUtils;
+import io.getstream.webrtc.VideoCapturer;
+import io.getstream.webrtc.VideoFrame;
+import io.getstream.webrtc.VideoSink;
 
 import android.annotation.TargetApi;
 import android.content.Context;
@@ -19,11 +19,6 @@ import android.hardware.display.VirtualDisplay;
 import android.media.projection.MediaProjectionManager;
 import android.os.Looper;
 import android.os.Handler;
-import android.os.Build;
-import android.os.Bundle;
-import android.view.Display;
-import android.util.Log;
-import android.content.Context;
 import android.content.res.Configuration;
 
 /**

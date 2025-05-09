@@ -1,8 +1,6 @@
 package io.getstream.webrtc.flutter;
 
 import android.util.Log;
-import android.graphics.SurfaceTexture;
-import android.view.Surface;
 
 import io.getstream.webrtc.flutter.utils.AnyThreadSink;
 import io.getstream.webrtc.flutter.utils.ConstraintsMap;
@@ -10,10 +8,10 @@ import io.getstream.webrtc.flutter.utils.EglUtils;
 
 import java.util.List;
 
-import org.webrtc.EglBase;
-import org.webrtc.MediaStream;
-import org.webrtc.RendererCommon.RendererEvents;
-import org.webrtc.VideoTrack;
+import io.getstream.webrtc.EglBase;
+import io.getstream.webrtc.MediaStream;
+import io.getstream.webrtc.RendererCommon.RendererEvents;
+import io.getstream.webrtc.VideoTrack;
 
 import io.flutter.plugin.common.EventChannel;
 import io.flutter.view.TextureRegistry;
