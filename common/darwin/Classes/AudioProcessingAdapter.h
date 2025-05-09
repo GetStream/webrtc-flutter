@@ -1,5 +1,5 @@
 #import <Foundation/Foundation.h>
-#import <WebRTC/WebRTC.h>
+#import <StreamWebRTC/StreamWebRTC.h>
 
 @protocol ExternalAudioProcessingDelegate
 
