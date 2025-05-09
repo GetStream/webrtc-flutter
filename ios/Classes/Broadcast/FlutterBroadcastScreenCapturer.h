@@ -6,7 +6,7 @@
 //
 
 #import <Foundation/Foundation.h>
-#import <WebRTC/WebRTC.h>
+#import <StreamWebRTC/StreamWebRTC.h>
 NS_ASSUME_NONNULL_BEGIN
 
 extern NSString* const kRTCScreensharingSocketFD;

@@ -1,5 +1,5 @@
 #import "AudioProcessingAdapter.h"
-#import <WebRTC/RTCAudioRenderer.h>
+#import <StreamWebRTC/RTCAudioRenderer.h>
 #import <os/lock.h>
 
 @implementation AudioProcessingAdapter {

@@ -5,7 +5,7 @@
 #endif
 
 #import <Foundation/Foundation.h>
-#import <WebRTC/WebRTC.h>
+#import <StreamWebRTC/StreamWebRTC.h>
 #import "LocalTrack.h"
 
 @class VideoEffectProcessor;
@@ -30,18 +30,24 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
                                            >
 
 @property(nonatomic, strong) RTCPeerConnectionFactory* _Nullable peerConnectionFactory;
-@property(nonatomic, strong) NSMutableDictionary<NSString*, RTCPeerConnection*>* _Nullable peerConnections;
-@property(nonatomic, strong) NSMutableDictionary<NSString*, RTCMediaStream*>* _Nullable localStreams;
+@property(nonatomic, strong)
+    NSMutableDictionary<NSString*, RTCPeerConnection*>* _Nullable peerConnections;
+@property(nonatomic, strong)
+    NSMutableDictionary<NSString*, RTCMediaStream*>* _Nullable localStreams;
 @property(nonatomic, strong) NSMutableDictionary<NSString*, id<LocalTrack>>* _Nullable localTracks;
-@property(nonatomic, strong) NSMutableDictionary<NSNumber*, FlutterRTCVideoRenderer*>* _Nullable renders;
+@property(nonatomic, strong)
+    NSMutableDictionary<NSNumber*, FlutterRTCVideoRenderer*>* _Nullable renders;
 @property(nonatomic, strong)
     NSMutableDictionary<NSString*, CapturerStopHandler>* _Nullable videoCapturerStopHandlers;
 
-@property(nonatomic, strong) NSMutableDictionary<NSString*, RTCFrameCryptor*>* _Nullable frameCryptors;
-@property(nonatomic, strong) NSMutableDictionary<NSString*, RTCFrameCryptorKeyProvider*>* _Nullable keyProviders;
+@property(nonatomic, strong)
+    NSMutableDictionary<NSString*, RTCFrameCryptor*>* _Nullable frameCryptors;
+@property(nonatomic, strong)
+    NSMutableDictionary<NSString*, RTCFrameCryptorKeyProvider*>* _Nullable keyProviders;
 
 #if TARGET_OS_IPHONE
-@property(nonatomic, retain) UIViewController* _Nullable viewController; /*for broadcast or ReplayKit */
+@property(nonatomic, retain)
+    UIViewController* _Nullable viewController; /*for broadcast or ReplayKit */
 #endif
 
 @property(nonatomic, strong) FlutterEventSink _Nullable eventSink;
@@ -49,10 +55,10 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 @property(nonatomic, strong) RTCCameraVideoCapturer* _Nullable videoCapturer;
 @property(nonatomic, strong) FlutterRTCFrameCapturer* _Nullable frameCapturer;
 @property(nonatomic, strong) AVAudioSessionPort _Nullable preferredInput;
-@property (nonatomic, strong) VideoEffectProcessor* _Nullable videoEffectProcessor;
+@property(nonatomic, strong) VideoEffectProcessor* _Nullable videoEffectProcessor;
 
-@property(nonatomic, strong) NSString * _Nonnull focusMode;
-@property(nonatomic, strong) NSString * _Nonnull exposureMode;
+@property(nonatomic, strong) NSString* _Nonnull focusMode;
+@property(nonatomic, strong) NSString* _Nonnull exposureMode;
 
 @property(nonatomic) BOOL _usingFrontCamera;
 @property(nonatomic) NSInteger _lastTargetWidth;
@@ -61,12 +67,16 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 
 @property(nonatomic, strong) AudioManager* _Nullable audioManager;
 
-- (void)mediaStreamTrackSetVideoEffects:(nonnull NSString *)trackId 
-                                  names:(nonnull NSArray<NSString *> *)names;
-- (RTCMediaStream* _Nullable)streamForId:(NSString* _Nonnull)streamId peerConnectionId:(NSString* _Nullable)peerConnectionId;
-- (RTCMediaStreamTrack* _Nullable)trackForId:(NSString* _Nonnull)trackId peerConnectionId:(NSString* _Nullable)peerConnectionId;
-- (RTCRtpTransceiver* _Nullable)getRtpTransceiverById:(RTCPeerConnection* _Nonnull)peerConnection Id:(NSString* _Nullable)Id;
-- (NSDictionary* _Nullable)mediaStreamToMap:(RTCMediaStream* _Nonnull)stream ownerTag:(NSString* _Nullable)ownerTag;
+- (void)mediaStreamTrackSetVideoEffects:(nonnull NSString*)trackId
+                                  names:(nonnull NSArray<NSString*>*)names;
+- (RTCMediaStream* _Nullable)streamForId:(NSString* _Nonnull)streamId
+                        peerConnectionId:(NSString* _Nullable)peerConnectionId;
+- (RTCMediaStreamTrack* _Nullable)trackForId:(NSString* _Nonnull)trackId
+                            peerConnectionId:(NSString* _Nullable)peerConnectionId;
+- (RTCRtpTransceiver* _Nullable)getRtpTransceiverById:(RTCPeerConnection* _Nonnull)peerConnection
+                                                   Id:(NSString* _Nullable)Id;
+- (NSDictionary* _Nullable)mediaStreamToMap:(RTCMediaStream* _Nonnull)stream
+                                   ownerTag:(NSString* _Nullable)ownerTag;
 - (NSDictionary* _Nullable)mediaTrackToMap:(RTCMediaStreamTrack* _Nonnull)track;
 - (NSDictionary* _Nullable)receiverToMap:(RTCRtpReceiver* _Nonnull)receiver;
 - (NSDictionary* _Nullable)transceiverToMap:(RTCRtpTransceiver* _Nonnull)transceiver;
@@ -77,9 +87,11 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 - (void)ensureAudioSession;
 - (void)deactiveRtcAudioSession;
 
-- (RTCRtpReceiver* _Nullable)getRtpReceiverById:(RTCPeerConnection* _Nonnull)peerConnection Id:(NSString* _Nonnull)Id;
-- (RTCRtpSender* _Nullable)getRtpSenderById:(RTCPeerConnection* _Nonnull)peerConnection Id:(NSString* _Nonnull)Id;
+- (RTCRtpReceiver* _Nullable)getRtpReceiverById:(RTCPeerConnection* _Nonnull)peerConnection
+                                             Id:(NSString* _Nonnull)Id;
+- (RTCRtpSender* _Nullable)getRtpSenderById:(RTCPeerConnection* _Nonnull)peerConnection
+                                         Id:(NSString* _Nonnull)Id;
 
-+ (FlutterWebRTCPlugin * _Nullable)sharedSingleton;
++ (FlutterWebRTCPlugin* _Nullable)sharedSingleton;
 
 @end
