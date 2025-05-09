@@ -5,9 +5,9 @@ import android.os.SystemClock;
 
 import io.getstream.webrtc.flutter.LocalTrack;
 
-import org.webrtc.AudioTrack;
-import org.webrtc.AudioTrackSink;
-import org.webrtc.audio.JavaAudioDeviceModule;
+import io.getstream.webrtc.AudioTrack;
+import io.getstream.webrtc.AudioTrackSink;
+import io.getstream.webrtc.audio.JavaAudioDeviceModule;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;

@@ -3,9 +3,8 @@ package io.getstream.webrtc.flutter;
 import io.getstream.webrtc.flutter.utils.AnyThreadSink;
 import io.getstream.webrtc.flutter.utils.ConstraintsMap;
 
-import org.webrtc.DataChannel;
+import io.getstream.webrtc.DataChannel;
 
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 
