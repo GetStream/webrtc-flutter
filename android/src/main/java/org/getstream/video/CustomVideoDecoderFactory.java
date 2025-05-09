@@ -1,13 +1,13 @@
-package org.webrtc.video;
+package io.getstream.webrtc.video;
 
 import androidx.annotation.Nullable;
 
-import org.webrtc.EglBase;
-import org.webrtc.SoftwareVideoDecoderFactory;
-import org.webrtc.VideoCodecInfo;
-import org.webrtc.VideoDecoder;
-import org.webrtc.VideoDecoderFactory;
-import org.webrtc.WrappedVideoDecoderFactory;
+import io.getstream.webrtc.EglBase;
+import io.getstream.webrtc.SoftwareVideoDecoderFactory;
+import io.getstream.webrtc.VideoCodecInfo;
+import io.getstream.webrtc.VideoDecoder;
+import io.getstream.webrtc.VideoDecoderFactory;
+import io.getstream.webrtc.WrappedVideoDecoderFactory;
 
 import java.util.ArrayList;
 import java.util.List;

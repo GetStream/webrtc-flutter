@@ -1,6 +1,6 @@
 package io.getstream.webrtc.flutter;
 
-import org.webrtc.MediaStreamTrack;
+import io.getstream.webrtc.MediaStreamTrack;
 
 public class LocalTrack {
     public LocalTrack(MediaStreamTrack track) {

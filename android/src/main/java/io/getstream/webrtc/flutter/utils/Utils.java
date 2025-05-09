@@ -2,7 +2,7 @@ package io.getstream.webrtc.flutter.utils;
 
 import androidx.annotation.Nullable;
 
-import org.webrtc.PeerConnection;
+import io.getstream.webrtc.PeerConnection;
 
 public class Utils {
 

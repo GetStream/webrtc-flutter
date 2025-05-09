@@ -5,7 +5,7 @@ import android.util.Log;
 
 import io.getstream.webrtc.flutter.utils.EglUtils;
 
-import org.webrtc.VideoTrack;
+import io.getstream.webrtc.VideoTrack;
 
 import java.io.File;
 

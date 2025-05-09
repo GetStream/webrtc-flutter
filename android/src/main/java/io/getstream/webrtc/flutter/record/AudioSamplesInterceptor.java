@@ -2,8 +2,8 @@ package io.getstream.webrtc.flutter.record;
 
 import android.annotation.SuppressLint;
 
-import org.webrtc.audio.JavaAudioDeviceModule.SamplesReadyCallback;
-import org.webrtc.audio.JavaAudioDeviceModule.AudioSamples;
+import io.getstream.webrtc.audio.JavaAudioDeviceModule.SamplesReadyCallback;
+import io.getstream.webrtc.audio.JavaAudioDeviceModule.AudioSamples;
 
 import java.util.HashMap;
 
