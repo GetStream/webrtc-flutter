@@ -1,5 +1,5 @@
-#import <WebRTC/RTCVideoCapturer.h>
-#import <WebRTC/RTCVideoFrame.h>
+#import <StreamWebRTC/RTCVideoCapturer.h>
+#import <StreamWebRTC/RTCVideoFrame.h>
 
 @protocol VideoFrameProcessorDelegate
 - (RTCVideoFrame *)capturer:(RTCVideoCapturer *)capturer

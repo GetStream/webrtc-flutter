@@ -1,5 +1,5 @@
-#import <WebRTC/RTCVideoCapturer.h>
 #import "VideoEffectProcessor.h"
+#import <StreamWebRTC/RTCVideoCapturer.h>
 
 @implementation VideoEffectProcessor
 - (instancetype)initWithProcessors:(NSArray<NSObject<VideoFrameProcessorDelegate> *> *)videoFrameProcessors
