@@ -1,6 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <CoreMedia/CoreMedia.h>
-#import <WebRTC/WebRTC.h>
+#import <StreamWebRTC/StreamWebRTC.h>
 
 @interface FlutterRTCAudioSink : NSObject
 

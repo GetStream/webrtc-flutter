@@ -18,8 +18,8 @@
 #import "AudioManager.h"
 
 #import <AVFoundation/AVFoundation.h>
-#import <WebRTC/RTCFieldTrials.h>
-#import <WebRTC/WebRTC.h>
+#import <StreamWebRTC/RTCFieldTrials.h>
+#import <StreamWebRTC/StreamWebRTC.h>
 #import <AVKit/AVKit.h>
 
 #import "LocalTrack.h"
