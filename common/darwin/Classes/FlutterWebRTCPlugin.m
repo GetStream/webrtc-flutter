@@ -6,12 +6,12 @@
 #import "FlutterRTCMediaStream.h"
 #import "FlutterRTCPeerConnection.h"
 #import "FlutterRTCVideoRenderer.h"
-#import "FlutterRTCMediaRecorder.h"
 #import "FlutterRTCFrameCryptor.h"
 #import "VideoEffectProcessor.h"
 #import "ProcessorProvider.h"
 #import "VideoFrameProcessor.h"
 #if TARGET_OS_IPHONE
+#import "FlutterRTCMediaRecorder.h"
 #import "FlutterRTCVideoPlatformViewFactory.h"
 #import "FlutterRTCVideoPlatformViewController.h"
 #endif
@@ -1529,8 +1529,9 @@ bypassVoiceProcessing:(BOOL)bypassVoiceProcessing {
                 message:[NSString stringWithFormat:@"Error: peerConnection not found!"]
                 details:nil]);
     }
+#if TARGET_OS_IOS
   } else if ([@"startRecordToFile" isEqualToString:call.method]){
-        #if TARGET_OS_IOS
+
             NSDictionary* argsMap = call.arguments;
             NSNumber* recorderId = argsMap[@"recorderId"];
             NSString* path = argsMap[@"path"];
@@ -1549,10 +1550,7 @@ bypassVoiceProcessing:(BOOL)bypassVoiceProcessing {
                 ];
             }
             result(nil);
-        #endif
-      
     } else if ([@"stopRecordToFile" isEqualToString:call.method]) {
-       #if TARGET_OS_IOS
                 NSDictionary* argsMap = call.arguments;
                 NSNumber* recorderId = argsMap[@"recorderId"];
                 FlutterRTCMediaRecorder* recorder = self.recorders[recorderId];
@@ -1564,7 +1562,7 @@ bypassVoiceProcessing:(BOOL)bypassVoiceProcessing {
                                               message:[NSString stringWithFormat:@"Error: recorder with id %@ not found!",recorderId]
                                                 details:nil]);
                 }
-        #endif
+#endif
     } else {
     [self handleFrameCryptorMethodCall:call result:result];
   }
