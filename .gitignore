@@ -3,7 +3,7 @@
 .DS_Store
 example/pubspec.lock
 pubspec.lock
-example/ios/Podfile.lock
+example/**/Podfile.lock
 GeneratedPluginRegistrant.java
 example/android/.gradle
 WorkspaceSettings.xcsettings
