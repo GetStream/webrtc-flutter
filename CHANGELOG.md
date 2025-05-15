@@ -1,7 +1,15 @@
 
 # Changelog
 
-[1.0.4] - 2025-04-29
+[1.0.5] - TBD
+* [iOS] Bumped StreamWebRTC version to 125.6422.070
+* Synced flutter-webrtc v0.14.0
+	* [iOS/Android]feat: Media Recorder implementation Android and iOS (#1810)
+	* [Wndows] fix: Pickup registrar for plugin by plugin registrar manager (#1752)
+	* [Linux] fix: add task runner for linux. (#1821)
+	* [iOS/macOS] fix: Fix deadlock when creating a frame cryptor on iOS/macOS.
+
+[1.0.4] **retracted** - 2025-04-29
 * Synced flutter-webrtc v0.13.2
 	* [iOS/Android]feat: Media Recorder implementation Android and iOS (#1810)
 	* [Wndows] fix: Pickup registrar for plugin by plugin registrar manager (#1752)
