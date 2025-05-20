@@ -1,7 +1,7 @@
 
 # Changelog
 
-[1.0.5] - TBD
+[1.0.5] - 2025-05-20
 * [iOS] Bumped StreamWebRTC version to 125.6422.070
 * Synced flutter-webrtc v0.14.0
 	* [iOS/Android]feat: Media Recorder implementation Android and iOS (#1810)
