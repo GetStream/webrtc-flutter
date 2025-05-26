@@ -7,6 +7,7 @@
 #import "VideoProcessingAdapter.h"
 #import "LocalVideoTrack.h"
 #import "LocalAudioTrack.h"
+#import "AVKit/AVKit.h"
 
 @implementation RTCMediaStreamTrack (Flutter)
 
@@ -872,6 +873,53 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
   result([FlutterError errorWithCode:@"selectAudioOutputFailed"
                              message:[NSString stringWithFormat:@"Error: deviceId not found!"]
                              details:nil]);
+}
+
+- (void)triggeriOSAudioRouteSelectionUI:(FlutterResult)result {
+    if (@available(iOS 11.0, *)) {
+        AVRoutePickerView *routePicker = [[AVRoutePickerView alloc] init];
+        routePicker.frame = CGRectMake(0, 0, 44, 44);
+        
+        // Add the route picker to a temporary window to ensure it's in the view hierarchy
+        UIWindow *window = [[UIApplication sharedApplication] keyWindow];
+        if (!window) {
+            // Fallback for iOS 13+ where keyWindow is deprecated
+            for (UIWindowScene *windowScene in [UIApplication sharedApplication].connectedScenes) {
+                if (windowScene.activationState == UISceneActivationStateForegroundActive) {
+                    window = windowScene.windows.firstObject;
+                    break;
+                }
+            }
+        }
+        
+        if (window) {
+            [window addSubview:routePicker];
+            
+            // Trigger the route picker programmatically
+            for (UIView *view in routePicker.subviews) {
+                if ([view isKindOfClass:[UIButton class]]) {
+                    UIButton *button = (UIButton *)view;
+                    [button sendActionsForControlEvents:UIControlEventTouchUpInside];
+                    break; // Only trigger the first button found
+                }
+            }
+            
+            // Remove the route picker after a short delay
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [routePicker removeFromSuperview];
+            });
+            
+            result(nil);
+        } else {
+            result([FlutterError errorWithCode:@"NoWindowError"
+                                       message:@"Could not find a window to present the route picker"
+                                       details:nil]);
+        }
+    } else {
+        result([FlutterError errorWithCode:@"UnsupportedVersionError"
+                                   message:@"AVRoutePickerView is only available on iOS 11.0 or later"
+                                   details:nil]);
+    }
 }
 
 - (void)mediaStreamTrackRelease:(RTCMediaStream*)mediaStream track:(RTCMediaStreamTrack*)track {

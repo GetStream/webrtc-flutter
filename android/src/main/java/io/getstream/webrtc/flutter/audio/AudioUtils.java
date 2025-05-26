@@ -231,10 +231,14 @@ public class AudioUtils {
             if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_MIC) {
                 groupId = "microphone";
             }
-            if (device.getType() == AudioDeviceInfo.TYPE_WIRED_HEADSET) {
+            if (device.getType() == AudioDeviceInfo.TYPE_WIRED_HEADSET
+            || device.getType() == AudioDeviceInfo.TYPE_USB_HEADSET
+            || device.getType() == AudioDeviceInfo.TYPE_WIRED_HEADPHONES) {
                 groupId = "wired-headset";
             }
-            if (device.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_SCO) {
+            if (device.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+            || device.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+            || device.getType() == AudioDeviceInfo.TYPE_BLE_SPEAKER) {
                 groupId = "bluetooth";
             }
             return groupId;
