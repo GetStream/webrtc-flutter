@@ -876,6 +876,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 }
 
 - (void)triggeriOSAudioRouteSelectionUI:(FlutterResult)result {
+#if TARGET_OS_IPHONE
     if (@available(iOS 11.0, *)) {
         AVRoutePickerView *routePicker = [[AVRoutePickerView alloc] init];
         routePicker.frame = CGRectMake(0, 0, 44, 44);
@@ -920,6 +921,12 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                                    message:@"AVRoutePickerView is only available on iOS 11.0 or later"
                                    details:nil]);
     }
+#else
+    // macOS doesn't support iOS audio route selection UI
+    result([FlutterError errorWithCode:@"UnsupportedPlatformError"
+                               message:@"triggeriOSAudioRouteSelectionUI is only supported on iOS"
+                               details:nil]);
+#endif
 }
 
 - (void)mediaStreamTrackRelease:(RTCMediaStream*)mediaStream track:(RTCMediaStreamTrack*)track {
