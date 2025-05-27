@@ -191,4 +191,15 @@ class Helper {
           'enableIOSMultitaskingCameraAccess is only supported for iOS');
     }
   }
+
+  static Future<void> triggeriOSAudioRouteSelectionUI() async {
+    if (WebRTC.platformIsIOS) {
+      return await WebRTC.invokeMethod(
+        'triggeriOSAudioRouteSelectionUI',
+      );
+    } else {
+      throw Exception(
+          'triggeriOSAudioRouteSelectionUI is only supported for iOS');
+    }
+  }
 }

@@ -20,6 +20,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <WebRTC/RTCFieldTrials.h>
 #import <WebRTC/WebRTC.h>
+#import <AVKit/AVKit.h>
 
 #import "LocalTrack.h"
 #import "LocalAudioTrack.h"
@@ -357,6 +358,8 @@ bypassVoiceProcessing:(BOOL)bypassVoiceProcessing {
     NSDictionary* argsMap = call.arguments;
     NSString* deviceId = argsMap[@"deviceId"];
     [self selectAudioOutput:deviceId result:result];
+  } else if ([@"triggeriOSAudioRouteSelectionUI" isEqualToString:call.method]) {
+    [self triggeriOSAudioRouteSelectionUI:result];
   } else if ([@"mediaStreamGetTracks" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* streamId = argsMap[@"streamId"];
