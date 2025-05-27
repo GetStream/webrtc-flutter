@@ -1,6 +1,12 @@
 
 # Changelog
 
+[1.0.6] - 2025-05-27
+* Synced flutter-webrtc v0.14.1
+	* [Android] fix: Recording bug (#1839)
+	* [Android] fix: calls in terminated mode by disabling orientation manager (#1840)
+	* [Android] fix: Wait for audio and video thread to fully stop to avoid corrupted recordings (#1836)
+
 [1.0.5] - 2025-05-20
 * [iOS] Bumped StreamWebRTC version to 125.6422.070
 * Synced flutter-webrtc v0.14.0
