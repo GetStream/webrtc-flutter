@@ -2,6 +2,8 @@
 # Changelog
 
 [1.0.6] - 2025-05-27
+* [iOS] Added native audio route picker for iOS
+* [Android] Expanded the mapping for audio device types
 * Synced flutter-webrtc v0.14.1
 	* [Android] fix: Recording bug (#1839)
 	* [Android] fix: calls in terminated mode by disabling orientation manager (#1840)
