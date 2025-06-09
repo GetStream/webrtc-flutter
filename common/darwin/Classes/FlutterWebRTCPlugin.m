@@ -106,7 +106,9 @@ void postEvent(FlutterEventSink _Nonnull sink, id _Nullable event) {
   id _textures;
   BOOL _speakerOn;
   BOOL _speakerOnButPreferBluetooth;
+#if TARGET_OS_IPHONE
   AVAudioSessionPort _preferredInput;
+#endif
   AudioManager* _audioManager;
 #if TARGET_OS_IPHONE
   FLutterRTCVideoPlatformViewFactory *_platformViewFactory;
@@ -125,7 +127,9 @@ static FlutterWebRTCPlugin *sharedSingleton;
 
 @synthesize messenger = _messenger;
 @synthesize eventSink = _eventSink;
+#if TARGET_OS_IPHONE
 @synthesize preferredInput = _preferredInput;
+#endif
 @synthesize audioManager = _audioManager;
 
 + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
@@ -251,6 +255,7 @@ static FlutterWebRTCPlugin *sharedSingleton;
 }
 
 - (void)handleInterruption:(NSNotification*)notification {
+#if TARGET_OS_IPHONE
   NSDictionary* info = notification.userInfo;
   AVAudioSessionInterruptionType type = [info[AVAudioSessionInterruptionTypeKey] unsignedIntegerValue];
 
@@ -259,6 +264,7 @@ static FlutterWebRTCPlugin *sharedSingleton;
   } else if (type == AVAudioSessionInterruptionTypeEnded) {
     postEvent(self.eventSink, @{@"event": @"onInterruptionEnd"});
   }
+#endif
 }
 
 - (void)initialize:(NSArray*)networkIgnoreMask
@@ -324,10 +330,12 @@ bypassVoiceProcessing:(BOOL)bypassVoiceProcessing {
 
     [self mediaStreamTrackSetVideoEffects:trackId names:names];
   } else if ([@"handleCallInterruptionCallbacks" isEqualToString:call.method]) {
+#if TARGET_OS_IPHONE
     [[NSNotificationCenter defaultCenter] addObserver:self
                                           selector:@selector(handleInterruption:)
                                           name:AVAudioSessionInterruptionNotification
                                           object:[AVAudioSession sharedInstance]];
+#endif
     result(@"");
   } else if ([@"createPeerConnection" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
