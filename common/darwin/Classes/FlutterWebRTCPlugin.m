@@ -250,6 +250,17 @@ static FlutterWebRTCPlugin *sharedSingleton;
 #endif
 }
 
+- (void)handleInterruption:(NSNotification*)notification {
+  NSDictionary* info = notification.userInfo;
+  AVAudioSessionInterruptionType type = [info[AVAudioSessionInterruptionTypeKey] unsignedIntegerValue];
+
+  if (type == AVAudioSessionInterruptionTypeBegan) {
+    postEvent(self.eventSink, @{@"event": @"onInterruptionBegin"});
+  } else if (type == AVAudioSessionInterruptionTypeEnded) {
+    postEvent(self.eventSink, @{@"event": @"onInterruptionEnd"});
+  }
+}
+
 - (void)initialize:(NSArray*)networkIgnoreMask
 bypassVoiceProcessing:(BOOL)bypassVoiceProcessing {
     // RTCSetMinDebugLogLevel(RTCLoggingSeverityVerbose);
@@ -312,6 +323,12 @@ bypassVoiceProcessing:(BOOL)bypassVoiceProcessing {
     NSArray* names = argsMap[@"names"];
 
     [self mediaStreamTrackSetVideoEffects:trackId names:names];
+  } else if ([@"handleCallInterruptionCallbacks" isEqualToString:call.method]) {
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                          selector:@selector(handleInterruption:)
+                                          name:AVAudioSessionInterruptionNotification
+                                          object:[AVAudioSession sharedInstance]];
+    result(@"");
   } else if ([@"createPeerConnection" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSDictionary* configuration = argsMap[@"configuration"];

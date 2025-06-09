@@ -24,6 +24,7 @@ import io.getstream.webrtc.flutter.audio.AudioDeviceKind;
 import io.getstream.webrtc.flutter.audio.AudioProcessingFactoryProvider;
 import io.getstream.webrtc.flutter.audio.AudioProcessingController;
 import io.getstream.webrtc.flutter.audio.AudioSwitchManager;
+import io.getstream.webrtc.flutter.audio.AudioFocusManager;
 import io.getstream.webrtc.flutter.audio.AudioUtils;
 import io.getstream.webrtc.flutter.audio.LocalAudioTrack;
 // import io.getstream.webrtc.flutter.audio.PlaybackSamplesReadyCallbackAdapter;
@@ -124,6 +125,8 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
 
   private AudioDeviceModule audioDeviceModule;
 
+  private AudioFocusManager audioFocusManager;
+
   private FlutterRTCFrameCryptor frameCryptor;
 
   private Activity activity;
@@ -147,6 +150,10 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   }
 
   void dispose() {
+    if (audioFocusManager != null) {
+      audioFocusManager.setAudioFocusChangeListener(null);
+      audioFocusManager = null;
+    }
     for (final MediaStream mediaStream : localStreams.values()) {
       streamDispose(mediaStream);
       mediaStream.dispose();
@@ -161,6 +168,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     }
     mPeerConnectionObservers.clear();
   }
+
   private void initialize(boolean bypassVoiceProcessing, int networkIgnoreMask, boolean forceSWCodec, List<String> forceSWCodecList,
   @Nullable ConstraintsMap androidAudioConfiguration) {
     if (mFactory != null) {
@@ -358,6 +366,43 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         getUserMediaImpl.setVideoEffect(trackId, names);
         result.success(null);
         break;
+      }
+      case "handleCallInterruptionCallbacks": {
+        String interruptionSource = call.argument("androidInterruptionSource");
+        AudioFocusManager.InterruptionSource source;
+        
+        switch (interruptionSource) {
+            case "audioFocusOnly":
+                source = AudioFocusManager.InterruptionSource.AUDIO_FOCUS_ONLY;
+                break;
+            case "telephonyOnly":
+                source = AudioFocusManager.InterruptionSource.TELEPHONY_ONLY;
+                break;
+            case "audioFocusAndTelephony":
+                source = AudioFocusManager.InterruptionSource.AUDIO_FOCUS_AND_TELEPHONY;
+                break;
+            default:
+                source = AudioFocusManager.InterruptionSource.AUDIO_FOCUS_AND_TELEPHONY;
+                break;
+        }
+
+        audioFocusManager = new AudioFocusManager(context, source);
+        audioFocusManager.setAudioFocusChangeListener(new AudioFocusManager.AudioFocusChangeListener() {
+            @Override
+            public void onInterruptionBegin() {
+                ConstraintsMap params = new ConstraintsMap();
+                params.putString("event", "onInterruptionBegin");
+                FlutterWebRTCPlugin.sharedSingleton.sendEvent(params.toMap());
+            }
+
+            @Override
+            public void onInterruptionEnd() {
+                ConstraintsMap params = new ConstraintsMap();
+                params.putString("event", "onInterruptionEnd");
+                FlutterWebRTCPlugin.sharedSingleton.sendEvent(params.toMap());
+            }
+        });
+        result.success(null);
       }
       case "createPeerConnection": {
         Map<String, Object> constraints = call.argument("constraints");

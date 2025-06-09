@@ -5,6 +5,7 @@ export 'package:webrtc_interface/webrtc_interface.dart'
 
 export 'src/helper.dart';
 export 'src/desktop_capturer.dart';
+export 'src/android_interruption_source.dart';
 export 'src/media_devices.dart';
 export 'src/media_recorder.dart';
 export 'src/video_renderer_extension.dart';

@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:webrtc_interface/webrtc_interface.dart';
 
 import '../desktop_capturer.dart';
+import '../android_interruption_source.dart';
 import 'desktop_capturer_impl.dart';
 import 'frame_cryptor_impl.dart';
 import 'media_recorder_impl.dart';
@@ -23,6 +25,30 @@ class RTCFactoryNative extends RTCFactory {
       'trackId': trackId,
       'names': names,
     });
+  }
+
+  Future<void> handleCallInterruptionCallbacks(
+    void Function()? onInterruptionBegin,
+    void Function()? onInterruptionEnd, {
+    AndroidInterruptionSource androidInterruptionSource =
+        AndroidInterruptionSource.audioFocusAndTelephony,
+  }) async {
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      throw UnimplementedError(
+          'handleCallInterruptionCallbacks is only supported on Android and iOS');
+    }
+
+    await WebRTC.invokeMethod(
+      'handleCallInterruptionCallbacks',
+      <String, dynamic>{
+        if (Platform.isAndroid)
+          'androidInterruptionSource': androidInterruptionSource.name,
+      },
+    );
+
+    final mediaDeviceNative = mediaDevices as MediaDeviceNative;
+    mediaDeviceNative.onInterruptionBegin = onInterruptionBegin;
+    mediaDeviceNative.onInterruptionEnd = onInterruptionEnd;
   }
 
   @override
@@ -103,6 +129,20 @@ Future<void> setVideoEffects(
 }) async {
   return (RTCFactoryNative.instance as RTCFactoryNative)
       .setVideoEffects(trackId, names);
+}
+
+Future<void> handleCallInterruptionCallbacks(
+  void Function()? onInterruptionBegin,
+  void Function()? onInterruptionEnd, {
+  AndroidInterruptionSource androidInterruptionSource =
+      AndroidInterruptionSource.audioFocusAndTelephony,
+}) {
+  return (RTCFactoryNative.instance as RTCFactoryNative)
+      .handleCallInterruptionCallbacks(
+    onInterruptionBegin,
+    onInterruptionEnd,
+    androidInterruptionSource: androidInterruptionSource,
+  );
 }
 
 Future<RTCPeerConnection> createPeerConnection(
