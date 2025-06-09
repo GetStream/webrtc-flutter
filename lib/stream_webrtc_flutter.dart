@@ -3,9 +3,9 @@ library flutter_webrtc;
 export 'package:webrtc_interface/webrtc_interface.dart'
     hide MediaDevices, MediaRecorder, Navigator;
 
+export 'src/android_interruption_source.dart';
 export 'src/helper.dart';
 export 'src/desktop_capturer.dart';
-export 'src/android_interruption_source.dart';
 export 'src/media_devices.dart';
 export 'src/media_recorder.dart';
 export 'src/video_renderer_extension.dart';

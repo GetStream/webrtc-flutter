@@ -1,5 +1,5 @@
-import '../desktop_capturer.dart';
 import '../android_interruption_source.dart';
+import '../desktop_capturer.dart';
 
 export 'package:dart_webrtc/dart_webrtc.dart'
     hide videoRenderer, MediaDevices, MediaRecorder;
