@@ -56,7 +56,9 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 @property(nonatomic, strong) NSObject<FlutterBinaryMessenger>* _Nonnull messenger;
 @property(nonatomic, strong) RTCCameraVideoCapturer* _Nullable videoCapturer;
 @property(nonatomic, strong) FlutterRTCFrameCapturer* _Nullable frameCapturer;
+#if TARGET_OS_IPHONE
 @property(nonatomic, strong) AVAudioSessionPort _Nullable preferredInput;
+#endif
 @property (nonatomic, strong) VideoEffectProcessor* _Nullable videoEffectProcessor;
 
 @property(nonatomic, strong) NSString* _Nonnull focusMode;

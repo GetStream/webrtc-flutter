@@ -1,3 +1,4 @@
+import '../android_interruption_source.dart';
 import '../desktop_capturer.dart';
 
 export 'package:dart_webrtc/dart_webrtc.dart'
@@ -10,4 +11,13 @@ Future<void> setVideoEffects(
   required List<String> names,
 }) async {
   throw UnimplementedError('setVideoEffects() is not supported on web');
+}
+
+Future<void> handleCallInterruptionCallbacks(
+  void Function()? onInterruptionStart,
+  void Function()? onInterruptionEnd, {
+  AndroidInterruptionSource? androidInterruptionSource,
+}) {
+  throw UnimplementedError(
+      'handleCallInterruptionCallbacks() is not supported on web');
 }

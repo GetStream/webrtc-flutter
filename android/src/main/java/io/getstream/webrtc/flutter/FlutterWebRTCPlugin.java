@@ -45,7 +45,11 @@ public class FlutterWebRTCPlugin implements FlutterPlugin, ActivityAware, EventC
     public EventChannel.EventSink eventSink;
 
     public FlutterWebRTCPlugin() {
-        sharedSingleton = this;
+        if (sharedSingleton == null) {
+            sharedSingleton = this;
+        } else {
+            Log.w(TAG, "Warning - Multiple plugin instances detected. Keeping existing singleton.");
+        }
     }
 
     public static FlutterWebRTCPlugin sharedSingleton;
