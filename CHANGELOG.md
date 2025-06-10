@@ -1,6 +1,9 @@
 
 # Changelog
 
+[1.0.7] - 2025-06-10
+* Added `handleCallInterruptionCallbacks` method to provide an option to handle system audio interruption like incoming calls, or other media playing
+
 [1.0.6] - 2025-05-27
 * [iOS] Added native audio route picker for iOS
 * [Android] Expanded the mapping for audio device types
