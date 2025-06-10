@@ -260,7 +260,7 @@ static FlutterWebRTCPlugin *sharedSingleton;
   AVAudioSessionInterruptionType type = [info[AVAudioSessionInterruptionTypeKey] unsignedIntegerValue];
 
   if (type == AVAudioSessionInterruptionTypeBegan) {
-    postEvent(self.eventSink, @{@"event": @"onInterruptionBegin"});
+    postEvent(self.eventSink, @{@"event": @"onInterruptionStart"});
   } else if (type == AVAudioSessionInterruptionTypeEnded) {
     postEvent(self.eventSink, @{@"event": @"onInterruptionEnd"});
   }

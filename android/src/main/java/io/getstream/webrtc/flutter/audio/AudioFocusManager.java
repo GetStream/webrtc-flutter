@@ -34,7 +34,7 @@ public class AudioFocusManager {
     private Context context;
     
     public interface AudioFocusChangeListener {
-        void onInterruptionBegin();
+        void onInterruptionStart();
         void onInterruptionEnd();
     }
     
@@ -103,7 +103,7 @@ public class AudioFocusManager {
                 case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
                     Log.d(TAG, "Audio focus lost");
                     if (focusChangeListener != null) {
-                        focusChangeListener.onInterruptionBegin();
+                        focusChangeListener.onInterruptionStart();
                     }
                     break;
                 case AudioManager.AUDIOFOCUS_GAIN:
@@ -171,7 +171,7 @@ public class AudioFocusManager {
             case TelephonyManager.CALL_STATE_RINGING:
             case TelephonyManager.CALL_STATE_OFFHOOK:
                 Log.d(TAG, "Phone call interruption began");
-                focusChangeListener.onInterruptionBegin();
+                focusChangeListener.onInterruptionStart();
                 break;
             case TelephonyManager.CALL_STATE_IDLE:
                 Log.d(TAG, "Phone call interruption ended");

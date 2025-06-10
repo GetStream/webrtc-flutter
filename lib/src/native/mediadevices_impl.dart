@@ -24,8 +24,8 @@ class MediaDeviceNative extends MediaDevices {
       case 'onDeviceChange':
         ondevicechange?.call(null);
         break;
-      case 'onInterruptionBegin':
-        onInterruptionBegin?.call();
+      case 'onInterruptionStart':
+        onInterruptionStart?.call();
         break;
       case 'onInterruptionEnd':
         onInterruptionEnd?.call();
@@ -33,7 +33,7 @@ class MediaDeviceNative extends MediaDevices {
     }
   }
 
-  Function()? onInterruptionBegin;
+  Function()? onInterruptionStart;
   Function()? onInterruptionEnd;
 
   @override

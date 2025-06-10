@@ -389,9 +389,9 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         audioFocusManager = new AudioFocusManager(context, source);
         audioFocusManager.setAudioFocusChangeListener(new AudioFocusManager.AudioFocusChangeListener() {
             @Override
-            public void onInterruptionBegin() {
+            public void onInterruptionStart() {
                 ConstraintsMap params = new ConstraintsMap();
-                params.putString("event", "onInterruptionBegin");
+                params.putString("event", "onInterruptionStart");
                 FlutterWebRTCPlugin.sharedSingleton.sendEvent(params.toMap());
             }
 

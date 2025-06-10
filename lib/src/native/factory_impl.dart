@@ -28,7 +28,7 @@ class RTCFactoryNative extends RTCFactory {
   }
 
   Future<void> handleCallInterruptionCallbacks(
-    void Function()? onInterruptionBegin,
+    void Function()? onInterruptionStart,
     void Function()? onInterruptionEnd, {
     AndroidInterruptionSource androidInterruptionSource =
         AndroidInterruptionSource.audioFocusAndTelephony,
@@ -47,7 +47,7 @@ class RTCFactoryNative extends RTCFactory {
     );
 
     final mediaDeviceNative = mediaDevices as MediaDeviceNative;
-    mediaDeviceNative.onInterruptionBegin = onInterruptionBegin;
+    mediaDeviceNative.onInterruptionStart = onInterruptionStart;
     mediaDeviceNative.onInterruptionEnd = onInterruptionEnd;
   }
 
@@ -132,14 +132,14 @@ Future<void> setVideoEffects(
 }
 
 Future<void> handleCallInterruptionCallbacks(
-  void Function()? onInterruptionBegin,
+  void Function()? onInterruptionStart,
   void Function()? onInterruptionEnd, {
   AndroidInterruptionSource androidInterruptionSource =
       AndroidInterruptionSource.audioFocusAndTelephony,
 }) {
   return (RTCFactoryNative.instance as RTCFactoryNative)
       .handleCallInterruptionCallbacks(
-    onInterruptionBegin,
+    onInterruptionStart,
     onInterruptionEnd,
     androidInterruptionSource: androidInterruptionSource,
   );
