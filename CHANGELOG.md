@@ -1,5 +1,7 @@
 
 # Changelog
+[1.0.8] - 2025-06-20
+* [Android] Fix `getLocalDescription` throwing an exception when it's `null`
 
 [1.0.7] - 2025-06-10
 * Added `handleCallInterruptionCallbacks` method to provide an option to handle system audio interruption like incoming calls, or other media playing
