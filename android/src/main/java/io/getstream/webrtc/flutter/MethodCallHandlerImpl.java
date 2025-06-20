@@ -863,10 +863,14 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         PeerConnection peerConnection = getPeerConnection(peerConnectionId);
         if (peerConnection != null) {
           SessionDescription sdp = peerConnection.getLocalDescription();
-          ConstraintsMap params = new ConstraintsMap();
-          params.putString("sdp", sdp.description);
-          params.putString("type", sdp.type.canonicalForm());
-          result.success(params.toMap());
+          if (sdp == null) {
+            result.success(null);
+          } else {
+            ConstraintsMap params = new ConstraintsMap();
+            params.putString("sdp", sdp.description);
+            params.putString("type", sdp.type.canonicalForm());
+            result.success(params.toMap());
+          }
         } else {
           resultError("getLocalDescription", "peerConnection is null", result);
         }
