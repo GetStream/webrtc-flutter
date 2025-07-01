@@ -403,6 +403,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
             }
         });
         result.success(null);
+        break;
       }
       case "createPeerConnection": {
         Map<String, Object> constraints = call.argument("constraints");
