@@ -20,7 +20,7 @@ extern "C" {
 FLUTTER_PLUGIN_EXPORT void FlutterWebRTCPluginRegisterWithRegistrar(
     FlutterDesktopPluginRegistrarRef registrar);
 
-FLUTTER_PLUGIN_EXPORT flutter_webrtc_plugin::FlutterWebRTC* FlutterWebRTCPluginSharedInstance();
+FLUTTER_PLUGIN_EXPORT stream_webrtc_flutter_plugin::FlutterWebRTC* FlutterWebRTCPluginSharedInstance();
 
 #if defined(__cplusplus)
 }  // extern "C"
