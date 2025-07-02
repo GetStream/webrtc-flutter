@@ -273,8 +273,9 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
 
     videoDecoderFactory.setForceSWCodec(forceSWCodec);
     videoDecoderFactory.setForceSWCodecList(forceSWCodecList);
-    videoEncoderFactory.setForceSWCodec(forceSWCodec);
-    videoEncoderFactory.setForceSWCodecList(forceSWCodecList);
+// Disabled software encoding for now, only using software decoding. See FLU-120
+//    videoEncoderFactory.setForceSWCodec(forceSWCodec);
+//    videoEncoderFactory.setForceSWCodecList(forceSWCodecList);
 
 
     if(audioProcessingFactoryProvider == null) {
