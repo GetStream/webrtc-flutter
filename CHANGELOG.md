@@ -2,6 +2,8 @@
 # Changelog
 
 [1.0.9] - 2025-07-01
+* [Android] fix: disable software encoding for certain codecs.
+* [Android] fix: Nullpointer exception in `ConstraintsMap`.
 * Synced flutter-webrtc v0.14.2
 	* [Windows/Linux] feat: Add audio processing and sink API for cpp. (#1867)
 	* [Linux] fix: Fixed audio device selection error for Linux. (#1864)
