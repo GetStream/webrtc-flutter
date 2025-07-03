@@ -13,7 +13,7 @@ public class ConstraintsMap {
     }
 
     public ConstraintsMap(Map<String, Object> map){
-        this.mMap = map;
+        this.mMap = (map != null) ? map : new HashMap<String, Object>();
     }
 
     public Map<String, Object> toMap() {
