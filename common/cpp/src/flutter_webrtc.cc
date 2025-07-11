@@ -432,6 +432,15 @@ void FlutterWebRTC::HandleMethodCall(
         GetValue<EncodableMap>(*method_call.arguments());
     const std::string track_id = findString(params, "trackId");
     MediaStreamTrackDispose(track_id, std::move(result));
+  } else if (method_call.method_name().compare("trackClone") == 0) {
+    if (!method_call.arguments()) {
+      result->Error("Bad Arguments", "Null constraints arguments received");
+      return;
+    }
+    const EncodableMap params =
+        GetValue<EncodableMap>(*method_call.arguments());
+    const std::string track_id = findString(params, "trackId");
+    MediaStreamTrackClone(track_id, std::move(result));
   } else if (method_call.method_name().compare("restartIce") == 0) {
     if (!method_call.arguments()) {
       result->Error("Bad Arguments", "Null constraints arguments received");

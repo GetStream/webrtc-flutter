@@ -44,6 +44,9 @@ class FlutterMediaStream {
   void MediaStreamTrackDispose(const std::string& track_id,
                                std::unique_ptr<MethodResultProxy> result);
 
+  void MediaStreamTrackClone(const std::string& track_id,
+                               std::unique_ptr<MethodResultProxy> result);
+
   void CreateLocalMediaStream(std::unique_ptr<MethodResultProxy> result);
 
   void OnDeviceChange();

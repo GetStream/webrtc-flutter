@@ -47,7 +47,7 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE
 )
 
 # List of absolute paths to libraries that should be bundled with the plugin
-set(flutter_webrtc_bundled_libraries
+set(stream_webrtc_flutter_bundled_libraries
   "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/libwebrtc/lib/win64/libwebrtc.dll"
   PARENT_SCOPE
 )

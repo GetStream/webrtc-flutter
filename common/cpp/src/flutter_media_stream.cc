@@ -181,6 +181,7 @@ void FlutterMediaStream::GetUserAudio(const EncodableMap& constraints,
     params[EncodableValue("audioTracks")] = EncodableValue(audioTracks);
     stream->AddTrack(track);
 
+    base_->audio_sources_[track->id().std_string()] = source;
     base_->local_tracks_[track->id().std_string()] = track;
   }
 }
@@ -319,6 +320,7 @@ void FlutterMediaStream::GetUserVideo(const EncodableMap& constraints,
 
   stream->AddTrack(track);
 
+  base_->video_sources_[track->id().std_string()] = source;
   base_->local_tracks_[track->id().std_string()] = track;
   base_->video_capturers_[track->id().std_string()] = video_capturer;
 }
@@ -483,12 +485,14 @@ void FlutterMediaStream::MediaStreamDispose(
   for (auto track : audio_tracks.std_vector()) {
     stream->RemoveTrack(track);
     base_->local_tracks_.erase(track->id().std_string());
+    base_->audio_sources_.erase(track->id().std_string());
   }
 
   vector<scoped_refptr<RTCVideoTrack>> video_tracks = stream->video_tracks();
   for (auto track : video_tracks.std_vector()) {
     stream->RemoveTrack(track);
     base_->local_tracks_.erase(track->id().std_string());
+    base_->video_sources_.erase(track->id().std_string());
     if (base_->video_capturers_.find(track->id().std_string()) !=
         base_->video_capturers_.end()) {
       auto video_capture = base_->video_capturers_[track->id().std_string()];
@@ -558,4 +562,55 @@ void FlutterMediaStream::MediaStreamTrackDispose(
   base_->RemoveMediaTrackForId(track_id);
   result->Success();
 }
+
+void FlutterMediaStream::MediaStreamTrackClone(
+    const std::string& track_id,
+    std::unique_ptr<MethodResultProxy> result) {
+  
+    std::string new_track_id = base_->GenerateUUID();
+
+    EncodableMap track_params;
+
+    for (auto it : base_->local_streams_) {
+        auto stream = it.second;
+        auto audio_tracks = stream->audio_tracks();
+        for (auto original_audio_track : audio_tracks.std_vector()) {
+            if (original_audio_track->id().std_string() == track_id) {
+                // clone audio track
+              auto audio_source = base_->audio_sources_[track_id];
+              scoped_refptr<RTCAudioTrack> track =
+                  base_->factory_->CreateAudioTrack(audio_source, new_track_id);
+              base_->audio_sources_[track->id().std_string()] = audio_source;
+
+              track_params[EncodableValue("readyState")] = "live";
+              track_params[EncodableValue("kind")] =
+                  EncodableValue(track->kind().std_string());
+              track_params[EncodableValue("enabled")] =
+                  EncodableValue(track->enabled());
+            }
+        }
+        auto video_tracks = stream->video_tracks();
+        for (auto original_video_track : video_tracks.std_vector()) {
+            if (original_video_track->id().std_string() == track_id) {
+                // clone video track
+              auto video_source = base_->video_sources_[track_id];
+              //TODO copy surface texture
+              scoped_refptr<RTCVideoTrack> track =
+                  base_->factory_->CreateVideoTrack(video_source, new_track_id);
+              base_->video_sources_[track->id().std_string()] = video_source;
+
+              track_params[EncodableValue("readyState")] = "live";
+              track_params[EncodableValue("kind")] =
+                  EncodableValue(track->kind().std_string());
+              track_params[EncodableValue("enabled")] =
+                  EncodableValue(track->enabled());
+            }
+        }
+    }
+    track_params[EncodableValue("id")] = EncodableValue(new_track_id);
+    track_params[EncodableValue("label")] = EncodableValue(new_track_id);
+    track_params[EncodableValue("remote")] = EncodableValue(false);
+
+    result->Success(EncodableValue(track_params));
+    }
 }  // namespace stream_webrtc_flutter_plugin
