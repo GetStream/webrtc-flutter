@@ -1,6 +1,9 @@
 
 # Changelog
 
+[1.0.10] - 2025-08-07
+* [Linux/Windows] added missing cloneTrack method
+
 [1.0.9] - 2025-07-01
 * [Android] fix: disable software encoding for certain codecs.
 * [Android] fix: Nullpointer exception in `ConstraintsMap`.
