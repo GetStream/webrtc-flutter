@@ -164,6 +164,7 @@ public class AudioFocusManager {
                 return AudioManager.STREAM_ALARM;
             }
         }
+        
         if (contentType != null) {
             if (contentType == AudioAttributes.CONTENT_TYPE_MUSIC
                     || contentType == AudioAttributes.CONTENT_TYPE_MOVIE) {
@@ -173,7 +174,8 @@ public class AudioFocusManager {
                 return AudioManager.STREAM_VOICE_CALL;
             }
         }
-        return AudioManager.STREAM_MUSIC;
+
+        return AudioManager.STREAM_VOICE_CALL;
     }
     
     private void registerTelephonyListener() {
