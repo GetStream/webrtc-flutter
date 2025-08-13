@@ -3,8 +3,8 @@ import 'dart:io';
 
 import 'package:webrtc_interface/webrtc_interface.dart';
 
-import '../android_interruption_source.dart';
 import '../desktop_capturer.dart';
+import 'android/audio_configuration.dart';
 import 'desktop_capturer_impl.dart';
 import 'frame_cryptor_impl.dart';
 import 'media_recorder_impl.dart';
@@ -32,6 +32,8 @@ class RTCFactoryNative extends RTCFactory {
     void Function()? onInterruptionEnd, {
     AndroidInterruptionSource androidInterruptionSource =
         AndroidInterruptionSource.audioFocusAndTelephony,
+    AndroidAudioAttributesUsageType? androidAudioAttributesUsageType,
+    AndroidAudioAttributesContentType? androidAudioAttributesContentType,
   }) async {
     if (!Platform.isAndroid && !Platform.isIOS) {
       throw UnimplementedError(
@@ -43,6 +45,12 @@ class RTCFactoryNative extends RTCFactory {
       <String, dynamic>{
         if (Platform.isAndroid)
           'androidInterruptionSource': androidInterruptionSource.name,
+        if (Platform.isAndroid && androidAudioAttributesUsageType != null)
+          'androidAudioAttributesUsageType':
+              androidAudioAttributesUsageType.name,
+        if (Platform.isAndroid && androidAudioAttributesContentType != null)
+          'androidAudioAttributesContentType':
+              androidAudioAttributesContentType.name,
       },
     );
 
@@ -136,12 +144,16 @@ Future<void> handleCallInterruptionCallbacks(
   void Function()? onInterruptionEnd, {
   AndroidInterruptionSource androidInterruptionSource =
       AndroidInterruptionSource.audioFocusAndTelephony,
+  AndroidAudioAttributesUsageType? androidAudioAttributesUsageType,
+  AndroidAudioAttributesContentType? androidAudioAttributesContentType,
 }) {
   return (RTCFactoryNative.instance as RTCFactoryNative)
       .handleCallInterruptionCallbacks(
     onInterruptionStart,
     onInterruptionEnd,
     androidInterruptionSource: androidInterruptionSource,
+    androidAudioAttributesUsageType: androidAudioAttributesUsageType,
+    androidAudioAttributesContentType: androidAudioAttributesContentType,
   );
 }
 
