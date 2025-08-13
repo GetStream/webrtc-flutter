@@ -1,6 +1,9 @@
 
 # Changelog
 
+[1.0.11] - 2025-08-13
+* [Android] Added option to configure Android audio attributes in AudioFocusManager
+
 [1.0.10] - 2025-08-07
 * [Linux/Windows] added missing cloneTrack method
 
