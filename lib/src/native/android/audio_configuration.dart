@@ -25,6 +25,12 @@ extension AndroidAudioFocusModeEnumEx on String {
       AndroidAudioFocusMode.values.firstWhere((d) => d.name == toLowerCase());
 }
 
+enum AndroidInterruptionSource {
+  audioFocusOnly,
+  telephonyOnly,
+  audioFocusAndTelephony,
+}
+
 enum AndroidAudioStreamType {
   accessibility,
   alarm,

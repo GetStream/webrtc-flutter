@@ -33,18 +33,27 @@ public class AudioFocusManager {
     private InterruptionSource interruptionSource;
     private Context context;
     
+    private Integer focusUsageType; // AudioAttributes.USAGE_*
+    private Integer focusContentType; // AudioAttributes.CONTENT_TYPE_*
+    
     public interface AudioFocusChangeListener {
         void onInterruptionStart();
         void onInterruptionEnd();
     }
     
     public AudioFocusManager(Context context) {
-        this(context, InterruptionSource.AUDIO_FOCUS_AND_TELEPHONY);
+        this(context, InterruptionSource.AUDIO_FOCUS_AND_TELEPHONY, null, null);
     }
     
     public AudioFocusManager(Context context, InterruptionSource interruptionSource) {
+        this(context, interruptionSource, null, null);
+    }
+    
+    public AudioFocusManager(Context context, InterruptionSource interruptionSource, Integer usageType, Integer contentType) {
         this.context = context;
         this.interruptionSource = interruptionSource;
+        this.focusUsageType = usageType;
+        this.focusContentType = contentType;
         
         if (interruptionSource == InterruptionSource.AUDIO_FOCUS_ONLY || 
             interruptionSource == InterruptionSource.AUDIO_FOCUS_AND_TELEPHONY) {
@@ -117,8 +126,8 @@ public class AudioFocusManager {
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .setUsage(focusUsageType != null ? focusUsageType : AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .setContentType(focusContentType != null ? focusContentType : AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build();
                     
             audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
@@ -128,10 +137,45 @@ public class AudioFocusManager {
                     
             audioManager.requestAudioFocus(audioFocusRequest);
         } else {
+            int streamType = inferPreOStreamType(focusUsageType, focusContentType);
             audioManager.requestAudioFocus(onAudioFocusChangeListener,
-                    AudioManager.STREAM_VOICE_CALL,
+                    streamType,
                     AudioManager.AUDIOFOCUS_GAIN);
         }
+    }
+    
+    private int inferPreOStreamType(Integer usageType, Integer contentType) {
+        if (usageType != null) {
+            if (usageType == AudioAttributes.USAGE_MEDIA
+                    || usageType == AudioAttributes.USAGE_GAME
+                    || usageType == AudioAttributes.USAGE_ASSISTANT) {
+                return AudioManager.STREAM_MUSIC;
+            }
+            if (usageType == AudioAttributes.USAGE_VOICE_COMMUNICATION
+                    || usageType == AudioAttributes.USAGE_VOICE_COMMUNICATION_SIGNALLING) {
+                return AudioManager.STREAM_VOICE_CALL;
+            }
+            if (usageType == AudioAttributes.USAGE_NOTIFICATION
+                    || usageType == AudioAttributes.USAGE_NOTIFICATION_RINGTONE
+                    || usageType == AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_REQUEST) {
+                return AudioManager.STREAM_NOTIFICATION;
+            }
+            if (usageType == AudioAttributes.USAGE_ALARM) {
+                return AudioManager.STREAM_ALARM;
+            }
+        }
+        
+        if (contentType != null) {
+            if (contentType == AudioAttributes.CONTENT_TYPE_MUSIC
+                    || contentType == AudioAttributes.CONTENT_TYPE_MOVIE) {
+                return AudioManager.STREAM_MUSIC;
+            }
+            if (contentType == AudioAttributes.CONTENT_TYPE_SPEECH) {
+                return AudioManager.STREAM_VOICE_CALL;
+            }
+        }
+
+        return AudioManager.STREAM_VOICE_CALL;
     }
     
     private void registerTelephonyListener() {

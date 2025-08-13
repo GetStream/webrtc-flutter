@@ -137,6 +137,8 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
 
   public AudioProcessingFactoryProvider audioProcessingFactoryProvider;
 
+  private ConstraintsMap initializedAndroidAudioConfiguration;
+
   MethodCallHandlerImpl(Context context, BinaryMessenger messenger, TextureRegistry textureRegistry) {
     this.context = context;
     this.textures = textureRegistry;
@@ -174,6 +176,8 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     if (mFactory != null) {
       return;
     }
+
+    this.initializedAndroidAudioConfiguration = androidAudioConfiguration;
 
     PeerConnectionFactory.initialize(
             InitializationOptions.builder(context)
@@ -387,7 +391,28 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
                 break;
         }
 
-        audioFocusManager = new AudioFocusManager(context, source);
+        Integer usage = null, content = null;
+
+        // Prefer override values if provided, else fallback to persisted config
+        String overrideUsageStr = call.argument("androidAudioAttributesUsageType");
+        String overrideContentStr = call.argument("androidAudioAttributesContentType");
+
+        if (overrideUsageStr != null) {
+            usage = AudioUtils.getAudioAttributesUsageTypeForString(overrideUsageStr);
+        } else if (initializedAndroidAudioConfiguration != null) {
+            usage = AudioUtils.getAudioAttributesUsageTypeForString(
+                initializedAndroidAudioConfiguration.getString("androidAudioAttributesUsageType"));
+        }
+
+        if (overrideContentStr != null) {
+            content = AudioUtils.getAudioAttributesContentTypeFromString(overrideContentStr);
+        } else if (initializedAndroidAudioConfiguration != null) {
+            content = AudioUtils.getAudioAttributesContentTypeFromString(
+                initializedAndroidAudioConfiguration.getString("androidAudioAttributesContentType"));
+        }
+
+        audioFocusManager = new AudioFocusManager(context, source, usage, content);
+
         audioFocusManager.setAudioFocusChangeListener(new AudioFocusManager.AudioFocusChangeListener() {
             @Override
             public void onInterruptionStart() {
