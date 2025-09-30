@@ -1,6 +1,9 @@
 
 # Changelog
 
+[1.0.12] - 2025-09-30
+* [Android] Changed the configuration used when creating EGL rendering context to one that supports alpha channel to fix an issue with Impeller blending background with video texture on some devices.
+
 [1.0.11] - 2025-08-13
 * [Android] Added option to configure Android audio attributes in AudioFocusManager
 

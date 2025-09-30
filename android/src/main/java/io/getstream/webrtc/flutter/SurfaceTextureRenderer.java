@@ -40,8 +40,8 @@ public class SurfaceTextureRenderer extends EglRenderer {
   }
 
   public void init(final EglBase.Context sharedContext,
-                   RendererCommon.RendererEvents rendererEvents) {
-    init(sharedContext, rendererEvents, EglBase.CONFIG_PLAIN, new GlRectDrawer());
+      RendererCommon.RendererEvents rendererEvents) {
+    init(sharedContext, rendererEvents, EglBase.CONFIG_RGBA, new GlRectDrawer());
   }
 
   /**

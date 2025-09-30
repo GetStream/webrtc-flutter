@@ -19,9 +19,9 @@ public class EglUtils {
     public static synchronized EglBase getRootEglBase() {
         if (rootEglBase == null) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP)
-                rootEglBase = EglBase.createEgl10(EglBase.CONFIG_PLAIN);
+                rootEglBase = EglBase.createEgl10(EglBase.CONFIG_RGBA);
             else
-                rootEglBase = EglBase.create();
+                rootEglBase = EglBase.create(null, EglBase.CONFIG_RGBA);
         }
 
         return rootEglBase;
