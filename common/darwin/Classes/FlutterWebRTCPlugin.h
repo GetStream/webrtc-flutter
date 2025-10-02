@@ -22,6 +22,7 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 
 @interface FlutterWebRTCPlugin : NSObject <FlutterPlugin,
                                            RTCPeerConnectionDelegate,
+                                           RTCAudioDeviceModuleDelegate,
                                            FlutterStreamHandler
 #if TARGET_OS_OSX
                                            ,
@@ -38,7 +39,7 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 @property(nonatomic, strong) NSMutableDictionary<NSString*, id<LocalTrack>>* _Nullable localTracks;
 @property(nonatomic, strong)
     NSMutableDictionary<NSNumber*, FlutterRTCVideoRenderer*>* _Nullable renders;
-@property(nonatomic, strong) NSMutableDictionary<NSNumber*, FlutterRTCMediaRecorder*>* recorders;
+@property(nonatomic, strong) NSMutableDictionary<NSNumber*, FlutterRTCMediaRecorder*>* _Nonnull recorders;
 @property(nonatomic, strong)
     NSMutableDictionary<NSString*, CapturerStopHandler>* _Nullable videoCapturerStopHandlers;
 
@@ -46,6 +47,8 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
     NSMutableDictionary<NSString*, RTCFrameCryptor*>* _Nullable frameCryptors;
 @property(nonatomic, strong)
     NSMutableDictionary<NSString*, RTCFrameCryptorKeyProvider*>* _Nullable keyProviders;
+@property(nonatomic, strong)
+    NSMutableDictionary<NSString*, RTCDataPacketCryptor*>* _Nullable dataCryptors;
 
 #if TARGET_OS_IPHONE
 @property(nonatomic, retain)
@@ -77,7 +80,7 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
                         peerConnectionId:(NSString* _Nullable)peerConnectionId;
 - (RTCMediaStreamTrack* _Nullable)trackForId:(NSString* _Nonnull)trackId
                             peerConnectionId:(NSString* _Nullable)peerConnectionId;
-- (NSString*)audioTrackIdForVideoTrackId:(NSString*)videoTrackId;
+- (NSString* _Nullable)audioTrackIdForVideoTrackId:(NSString* _Nonnull)videoTrackId;
 - (RTCRtpTransceiver* _Nullable)getRtpTransceiverById:(RTCPeerConnection* _Nonnull)peerConnection
                                                    Id:(NSString* _Nullable)Id;
 - (NSDictionary* _Nullable)mediaStreamToMap:(RTCMediaStream* _Nonnull)stream
