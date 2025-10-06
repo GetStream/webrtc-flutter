@@ -21,10 +21,12 @@ let package = Package(
             dependencies: [
                 .product(name: "StreamWebRTC", package: "stream-video-swift-webrtc")
             ],
+            path: "ios/stream_webrtc_flutter/Sources/stream_webrtc_flutter",
             resources: [
                 // If you have PrivacyInfo.xcprivacy or other resources:
                 // .process("PrivacyInfo.xcprivacy")
-            ]
+            ],
+            publicHeadersPath: "include"
         )
     ]
 )
