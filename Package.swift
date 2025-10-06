@@ -7,7 +7,7 @@ let package = Package(
         .iOS("13.0")  // update as needed
     ],
     products: [
-        .library(name: "stream-webrtc-flutter", targets: ["stream_webrtc_flutter"])
+        .library(name: "stream-webrtc-flutter", type: .static, targets: ["stream_webrtc_flutter"])
     ],
     dependencies: [
         .package(
