@@ -57,3 +57,7 @@ android/.settings/org.eclipse.buildship.core.prefs
 
 # vs
 *.pdb
+
+# Swift
+.build/
+.swiftpm/

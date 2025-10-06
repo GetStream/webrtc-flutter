@@ -12,12 +12,18 @@ A new flutter plugin project.
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'getstream.io' => 'support@getstream.io' }
   s.source           = { :path => '.' }
-  s.source_files = 'Classes/**/*'
-  s.public_header_files = 'Classes/**/*.h'
+  s.source_files = 'stream_webrtc_flutter/Sources/stream_webrtc_flutter/**/*.{h,hpp,m,mm,c,cpp}'
+  s.public_header_files = 'stream_webrtc_flutter/Sources/stream_webrtc_flutter/include/stream_webrtc_flutter/**/*.h'
   s.dependency 'Flutter'
-  s.dependency 'StreamWebRTC', '125.6422.070'
   s.ios.deployment_target = '13.0'
   s.static_framework = true
+  s.vendored_frameworks = 'Frameworks/StreamWebRTC.xcframework'
+  s.prepare_command = <<-CMD
+    mkdir -p Frameworks/
+    curl -sL "https://github.com/GetStream/stream-video-swift-webrtc/releases/download/125.6422.070/StreamWebRTC.xcframework.zip" -o Frameworks/StreamWebRTC.zip
+    unzip -o Frameworks/StreamWebRTC.zip -d Frameworks/
+    rm Frameworks/StreamWebRTC.zip
+  CMD
   s.pod_target_xcconfig = {
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++14',
     'USER_HEADER_SEARCH_PATHS' => 'Classes/**/*.h'
