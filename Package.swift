@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "webrtc-flutter",
+    name: "stream_webrtc_flutter",
     platforms: [
         .iOS("13.0")  // update as needed
     ],
