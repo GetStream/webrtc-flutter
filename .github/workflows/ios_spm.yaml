@@ -8,12 +8,7 @@ on:
 
 jobs:
   build-ios:
-    name: Build iOS Example (Pods + SPM)
     runs-on: macos-latest
-
-    strategy:
-      matrix:
-        flutter-channel: [stable]
 
     steps:
       - name: Checkout repository
