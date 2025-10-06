@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "stream_webrtc_flutter",
+    name: "webrtc-flutter",
     platforms: [
         .iOS("13.0")  // update as needed
     ],
@@ -13,7 +13,6 @@ let package = Package(
         .package(
             url: "https://github.com/GetStream/stream-video-swift-webrtc.git", exact: "125.6422.070"
         )
-
     ],
     targets: [
         .target(
