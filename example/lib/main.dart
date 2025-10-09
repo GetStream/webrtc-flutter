@@ -3,7 +3,6 @@ import 'dart:core';
 import 'package:flutter/material.dart';
 import 'package:flutter_background/flutter_background.dart';
 import 'package:flutter_webrtc_example/src/capture_frame_sample.dart';
-import 'package:stream_webrtc_flutter/stream_webrtc_flutter.dart';
 
 import 'src/adm_sample.dart';
 import 'src/data_packet_cryptor_sample.dart';
@@ -144,7 +143,8 @@ class _MyAppState extends State<MyApp> {
             Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (BuildContext context) => DataPacketCryptorSample()));
+                    builder: (BuildContext context) =>
+                        DataPacketCryptorSample()));
           }),
     ];
   }
