@@ -1,6 +1,6 @@
 #if TARGET_OS_IPHONE
 
-#import <WebRTC/WebRTC.h>
+#import <StreamWebRTC/StreamWebRTC.h>
 
 @interface AudioUtils : NSObject
 + (void)ensureAudioSessionWithRecording:(BOOL)recording;
@@ -9,7 +9,7 @@
 + (void)setSpeakerphoneOn:(BOOL)enable;
 + (void)setSpeakerphoneOnButPreferBluetooth;
 + (void)deactiveRtcAudioSession;
-+ (void) setAppleAudioConfiguration:(NSDictionary*)configuration;
++ (void)setAppleAudioConfiguration:(NSDictionary*)configuration;
 @end
 
 #endif

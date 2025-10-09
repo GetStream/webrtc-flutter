@@ -65,3 +65,4 @@ android/.settings/org.eclipse.buildship.core.prefs
 
 # vs
 *.pdb
+ios/Frameworks

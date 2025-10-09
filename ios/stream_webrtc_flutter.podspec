@@ -15,7 +15,13 @@ A new flutter plugin project.
   s.source_files = 'Classes/**/*'
   s.public_header_files = 'Classes/**/*.h'
   s.dependency 'Flutter'
-  s.dependency 'StreamWebRTC', '125.6422.070'
+  s.vendored_frameworks = 'Frameworks/StreamWebRTC.xcframework'
+  s.prepare_command = <<-CMD
+    mkdir -p Frameworks/
+    curl -sL "https://github.com/GetStream/stream-video-swift-webrtc/releases/download/137.0.54/StreamWebRTC.xcframework.zip" -o Frameworks/StreamWebRTC.zip
+    unzip -o Frameworks/StreamWebRTC.zip -d Frameworks/
+    rm Frameworks/StreamWebRTC.zip
+  CMD
   s.ios.deployment_target = '13.0'
   s.static_framework = true
   s.pod_target_xcconfig = {

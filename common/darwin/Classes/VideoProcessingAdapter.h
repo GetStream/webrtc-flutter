@@ -1,5 +1,5 @@
 #import <Foundation/Foundation.h>
-#import <WebRTC/WebRTC.h>
+#import <StreamWebRTC/StreamWebRTC.h>
 
 @protocol ExternalVideoProcessingDelegate
 - (RTC_OBJC_TYPE(RTCVideoFrame) * _Nonnull)onFrame:(RTC_OBJC_TYPE(RTCVideoFrame) * _Nonnull)frame;
@@ -13,6 +13,6 @@
 
 - (void)removeProcessing:(_Nonnull id<ExternalVideoProcessingDelegate>)processor;
 
-- (RTCVideoSource* _Nonnull) source;
+- (RTCVideoSource* _Nonnull)source;
 
 @end

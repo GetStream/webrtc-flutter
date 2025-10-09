@@ -1,7 +1,7 @@
 #import "FlutterDataPacketCryptor.h"
 #import "FlutterRTCFrameCryptor.h"
 
-#include <WebRTC/WebRTC.h>
+#include <StreamWebRTC/StreamWebRTC.h>
 #import <objc/runtime.h>
 
 @implementation FlutterWebRTCPlugin (DataPacketCryptor)
