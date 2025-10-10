@@ -1,7 +1,11 @@
 #import "FlutterDataPacketCryptor.h"
 #import "FlutterRTCFrameCryptor.h"
 
-#include <StreamWebRTC/StreamWebRTC.h>
+#if TARGET_OS_IPHONE
+#import <StreamWebRTC/StreamWebRTC.h>
+#elif TARGET_OS_MAC
+#import <WebRTC/WebRTC.h>
+#endif
 #import <objc/runtime.h>
 
 @implementation FlutterWebRTCPlugin (DataPacketCryptor)

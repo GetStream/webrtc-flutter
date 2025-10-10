@@ -1,5 +1,4 @@
 #if TARGET_OS_IPHONE
-
 #import <StreamWebRTC/StreamWebRTC.h>
 
 @interface AudioUtils : NSObject

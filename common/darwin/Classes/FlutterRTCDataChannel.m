@@ -1,5 +1,9 @@
 #import "FlutterRTCDataChannel.h"
+#if TARGET_OS_IPHONE
 #import <StreamWebRTC/RTCDataChannelConfiguration.h>
+#elif TARGET_OS_MAC
+#import <WebRTC/RTCDataChannelConfiguration.h>
+#endif
 #import <objc/runtime.h>
 #import "FlutterRTCPeerConnection.h"
 

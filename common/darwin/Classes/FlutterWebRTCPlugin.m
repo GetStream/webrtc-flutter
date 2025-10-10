@@ -21,11 +21,18 @@
 
 #import <AVFoundation/AVFoundation.h>
 #import <AVKit/AVKit.h>
-#import <StreamWebRTC/RTCFieldTrials.h>
-#import <StreamWebRTC/StreamWebRTC.h>
 
+#if TARGET_OS_IPHONE
 #import <StreamWebRTC/RTCCallbackLogger.h>
+#import <StreamWebRTC/RTCFieldTrials.h>
 #import <StreamWebRTC/RTCLogging.h>
+#import <StreamWebRTC/StreamWebRTC.h>
+#elif TARGET_OS_MAC
+#import <WebRTC/RTCCallbackLogger.h>
+#import <WebRTC/RTCFieldTrials.h>
+#import <WebRTC/RTCLogging.h>
+#import <WebRTC/WebRTC.h>
+#endif
 
 #import "LocalAudioTrack.h"
 #import "LocalTrack.h"

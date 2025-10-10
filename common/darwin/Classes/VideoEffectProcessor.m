@@ -1,5 +1,9 @@
 #import "VideoEffectProcessor.h"
+#if TARGET_OS_IPHONE
 #import <StreamWebRTC/RTCVideoCapturer.h>
+#elif TARGET_OS_MAC
+#import <WebRTC/RTCVideoCapturer.h>
+#endif
 
 @implementation VideoEffectProcessor
 - (instancetype)initWithProcessors:
