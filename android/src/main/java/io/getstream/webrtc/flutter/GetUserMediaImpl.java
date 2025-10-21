@@ -96,6 +96,7 @@ public class GetUserMediaImpl {
     private static final int DEFAULT_HEIGHT = 720;
     private static final int DEFAULT_FPS = 30;
 
+    private static final String EVENT_DISPLAY_MEDIA_STOPPED = "screenSharingStopped";
     private static final String PERMISSION_AUDIO = Manifest.permission.RECORD_AUDIO;
     private static final String PERMISSION_VIDEO = Manifest.permission.CAMERA;
     private static final String PERMISSION_SCREEN = "android.permission.MediaProjection";
@@ -518,19 +519,23 @@ public class GetUserMediaImpl {
         /* Create ScreenCapture */
         VideoTrack displayTrack = null;
         VideoCapturer videoCapturer = null;
-        videoCapturer =
-                new OrientationAwareScreenCapturer(
-                        applicationContext,
-                        mediaProjectionData,
-                        new MediaProjection.Callback() {
-                            @Override
-                            public void onStop() {
-                                super.onStop();
-                                // After Huawei P30 and Android 10 version test, the onstop method is called, which will not affect the next process,
-                                // and there is no need to call the resulterror method
-                                //resultError("MediaProjection.Callback()", "User revoked permission to capture the screen.", result);
-                            }
-                        });
+
+        String trackId = stateProvider.getNextTrackUUID();
+
+        videoCapturer = new OrientationAwareScreenCapturer(
+                applicationContext,
+                mediaProjectionData,
+                new MediaProjection.Callback() {
+                    @Override
+                    public void onStop() {
+                        super.onStop();
+
+                        ConstraintsMap params = new ConstraintsMap();
+                        params.putString("event", EVENT_DISPLAY_MEDIA_STOPPED);
+                        params.putString("trackId", trackId);
+                        FlutterWebRTCPlugin.sharedSingleton.sendEvent(params.toMap());
+                    }
+                });
         if (videoCapturer == null) {
             resultError("screenRequestPermissions", "GetDisplayMediaFailed, User revoked permission to capture the screen.", result);
             return;
@@ -562,7 +567,6 @@ public class GetUserMediaImpl {
         videoCapturer.startCapture(info.width, info.height, info.fps);
         Log.d(TAG, "OrientationAwareScreenCapturer.startCapture: " + info.width + "x" + info.height + "@" + info.fps);
 
-        String trackId = stateProvider.getNextTrackUUID();
         mVideoCapturers.put(trackId, info);
         mVideoSources.put(trackId, videoSource);
 

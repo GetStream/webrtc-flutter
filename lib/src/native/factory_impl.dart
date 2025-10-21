@@ -191,3 +191,6 @@ FrameCryptorFactory get frameCryptorFactory => FrameCryptorFactoryImpl.instance;
 
 DataPacketCryptorFactory get dataPacketCryptorFactory =>
     DataPacketCryptorFactoryImpl.instance;
+
+Stream<Map<String, dynamic>> get eventStream =>
+    MediaDeviceNative.instance.eventStream;
