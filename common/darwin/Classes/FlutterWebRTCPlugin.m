@@ -2503,4 +2503,19 @@ bypassVoiceProcessing:(BOOL)bypassVoiceProcessing {
     }
     return nil;
 }
+
+#pragma mark - Event Posting Helper
+
+- (void)postEventWithName:(NSString*)eventName data:(NSDictionary*)data {
+  if (!self.eventSink) {
+    return;
+  }
+
+  NSMutableDictionary* eventData = [NSMutableDictionary dictionaryWithObject:eventName forKey:@"event"];
+  if (data) {
+    [eventData addEntriesFromDictionary:data];
+  }
+
+  postEvent(self.eventSink, eventData);
+}
 @end
