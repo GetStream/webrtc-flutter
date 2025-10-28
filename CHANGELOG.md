@@ -1,6 +1,10 @@
 
 # Changelog
 
+[1.0.13] - 2025-10-28
+* Exposed `eventStream` in `MediaDevices`.
+* [Android] Sends event when screen capture ends.
+
 [1.0.12] - 2025-09-30
 * [Android] Changed the configuration used when creating EGL rendering context to one that supports alpha channel to fix an issue with Impeller blending background with video texture on some devices.
 * [Android] Migrate from onSurfaceDestroyed to onSurfaceCleanup for SurfaceProducer.Callback.

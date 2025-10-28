@@ -22,3 +22,5 @@ Future<void> handleCallInterruptionCallbacks(
   throw UnimplementedError(
       'handleCallInterruptionCallbacks() is not supported on web');
 }
+
+Stream<Map<String, dynamic>> get eventStream => Stream.empty();
