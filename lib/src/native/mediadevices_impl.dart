@@ -19,6 +19,9 @@ class MediaDeviceNative extends MediaDevices {
 
   static final MediaDeviceNative instance = MediaDeviceNative._internal();
 
+  Stream<Map<String, dynamic>> get eventStream =>
+      FlutterWebRTCEventChannel.instance.handleEvents.stream;
+
   void handleEvent(String event, final Map<dynamic, dynamic> map) async {
     switch (map['event']) {
       case 'onDeviceChange':

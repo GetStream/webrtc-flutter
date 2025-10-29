@@ -105,6 +105,8 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 - (RTCRtpSender* _Nullable)getRtpSenderById:(RTCPeerConnection* _Nonnull)peerConnection
                                          Id:(NSString* _Nonnull)Id;
 
+- (void)postEventWithName:(NSString* _Nonnull)eventName data:(NSDictionary* _Nullable)data;
+
 + (FlutterWebRTCPlugin* _Nullable)sharedSingleton;
 
 @end

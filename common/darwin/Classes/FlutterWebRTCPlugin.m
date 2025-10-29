@@ -2618,6 +2618,21 @@ static FlutterWebRTCPlugin* sharedSingleton;
   return nil;
 }
 
+#pragma mark - Event Posting Helper
+
+- (void)postEventWithName:(NSString*)eventName data:(NSDictionary*)data {
+  if (!self.eventSink) {
+    return;
+  }
+
+  NSMutableDictionary* eventData = [NSMutableDictionary dictionaryWithObject:eventName forKey:@"event"];
+  if (data) {
+    [eventData addEntriesFromDictionary:data];
+  }
+
+  postEvent(self.eventSink, eventData);
+}
+
 #pragma mark - RTCAudioDeviceModuleDelegate methods
 
 - (void)audioDeviceModuleDidUpdateDevices:(RTCAudioDeviceModule*)audioDeviceModule {
