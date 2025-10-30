@@ -1,5 +1,5 @@
 #ifdef __cplusplus
-#import "WebRTC/RTCAudioSource.h"
+#import "StreamWebRTC/RTCAudioSource.h"
 #include "media_stream_interface.h"
 
 @interface RTCAudioSource ()
