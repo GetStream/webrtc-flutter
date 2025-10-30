@@ -792,12 +792,12 @@ public class GetUserMediaImpl {
         deviceId = result.first;
         VideoCapturer videoCapturer = result.second;
 
-        if (facingMode == null && cameraEnumerator.isFrontFacing(deviceId)) {
+        if (cameraEnumerator.isFrontFacing(deviceId)) {
             facingMode = "user";
-        } else if (facingMode == null && cameraEnumerator.isBackFacing(deviceId)) {
+        } else if (cameraEnumerator.isBackFacing(deviceId)) {
             facingMode = "environment";
         }
-        // else, leave facingMode as it was
+        // else, leave facingMode as it was (for non-standard cameras)
 
         PeerConnectionFactory pcFactory = stateProvider.getPeerConnectionFactory();
         VideoSource videoSource = pcFactory.createVideoSource(false);
@@ -841,6 +841,7 @@ public class GetUserMediaImpl {
         info.fps = targetFps;
         info.capturer = videoCapturer;
         info.cameraName = deviceId;
+        info.isFrontFacing = cameraEnumerator.isFrontFacing(deviceId);
 
         // Find actual capture format.
         Size actualSize = null;
@@ -992,11 +993,14 @@ public class GetUserMediaImpl {
     }
 
     void switchCamera(String id, Result result) {
-        VideoCapturer videoCapturer = mVideoCapturers.get(id).capturer;
-        if (videoCapturer == null) {
+        VideoCapturerInfoEx info = mVideoCapturers.get(id);
+        if (info == null || info.capturer == null) {
             resultError("switchCamera", "Video capturer not found for id: " + id, result);
             return;
         }
+
+        VideoCapturer videoCapturer = info.capturer;
+        boolean currentIsFrontFacing = info.isFrontFacing;
 
         CameraEnumerator cameraEnumerator;
 
@@ -1010,21 +1014,24 @@ public class GetUserMediaImpl {
         // if sourceId given, use specified sourceId first
         final String[] deviceNames = cameraEnumerator.getDeviceNames();
         for (String name : deviceNames) {
-            if (cameraEnumerator.isFrontFacing(name) == !isFacing) {
+            if (cameraEnumerator.isFrontFacing(name) == !currentIsFrontFacing) {
+                final String targetCameraName = name;
+                final boolean newIsFrontFacing = !currentIsFrontFacing;
                 CameraVideoCapturer cameraVideoCapturer = (CameraVideoCapturer) videoCapturer;
                 cameraVideoCapturer.switchCamera(
                         new CameraVideoCapturer.CameraSwitchHandler() {
                             @Override
                             public void onCameraSwitchDone(boolean b) {
-                                isFacing = !isFacing;
-                                result.success(b);
+                                info.isFrontFacing = newIsFrontFacing;
+                                info.cameraName = targetCameraName;
+                                result.success(info.isFrontFacing);
                             }
 
                             @Override
                             public void onCameraSwitchError(String s) {
                                 resultError("switchCamera", "Switching camera failed: " + id, result);
                             }
-                        }, name);
+                        }, targetCameraName);
                 return;
             }
         }
@@ -1066,8 +1073,6 @@ public class GetUserMediaImpl {
         }
     }
 
-
-
     public void reStartCamera(IsCameraEnabled getCameraId) {
         for (Map.Entry<String, VideoCapturerInfoEx> item : mVideoCapturers.entrySet()) {
             if (!item.getValue().isScreenCapture && getCameraId.isEnabled(item.getKey())) {
@@ -1084,8 +1089,9 @@ public class GetUserMediaImpl {
         boolean isEnabled(String id);
     }
 
-    public static class VideoCapturerInfoEx extends VideoCapturerInfo  {
+    public static class VideoCapturerInfoEx extends VideoCapturerInfo {
         public CameraEventsHandler cameraEventsHandler;
+        public boolean isFrontFacing;
     }
 
     public VideoCapturerInfoEx getCapturerInfo(String trackId) {
