@@ -413,6 +413,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
   AVCaptureDevice* videoDevice;
   NSString* videoDeviceId = nil;
   NSString* facingMode = nil;
+  AVCaptureDevicePosition position = AVCaptureDevicePositionUnspecified;
   NSArray<AVCaptureDevice*>* captureDevices = [self captureDevices];
 
   if ([videoConstraints isKindOfClass:[NSDictionary class]]) {
@@ -456,7 +457,6 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
       // https://www.w3.org/TR/mediacapture-streams/#def-constraint-facingMode
       facingMode = videoConstraints[@"facingMode"];
       if (facingMode && [facingMode isKindOfClass:[NSString class]]) {
-        AVCaptureDevicePosition position;
         if ([facingMode isEqualToString:@"environment"]) {
           self._usingFrontCamera = NO;
           position = AVCaptureDevicePositionBack;
@@ -484,6 +484,10 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 
   if (!videoDevice) {
     videoDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
+  }
+
+  if (videoDevice && position == AVCaptureDevicePositionUnspecified) {
+    position = videoDevice.position;
   }
 
   int possibleWidth = [self getConstrainInt:videoConstraints forKey:@"width"];
@@ -551,10 +555,6 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     NSInteger selectedWidth = (NSInteger) selectedDimension.width;
     NSInteger selectedHeight = (NSInteger) selectedDimension.height;
     NSInteger selectedFps = [self selectFpsForFormat:selectedFormat targetFps:targetFps];
-
-    self._lastTargetFps = selectedFps;
-    self._lastTargetWidth = targetWidth;
-    self._lastTargetHeight = targetHeight;
     
     NSLog(@"target format %ldx%ld, targetFps: %ld, selected format: %ldx%ld, selected fps %ld", targetWidth, targetHeight, targetFps, selectedWidth, selectedHeight, selectedFps);
 
@@ -583,6 +583,21 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     LocalVideoTrack *localVideoTrack = [[LocalVideoTrack alloc] initWithTrack:videoTrack videoProcessing:videoProcessingAdapter];
       
     __weak RTCCameraVideoCapturer* capturer = self.videoCapturer;
+    
+    // Store camera state per track
+    NSMutableDictionary* captureState = [NSMutableDictionary new];
+    captureState[@"usingFrontCamera"] = @(position == AVCaptureDevicePositionFront);
+    captureState[@"targetWidth"] = @(targetWidth);
+    captureState[@"targetHeight"] = @(targetHeight);
+    captureState[@"targetFps"] = @(selectedFps);
+    self.videoCaptureState[videoTrack.trackId] = captureState;
+    
+    // Update global state for backward compatibility
+    self._usingFrontCamera = (position == AVCaptureDevicePositionFront);
+    self._lastTargetFps = selectedFps;
+    self._lastTargetWidth = targetWidth;
+    self._lastTargetHeight = targetHeight;
+    
     self.videoCapturerStopHandlers[videoTrack.trackId] = ^(CompletionHandler handler) {
       NSLog(@"Stop video capturer, trackID %@", videoTrack.trackId);
       [capturer stopCaptureWithCompletionHandler:handler];

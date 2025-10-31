@@ -211,6 +211,7 @@ static FlutterWebRTCPlugin* sharedSingleton;
   self.dataCryptors = [NSMutableDictionary new];
   self.keyProviders = [NSMutableDictionary new];
   self.videoCapturerStopHandlers = [NSMutableDictionary new];
+  self.videoCaptureState = [NSMutableDictionary new];
   self.recorders = [NSMutableDictionary new];
 #if TARGET_OS_IPHONE
   self.focusMode = @"locked";
@@ -696,6 +697,7 @@ static FlutterWebRTCPlugin* sharedSingleton;
             result(nil);
           });
           [self.videoCapturerStopHandlers removeObjectForKey:videoTrack.trackId];
+          [self.videoCaptureState removeObjectForKey:videoTrack.trackId];
         }
       }
       for (RTCAudioTrack* track in stream.audioTracks) {
@@ -793,6 +795,7 @@ static FlutterWebRTCPlugin* sharedSingleton;
               NSLog(@"video capturer stopped, trackID = %@", track.trackId);
             });
             [self.videoCapturerStopHandlers removeObjectForKey:track.trackId];
+            [self.videoCaptureState removeObjectForKey:track.trackId];
           }
         }
       }

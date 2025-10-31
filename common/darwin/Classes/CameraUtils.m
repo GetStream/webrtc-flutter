@@ -272,33 +272,66 @@
 }
 
 - (void)mediaStreamTrackSwitchCamera:(RTCMediaStreamTrack*)track result:(FlutterResult)result {
+  NSString* trackId = track.trackId;
+  NSMutableDictionary* captureState = self.videoCaptureState[trackId];
+  
   if (!self.videoCapturer) {
-    NSLog(@"Video capturer is null. Can't switch camera");
-    return;
+      NSLog(@"Video capturer is null. Can't switch camera");
+      result([FlutterError errorWithCode:@"Error while switching camera"
+                                 message:@"Video capturer not found"
+                                 details:nil]);
+      return;
   }
+  
 #if TARGET_OS_IPHONE
   [self.videoCapturer stopCapture];
 #endif
-  self._usingFrontCamera = !self._usingFrontCamera;
+  
+  BOOL usingFrontCamera;
+  NSInteger targetWidth;
+  NSInteger targetHeight;
+  NSInteger targetFps;
+  
+  if (captureState) {
+    // Use per-track state
+    usingFrontCamera = [captureState[@"usingFrontCamera"] boolValue];
+    targetWidth = [captureState[@"targetWidth"] integerValue];
+    targetHeight = [captureState[@"targetHeight"] integerValue];
+    targetFps = [captureState[@"targetFps"] integerValue];
+  } else {
+    // Use global state for backward compatibility
+    usingFrontCamera = self._usingFrontCamera;
+    targetWidth = self._lastTargetWidth;
+    targetHeight = self._lastTargetHeight;
+    targetFps = self._lastTargetFps;
+  }
+  
+  usingFrontCamera = !usingFrontCamera;
   AVCaptureDevicePosition position =
-      self._usingFrontCamera ? AVCaptureDevicePositionFront : AVCaptureDevicePositionBack;
+      usingFrontCamera ? AVCaptureDevicePositionFront : AVCaptureDevicePositionBack;
   AVCaptureDevice* videoDevice = [self findDeviceForPosition:position];
   AVCaptureDeviceFormat* selectedFormat = [self selectFormatForDevice:videoDevice
-                                                          targetWidth:self._lastTargetWidth
-                                                         targetHeight:self._lastTargetHeight];
+                                                          targetWidth:targetWidth
+                                                         targetHeight:targetHeight];
   [self.videoCapturer startCaptureWithDevice:videoDevice
-                                      format:selectedFormat
-                                         fps:[self selectFpsForFormat:selectedFormat
-                                                            targetFps:self._lastTargetFps]
-                           completionHandler:^(NSError* error) {
-                             if (error != nil) {
-                               result([FlutterError errorWithCode:@"Error while switching camera"
-                                                          message:@"Error while switching camera"
-                                                          details:error]);
-                             } else {
-                               result([NSNumber numberWithBool:self._usingFrontCamera]);
-                             }
-                           }];
+                                 format:selectedFormat
+                                    fps:[self selectFpsForFormat:selectedFormat
+                                                       targetFps:targetFps]
+                      completionHandler:^(NSError* error) {
+                        if (error != nil) {
+                          result([FlutterError errorWithCode:@"Error while switching camera"
+                                                     message:@"Error while switching camera"
+                                                     details:error]);
+                        } else {
+                          // Update per-track state
+                          if (captureState) {
+                            captureState[@"usingFrontCamera"] = @(usingFrontCamera);
+                          }
+                          // Update global state for backward compatibility
+                          self._usingFrontCamera = usingFrontCamera;
+                          result([NSNumber numberWithBool:usingFrontCamera]);
+                        }
+                      }];
 }
 
 

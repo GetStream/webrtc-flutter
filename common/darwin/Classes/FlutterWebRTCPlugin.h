@@ -47,6 +47,8 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
     NSMutableDictionary<NSNumber*, FlutterRTCMediaRecorder*>* _Nonnull recorders;
 @property(nonatomic, strong)
     NSMutableDictionary<NSString*, CapturerStopHandler>* _Nullable videoCapturerStopHandlers;
+@property(nonatomic, strong)
+    NSMutableDictionary<NSString*, NSMutableDictionary*>* _Nullable videoCaptureState;
 
 @property(nonatomic, strong)
     NSMutableDictionary<NSString*, RTCFrameCryptor*>* _Nullable frameCryptors;
