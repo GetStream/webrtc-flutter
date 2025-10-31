@@ -1,7 +1,8 @@
 
 # Changelog
 
-[1.1.0]
+[2.0.0]
+* [Android] Fixed the camera device facing mode detection.
 * Synced flutter-webrtc v0.14.2
 	* [Doc] fix: typo in package description (#1895)
 	* [Android] fix: Video recording crashing and freezing on Android 14 Devices (#1886)
