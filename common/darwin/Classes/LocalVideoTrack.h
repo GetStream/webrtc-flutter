@@ -1,4 +1,8 @@
+#if TARGET_OS_IPHONE
+#import <StreamWebRTC/StreamWebRTC.h>
+#elif TARGET_OS_MAC
 #import <WebRTC/WebRTC.h>
+#endif
 #import "LocalTrack.h"
 #import "VideoProcessingAdapter.h"
 

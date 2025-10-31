@@ -4,8 +4,11 @@
 #import "FlutterRTCDataChannel.h"
 #import "FlutterWebRTCPlugin.h"
 
+#if TARGET_OS_IPHONE
+#import <StreamWebRTC/StreamWebRTC.h>
+#elif TARGET_OS_MAC
 #import <WebRTC/WebRTC.h>
-
+#endif
 @implementation RTCPeerConnection (Flutter)
 
 @dynamic eventSink;
@@ -397,7 +400,8 @@
     didChangeSignalingState:(RTCSignalingState)newState {
   FlutterEventSink eventSink = peerConnection.eventSink;
   if (eventSink) {
-    postEvent(eventSink, @{@"event" : @"signalingState", @"state" : [self stringForSignalingState:newState]});
+    postEvent(eventSink,
+              @{@"event" : @"signalingState", @"state" : [self stringForSignalingState:newState]});
   }
 }
 
@@ -546,7 +550,9 @@
     didChangeIceGatheringState:(RTCIceGatheringState)newState {
   FlutterEventSink eventSink = peerConnection.eventSink;
   if (eventSink) {
-    postEvent(eventSink, @{@"event" : @"iceGatheringState", @"state" : [self stringForICEGatheringState:newState]});
+    postEvent(
+        eventSink,
+        @{@"event" : @"iceGatheringState", @"state" : [self stringForICEGatheringState:newState]});
   }
 }
 
@@ -732,7 +738,7 @@ NSDictionary<NSString*, NSString*>* stringToParameters(NSString* str) {
                                           result:(nonnull FlutterResult)result {
   NSString* kind = argsMap[@"kind"];
   RTCRtpCapabilities* caps =
-    [self.peerConnectionFactory rtpReceiverCapabilitiesForKind:mediaTypeFromString(kind)];
+      [self.peerConnectionFactory rtpReceiverCapabilitiesForKind:mediaTypeFromString(kind)];
   NSMutableArray* codecsMap = [NSMutableArray array];
   for (RTCRtpCodecCapability* c in caps.codecs) {
     if ([kind isEqualToString:@"audio"]) {
@@ -786,26 +792,29 @@ NSDictionary<NSString*, NSString*>* stringToParameters(NSString* str) {
   });
 }
 
--(RTC_OBJC_TYPE(RTCRtpCodecCapability) *) findCodecCapability:(NSString *)kind
-                                                        codec:(NSString *)codec
-                                                   parameters:(NSDictionary<NSString*, NSString*>*)parameters {
-    RTCRtpCapabilities* caps = [self.peerConnectionFactory rtpSenderCapabilitiesForKind: [kind isEqualToString:@"video"]? kRTCMediaStreamTrackKindVideo : kRTCMediaStreamTrackKindAudio];
-    for(RTCRtpCodecCapability* capCodec in caps.codecs) {
-        if([capCodec.name isEqualToString:codec] && [capCodec.kind isEqualToString:kind]) {
-            BOOL matched = YES;
-            for(NSString* key in capCodec.parameters) {
-                NSString *value = [capCodec.parameters objectForKey:key];
-                NSString *value2 = [parameters objectForKey:key];
-                if(![value isEqualToString:value2]) {
-                    matched = NO;
-                }
-            }
-            if(matched) {
-                return capCodec;
-            }
+- (RTC_OBJC_TYPE(RTCRtpCodecCapability) *)findCodecCapability:(NSString*)kind
+                                                        codec:(NSString*)codec
+                                                   parameters:(NSDictionary<NSString*, NSString*>*)
+                                                                  parameters {
+  RTCRtpCapabilities* caps = [self.peerConnectionFactory
+      rtpSenderCapabilitiesForKind:[kind isEqualToString:@"video"] ? kRTCMediaStreamTrackKindVideo
+                                                                   : kRTCMediaStreamTrackKindAudio];
+  for (RTCRtpCodecCapability* capCodec in caps.codecs) {
+    if ([capCodec.name isEqualToString:codec] && [capCodec.kind isEqualToString:kind]) {
+      BOOL matched = YES;
+      for (NSString* key in capCodec.parameters) {
+        NSString* value = [capCodec.parameters objectForKey:key];
+        NSString* value2 = [parameters objectForKey:key];
+        if (![value isEqualToString:value2]) {
+          matched = NO;
         }
+      }
+      if (matched) {
+        return capCodec;
+      }
     }
-    return nil;
+  }
+  return nil;
 }
 
 - (void)transceiverSetCodecPreferences:(nonnull NSDictionary*)argsMap
@@ -836,15 +845,22 @@ NSDictionary<NSString*, NSString*>* stringToParameters(NSString* str) {
     NSLog(@"codec %@/%@", kind, name);
     NSDictionary<NSString*, NSString*>* parameters = nil;
     if (c[@"sdpFmtpLine"] != nil && ![((NSString*)c[@"sdpFmtpLine"]) isEqualToString:@""]) {
-        parameters = stringToParameters((NSString*)c[@"sdpFmtpLine"]);
+      parameters = stringToParameters((NSString*)c[@"sdpFmtpLine"]);
     }
-    RTCRtpCodecCapability * codec = [self findCodecCapability:kind codec:name parameters:parameters];
-    if(codec != nil) {
-        [codecCaps addObject:codec];
+    RTCRtpCodecCapability* codec = [self findCodecCapability:kind codec:name parameters:parameters];
+    if (codec != nil) {
+      [codecCaps addObject:codec];
     }
   }
-  [transcevier setCodecPreferences:codecCaps];
-  result(nil);
+  NSError* error = nil;
+  [transcevier setCodecPreferences:codecCaps error:&error];
+  if (error) {
+    result([FlutterError errorWithCode:@"SetCodecPreferencesError"
+                               message:error.localizedDescription
+                               details:nil]);
+  } else {
+    result(nil);
+  }
 }
 
 @end

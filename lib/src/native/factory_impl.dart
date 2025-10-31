@@ -5,6 +5,7 @@ import 'package:webrtc_interface/webrtc_interface.dart';
 
 import '../desktop_capturer.dart';
 import 'android/audio_configuration.dart';
+import 'data_packet_cryptor_impl.dart';
 import 'desktop_capturer_impl.dart';
 import 'frame_cryptor_impl.dart';
 import 'media_recorder_impl.dart';
@@ -190,3 +191,6 @@ FrameCryptorFactory get frameCryptorFactory => FrameCryptorFactoryImpl.instance;
 
 Stream<Map<String, dynamic>> get eventStream =>
     MediaDeviceNative.instance.eventStream;
+
+DataPacketCryptorFactory get dataPacketCryptorFactory =>
+    DataPacketCryptorFactoryImpl.instance;

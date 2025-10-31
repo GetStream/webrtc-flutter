@@ -4,7 +4,11 @@
 #import <FlutterMacOS/FlutterMacOS.h>
 #endif
 
+#if TARGET_OS_IPHONE
+#import <StreamWebRTC/StreamWebRTC.h>
+#elif TARGET_OS_MAC
 #import <WebRTC/WebRTC.h>
+#endif
 
 #import "FlutterWebRTCPlugin.h"
 
@@ -13,39 +17,38 @@
 @property(nonatomic, strong, nullable) FlutterEventChannel* eventChannel;
 @end
 
-
 @interface FlutterWebRTCPlugin (FrameCryptor) <RTCFrameCryptorDelegate>
 
-- (void)handleFrameCryptorMethodCall:(nonnull FlutterMethodCall*)call result:(nonnull FlutterResult)result;
+- (BOOL)handleFrameCryptorMethodCall:(nonnull FlutterMethodCall*)call
+                              result:(nonnull FlutterResult)result;
 
 - (void)frameCryptorFactoryCreateFrameCryptor:(nonnull NSDictionary*)constraints
                                        result:(nonnull FlutterResult)result;
 
 - (void)frameCryptorSetKeyIndex:(nonnull NSDictionary*)constraints
-                        result:(nonnull FlutterResult)result;
+                         result:(nonnull FlutterResult)result;
 
 - (void)frameCryptorGetKeyIndex:(nonnull NSDictionary*)constraints
-                        result:(nonnull FlutterResult)result;
+                         result:(nonnull FlutterResult)result;
 
 - (void)frameCryptorSetEnabled:(nonnull NSDictionary*)constraints
-                          result:(nonnull FlutterResult)result; 
+                        result:(nonnull FlutterResult)result;
 
 - (void)frameCryptorGetEnabled:(nonnull NSDictionary*)constraints
-                            result:(nonnull FlutterResult)result;   
+                        result:(nonnull FlutterResult)result;
 
-- (void)frameCryptorDispose:(nonnull NSDictionary*)constraints
-                            result:(nonnull FlutterResult)result;
+- (void)frameCryptorDispose:(nonnull NSDictionary*)constraints result:(nonnull FlutterResult)result;
 
 - (void)frameCryptorFactoryCreateKeyProvider:(nonnull NSDictionary*)constraints
-                            result:(nonnull FlutterResult)result;
+                                      result:(nonnull FlutterResult)result;
 
-- (void)keyProviderSetKey:(nonnull NSDictionary*)constraints
-                            result:(nonnull FlutterResult)result;
+- (void)keyProviderSetKey:(nonnull NSDictionary*)constraints result:(nonnull FlutterResult)result;
 
 - (void)keyProviderRatchetKey:(nonnull NSDictionary*)constraints
-                            result:(nonnull FlutterResult)result;
+                       result:(nonnull FlutterResult)result;
 
-- (void)keyProviderDispose:(nonnull NSDictionary*)constraints
-                            result:(nonnull FlutterResult)result;
+- (void)keyProviderDispose:(nonnull NSDictionary*)constraints result:(nonnull FlutterResult)result;
+
+- (RTCCryptorAlgorithm)getAlgorithm:(nonnull NSNumber*)algorithm;
 
 @end

@@ -1,5 +1,9 @@
 #import "FlutterRTCDataChannel.h"
+#if TARGET_OS_IPHONE
+#import <StreamWebRTC/RTCDataChannelConfiguration.h>
+#elif TARGET_OS_MAC
 #import <WebRTC/RTCDataChannelConfiguration.h>
+#endif
 #import <objc/runtime.h>
 #import "FlutterRTCPeerConnection.h"
 
@@ -119,17 +123,17 @@
 }
 
 - (void)dataChannelGetBufferedAmount:(nonnull NSString*)peerConnectionId
-          dataChannelId:(nonnull NSString*)dataChannelId 
-                result:(nonnull FlutterResult)result {
+                       dataChannelId:(nonnull NSString*)dataChannelId
+                              result:(nonnull FlutterResult)result {
   RTCPeerConnection* peerConnection = self.peerConnections[peerConnectionId];
   RTCDataChannel* dataChannel = peerConnection.dataChannels[dataChannelId];
-  if(dataChannel == NULL || dataChannel.readyState != RTCDataChannelStateOpen) {
+  if (dataChannel == NULL || dataChannel.readyState != RTCDataChannelStateOpen) {
     result([FlutterError
-          errorWithCode:[NSString stringWithFormat:@"%@Failed", @"dataChannelGetBufferedAmount"]
-                message:[NSString stringWithFormat:@"Error: dataChannel not found or not opened!"]
-                details:nil]);
+        errorWithCode:[NSString stringWithFormat:@"%@Failed", @"dataChannelGetBufferedAmount"]
+              message:[NSString stringWithFormat:@"Error: dataChannel not found or not opened!"]
+              details:nil]);
   } else {
-    result(@{@"bufferedAmount": @(dataChannel.bufferedAmount)});
+    result(@{@"bufferedAmount" : @(dataChannel.bufferedAmount)});
   }
 }
 
