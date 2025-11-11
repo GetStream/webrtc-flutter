@@ -1,4 +1,3 @@
-#if TARGET_OS_IPHONE
 #import <StreamWebRTC/StreamWebRTC.h>
 
 @interface AudioUtils : NSObject
@@ -10,5 +9,3 @@
 + (void)deactiveRtcAudioSession;
 + (void)setAppleAudioConfiguration:(NSDictionary*)configuration;
 @end
-
-#endif

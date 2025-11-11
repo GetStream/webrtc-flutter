@@ -2,12 +2,9 @@
 
 #import "include/stream_webrtc_flutter/FlutterRTCDesktopCapturer.h"
 
-#if TARGET_OS_IPHONE
 #import <ReplayKit/ReplayKit.h>
 #import "include/stream_webrtc_flutter/Broadcast/FlutterBroadcastScreenCapturer.h"
 #import "include/stream_webrtc_flutter/FlutterRPScreenRecorder.h"
-#endif
-
 #import "include/stream_webrtc_flutter/LocalVideoTrack.h"
 #import "include/stream_webrtc_flutter/VideoProcessingAdapter.h"
 

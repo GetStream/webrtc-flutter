@@ -2,37 +2,28 @@
 #import "include/stream_webrtc_flutter/AudioUtils.h"
 #import "include/stream_webrtc_flutter/CameraUtils.h"
 
+#import "include/stream_webrtc_flutter/AudioManager.h"
 #import "include/stream_webrtc_flutter/FlutterDataPacketCryptor.h"
 #import "include/stream_webrtc_flutter/FlutterRTCDataChannel.h"
 #import "include/stream_webrtc_flutter/FlutterRTCDesktopCapturer.h"
 #import "include/stream_webrtc_flutter/FlutterRTCFrameCryptor.h"
+#import "include/stream_webrtc_flutter/FlutterRTCMediaRecorder.h"
 #import "include/stream_webrtc_flutter/FlutterRTCMediaStream.h"
 #import "include/stream_webrtc_flutter/FlutterRTCPeerConnection.h"
+#import "include/stream_webrtc_flutter/FlutterRTCVideoPlatformViewController.h"
+#import "include/stream_webrtc_flutter/FlutterRTCVideoPlatformViewFactory.h"
 #import "include/stream_webrtc_flutter/FlutterRTCVideoRenderer.h"
 #import "include/stream_webrtc_flutter/ProcessorProvider.h"
 #import "include/stream_webrtc_flutter/VideoEffectProcessor.h"
 #import "include/stream_webrtc_flutter/VideoFrameProcessor.h"
-#if TARGET_OS_IPHONE
-#import "include/stream_webrtc_flutter/FlutterRTCMediaRecorder.h"
-#import "include/stream_webrtc_flutter/FlutterRTCVideoPlatformViewController.h"
-#import "include/stream_webrtc_flutter/FlutterRTCVideoPlatformViewFactory.h"
-#endif
-#import "include/stream_webrtc_flutter/AudioManager.h"
 
 #import <AVFoundation/AVFoundation.h>
 #import <AVKit/AVKit.h>
 
-#if TARGET_OS_IPHONE
 #import <StreamWebRTC/RTCCallbackLogger.h>
 #import <StreamWebRTC/RTCFieldTrials.h>
 #import <StreamWebRTC/RTCLogging.h>
 #import <StreamWebRTC/StreamWebRTC.h>
-#elif TARGET_OS_MAC
-#import <WebRTC/RTCCallbackLogger.h>
-#import <WebRTC/RTCFieldTrials.h>
-#import <WebRTC/RTCLogging.h>
-#import <WebRTC/WebRTC.h>
-#endif
 
 #import "include/stream_webrtc_flutter/LocalAudioTrack.h"
 #import "include/stream_webrtc_flutter/LocalTrack.h"

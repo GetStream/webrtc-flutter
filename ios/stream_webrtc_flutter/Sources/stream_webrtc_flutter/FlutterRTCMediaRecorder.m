@@ -1,9 +1,5 @@
 #import "include/stream_webrtc_flutter/FlutterRTCMediaRecorder.h"
-#if TARGET_OS_IPHONE
 #import <StreamWebRTC/StreamWebRTC.h>
-#elif TARGET_OS_MAC
-#import <WebRTC/WebRTC.h>
-#endif
 #import "include/stream_webrtc_flutter/FlutterRTCAudioSink.h"
 #import "include/stream_webrtc_flutter/FlutterRTCFrameCapturer.h"
 

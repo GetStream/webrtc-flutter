@@ -1,10 +1,5 @@
-#if TARGET_OS_IPHONE
-#import <Flutter/Flutter.h>
-#elif TARGET_OS_OSX
-#import <FlutterMacOS/FlutterMacOS.h>
-#endif
-
 #import "include/stream_webrtc_flutter/FlutterRTCFrameCapturer.h"
+#import <Flutter/Flutter.h>
 
 @import CoreImage;
 @import CoreVideo;

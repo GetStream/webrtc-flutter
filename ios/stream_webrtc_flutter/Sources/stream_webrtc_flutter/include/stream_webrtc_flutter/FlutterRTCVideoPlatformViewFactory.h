@@ -1,8 +1,4 @@
-#if TARGET_OS_IPHONE
 #import <Flutter/Flutter.h>
-#elif TARGET_OS_OSX
-#import <FlutterMacOS/FlutterMacOS.h>
-#endif
 
 #define FLutterRTCVideoPlatformViewFactoryID @"rtc_video_platform_view"
 

@@ -1,9 +1,5 @@
 #import "include/stream_webrtc_flutter/AudioProcessingAdapter.h"
-#if TARGET_OS_IPHONE
 #import <StreamWebRTC/RTCAudioRenderer.h>
-#elif TARGET_OS_MAC
-#import <WebRTC/RTCAudioRenderer.h>
-#endif
 #import <os/lock.h>
 
 @implementation AudioProcessingAdapter {

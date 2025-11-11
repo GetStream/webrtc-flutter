@@ -1,15 +1,6 @@
-#if TARGET_OS_IPHONE
 #import <Flutter/Flutter.h>
-#elif TARGET_OS_OSX
-#import <FlutterMacOS/FlutterMacOS.h>
-#endif
-
 #import <Foundation/Foundation.h>
-#if TARGET_OS_IPHONE
 #import <StreamWebRTC/StreamWebRTC.h>
-#elif TARGET_OS_MAC
-#import <WebRTC/WebRTC.h>
-#endif
 #import "LocalTrack.h"
 
 @class VideoEffectProcessor;

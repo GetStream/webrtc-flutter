@@ -1,9 +1,4 @@
-#if TARGET_OS_IPHONE
 #import <StreamWebRTC/RTCVideoSource.h>
-#elif TARGET_OS_MAC
-#import <WebRTC/RTCVideoSource.h>
-#endif
-
 #import "VideoFrameProcessor.h"
 
 @interface VideoEffectProcessor : NSObject <RTCVideoCapturerDelegate>

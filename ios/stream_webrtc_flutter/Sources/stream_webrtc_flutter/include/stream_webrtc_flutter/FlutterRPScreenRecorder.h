@@ -1,4 +1,3 @@
-#if TARGET_OS_IPHONE
 #import <StreamWebRTC/StreamWebRTC.h>
 @interface FlutterRPScreenRecorder : RTCVideoCapturer
 
@@ -10,4 +9,3 @@
 - (void)stopCapture;
 
 @end
-#endif

@@ -2,15 +2,9 @@
 
 #import <AVFoundation/AVFoundation.h>
 #import <CoreGraphics/CGImage.h>
-#if TARGET_OS_IPHONE
 #import <StreamWebRTC/RTCYUVHelper.h>
 #import <StreamWebRTC/RTCYUVPlanarBuffer.h>
 #import <StreamWebRTC/StreamWebRTC.h>
-#elif TARGET_OS_MAC
-#import <WebRTC/RTCYUVHelper.h>
-#import <WebRTC/RTCYUVPlanarBuffer.h>
-#import <WebRTC/WebRTC.h>
-#endif
 
 #import <objc/runtime.h>
 
