@@ -3,7 +3,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'stream_webrtc_flutter'
-  s.version          = '2.0.0'
+  s.version          = '2.1.0'
   s.summary          = 'Flutter WebRTC plugin for iOS.'
   s.description      = <<-DESC
 A new flutter plugin project.
@@ -12,8 +12,8 @@ A new flutter plugin project.
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'getstream.io' => 'support@getstream.io' }
   s.source           = { :path => '.' }
-  s.source_files = 'Classes/**/*'
-  s.public_header_files = 'Classes/**/*.h'
+  s.source_files = 'stream_webrtc_flutter/Sources/stream_webrtc_flutter/**/*.{h,hpp,m,mm,c,cpp}'
+  s.public_header_files = 'stream_webrtc_flutter/Sources/stream_webrtc_flutterinclude/stream_webrtc_flutter/**/*.h'
   s.dependency 'Flutter'
   s.vendored_frameworks = 'Frameworks/StreamWebRTC.xcframework'
   s.prepare_command = <<-CMD

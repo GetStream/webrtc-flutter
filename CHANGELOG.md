@@ -1,6 +1,9 @@
 
 # Changelog
 
+[2.1.0]
+* [iOS] Added Swift Package Manager (SPM) support to iOS.
+
 [2.0.0]
 * [Android] Fixed the camera device facing mode detection.
 * Synced flutter-webrtc v0.14.2
