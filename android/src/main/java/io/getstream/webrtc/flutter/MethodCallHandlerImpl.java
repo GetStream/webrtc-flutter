@@ -1266,7 +1266,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     }
   }
 
-  private boolean resumeAudioPlayoutInternal() {
+  private void resumeAudioPlayoutInternal() {
     isAudioPlayoutPaused = false;
 
     if (pausedTrackVolumes.isEmpty()) {
