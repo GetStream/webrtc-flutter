@@ -1,10 +1,13 @@
 
 # Changelog
 
-[2.1.0]
+[2.2.0] - 2025-11-24
+* Added `Helper.pauseAudioPlayout()` / `Helper.resumeAudioPlayout()` to mute and restore remote playback with platform-specific handling for iOS/macOS and Android.
+
+[2.1.0] - 2025-11-17
 * [iOS] Added Swift Package Manager (SPM) support to iOS.
 
-[2.0.0]
+[2.0.0] - 2025-10-31
 * [Android] Fixed the camera device facing mode detection.
 * Synced flutter-webrtc v0.14.2
 	* [Doc] fix: typo in package description (#1895)

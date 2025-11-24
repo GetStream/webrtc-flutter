@@ -158,6 +158,14 @@ class Helper {
   static Future<void> setMicrophoneMute(bool mute, MediaStreamTrack track) =>
       NativeAudioManagement.setMicrophoneMute(mute, track);
 
+  /// Resume remote audio playout after a pause (iOS/macOS WebRTC ADM, Android track volume restore)
+  static Future<void> resumeAudioPlayout() =>
+      NativeAudioManagement.resumeAudioPlayout();
+
+  /// Pause remote audio playout (iOS/macOS via ADM, Android by muting remote tracks)
+  static Future<void> pauseAudioPlayout() =>
+      NativeAudioManagement.pauseAudioPlayout();
+
   /// Set the audio configuration to for Android.
   /// Must be set before initiating a WebRTC session and cannot be changed
   /// mid session.

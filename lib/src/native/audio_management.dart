@@ -68,6 +68,42 @@ class NativeAudioManagement {
   }
 
   // ADM APIs
+  static Future<void> resumeAudioPlayout() async {
+    if (kIsWeb) return;
+    if (!(WebRTC.platformIsIOS ||
+        WebRTC.platformIsAndroid ||
+        WebRTC.platformIsMacOS)) {
+      return;
+    }
+
+    try {
+      await WebRTC.invokeMethod(
+        'resumeAudioPlayout',
+        <String, dynamic>{},
+      );
+    } on PlatformException catch (e) {
+      throw 'Unable to resume audio playout: ${e.message}';
+    }
+  }
+
+  static Future<void> pauseAudioPlayout() async {
+    if (kIsWeb) return;
+    if (!(WebRTC.platformIsIOS ||
+        WebRTC.platformIsAndroid ||
+        WebRTC.platformIsMacOS)) {
+      return;
+    }
+
+    try {
+      await WebRTC.invokeMethod(
+        'pauseAudioPlayout',
+        <String, dynamic>{},
+      );
+    } on PlatformException catch (e) {
+      throw 'Unable to pause audio playout: ${e.message}';
+    }
+  }
+
   static Future<void> startLocalRecording() async {
     if (!kIsWeb) {
       try {

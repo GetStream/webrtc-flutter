@@ -1638,6 +1638,53 @@ static FlutterWebRTCPlugin* sharedSingleton;
                 details:nil]);
     }
 #endif
+  } else if ([@"resumeAudioPlayout" isEqualToString:call.method]) {
+    RTCAudioDeviceModule* adm = _peerConnectionFactory.audioDeviceModule;
+    if (adm == nil) {
+      result([FlutterError errorWithCode:@"resumeAudioPlayout failed"
+                                 message:@"Error: audioDeviceModule is nil"
+                                 details:nil]);
+      return;
+    }
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+      NSInteger admResult = [adm initPlayout];
+      if (admResult == 0) {
+        admResult = [adm startPlayout];
+      }
+      dispatch_async(dispatch_get_main_queue(), ^{
+        if (admResult == 0) {
+          result(nil);
+        } else {
+          result([FlutterError
+              errorWithCode:@"resumeAudioPlayout failed"
+                    message:[NSString stringWithFormat:@"Error: adm api failed with code: %ld",
+                                                       (long)admResult]
+                    details:nil]);
+        }
+      });
+    });
+  } else if ([@"pauseAudioPlayout" isEqualToString:call.method]) {
+    RTCAudioDeviceModule* adm = _peerConnectionFactory.audioDeviceModule;
+    if (adm == nil) {
+      result([FlutterError errorWithCode:@"pauseAudioPlayout failed"
+                                 message:@"Error: audioDeviceModule is nil"
+                                 details:nil]);
+      return;
+    }
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+      NSInteger admResult = [adm stopPlayout];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        if (admResult == 0) {
+          result(nil);
+        } else {
+          result([FlutterError
+              errorWithCode:@"pauseAudioPlayout failed"
+                    message:[NSString stringWithFormat:@"Error: adm api failed with code: %ld",
+                                                       (long)admResult]
+                    details:nil]);
+        }
+      });
+    });
   } else if ([@"startLocalRecording" isEqualToString:call.method]) {
     RTCAudioDeviceModule* adm = _peerConnectionFactory.audioDeviceModule;
     // Run on background queue
