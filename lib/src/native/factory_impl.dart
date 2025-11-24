@@ -33,7 +33,11 @@ class RTCFactoryNative extends RTCFactory {
     void Function()? onInterruptionEnd, {
     AndroidInterruptionSource androidInterruptionSource =
         AndroidInterruptionSource.audioFocusAndTelephony,
+    @Deprecated(
+        'Audio focus in now handled in a way that does not require this parameter. It will be removed in the next major version.')
     AndroidAudioAttributesUsageType? androidAudioAttributesUsageType,
+    @Deprecated(
+        'Audio focus in now handled in a way that does not require this parameter. It will be removed in the next major version.')
     AndroidAudioAttributesContentType? androidAudioAttributesContentType,
   }) async {
     if (!Platform.isAndroid && !Platform.isIOS) {
@@ -46,12 +50,6 @@ class RTCFactoryNative extends RTCFactory {
       <String, dynamic>{
         if (Platform.isAndroid)
           'androidInterruptionSource': androidInterruptionSource.name,
-        if (Platform.isAndroid && androidAudioAttributesUsageType != null)
-          'androidAudioAttributesUsageType':
-              androidAudioAttributesUsageType.name,
-        if (Platform.isAndroid && androidAudioAttributesContentType != null)
-          'androidAudioAttributesContentType':
-              androidAudioAttributesContentType.name,
       },
     );
 
@@ -145,7 +143,11 @@ Future<void> handleCallInterruptionCallbacks(
   void Function()? onInterruptionEnd, {
   AndroidInterruptionSource androidInterruptionSource =
       AndroidInterruptionSource.audioFocusAndTelephony,
+  @Deprecated(
+      'Audio focus in now handled in a way that does not require this parameter. It will be removed in the next major version.')
   AndroidAudioAttributesUsageType? androidAudioAttributesUsageType,
+  @Deprecated(
+      'Audio focus in now handled in a way that does not require this parameter. It will be removed in the next major version.')
   AndroidAudioAttributesContentType? androidAudioAttributesContentType,
 }) {
   return (RTCFactoryNative.instance as RTCFactoryNative)

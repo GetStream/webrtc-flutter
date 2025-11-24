@@ -3,6 +3,9 @@
 
 [2.2.0] - 2025-11-24
 * Added `Helper.pauseAudioPlayout()` / `Helper.resumeAudioPlayout()` to mute and restore remote playback with platform-specific handling for iOS/macOS and Android.
+* [Android] Improved the audio focus handling for interuptions purposes (`handleCallInterruptionCallbacks`). It now uses AudioSwitch and won't trigger unwanted interatcions detections when focus is requested. 
+	- `androidAudioAttributesUsageType` and `androidAudioAttributesContentType` parameters in `handleCallInterruptionCallbacks` are now not needed and deprecated.
+* [Android] Added `regainAndroidAudioFocus` method that requests audio focus in case it was lost with no automatic regain.
 
 [2.1.0] - 2025-11-17
 * [iOS] Added Swift Package Manager (SPM) support to iOS.
