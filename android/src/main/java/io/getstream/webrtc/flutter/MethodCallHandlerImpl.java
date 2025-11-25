@@ -179,6 +179,9 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   }
 
   void dispose() {
+    if (AudioSwitchManager.instance != null) {
+      AudioSwitchManager.instance.setAudioFocusChangeListener(null);
+    }
     if (audioFocusManager != null) {
       audioFocusManager.setAudioFocusChangeListener(null);
       audioFocusManager = null;
@@ -413,58 +416,43 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       case "handleCallInterruptionCallbacks": {
         String interruptionSource = call.argument("androidInterruptionSource");
         AudioFocusManager.InterruptionSource source;
-        
+
         switch (interruptionSource) {
-            case "audioFocusOnly":
-                source = AudioFocusManager.InterruptionSource.AUDIO_FOCUS_ONLY;
-                break;
-            case "telephonyOnly":
-                source = AudioFocusManager.InterruptionSource.TELEPHONY_ONLY;
-                break;
-            case "audioFocusAndTelephony":
-                source = AudioFocusManager.InterruptionSource.AUDIO_FOCUS_AND_TELEPHONY;
-                break;
-            default:
-                source = AudioFocusManager.InterruptionSource.AUDIO_FOCUS_AND_TELEPHONY;
-                break;
+          case "audioFocusOnly":
+            source = AudioFocusManager.InterruptionSource.AUDIO_FOCUS_ONLY;
+            break;
+          case "telephonyOnly":
+            source = AudioFocusManager.InterruptionSource.TELEPHONY_ONLY;
+            break;
+          case "audioFocusAndTelephony":
+            source = AudioFocusManager.InterruptionSource.AUDIO_FOCUS_AND_TELEPHONY;
+            break;
+          default:
+            source = AudioFocusManager.InterruptionSource.AUDIO_FOCUS_AND_TELEPHONY;
+            break;
         }
 
-        Integer usage = null, content = null;
-
-        // Prefer override values if provided, else fallback to persisted config
-        String overrideUsageStr = call.argument("androidAudioAttributesUsageType");
-        String overrideContentStr = call.argument("androidAudioAttributesContentType");
-
-        if (overrideUsageStr != null) {
-            usage = AudioUtils.getAudioAttributesUsageTypeForString(overrideUsageStr);
-        } else if (initializedAndroidAudioConfiguration != null) {
-            usage = AudioUtils.getAudioAttributesUsageTypeForString(
-                initializedAndroidAudioConfiguration.getString("androidAudioAttributesUsageType"));
+        if (audioFocusManager != null) {
+          audioFocusManager.setAudioFocusChangeListener(null);
+          audioFocusManager = null;
         }
 
-        if (overrideContentStr != null) {
-            content = AudioUtils.getAudioAttributesContentTypeFromString(overrideContentStr);
-        } else if (initializedAndroidAudioConfiguration != null) {
-            content = AudioUtils.getAudioAttributesContentTypeFromString(
-                initializedAndroidAudioConfiguration.getString("androidAudioAttributesContentType"));
-        }
-
-        audioFocusManager = new AudioFocusManager(context, source, usage, content);
+        audioFocusManager = new AudioFocusManager(context, source);
 
         audioFocusManager.setAudioFocusChangeListener(new AudioFocusManager.AudioFocusChangeListener() {
-            @Override
-            public void onInterruptionStart() {
-                ConstraintsMap params = new ConstraintsMap();
-                params.putString("event", "onInterruptionStart");
-                FlutterWebRTCPlugin.sharedSingleton.sendEvent(params.toMap());
-            }
+          @Override
+          public void onInterruptionStart() {
+            ConstraintsMap params = new ConstraintsMap();
+            params.putString("event", "onInterruptionStart");
+            FlutterWebRTCPlugin.sharedSingleton.sendEvent(params.toMap());
+          }
 
-            @Override
-            public void onInterruptionEnd() {
-                ConstraintsMap params = new ConstraintsMap();
-                params.putString("event", "onInterruptionEnd");
-                FlutterWebRTCPlugin.sharedSingleton.sendEvent(params.toMap());
-            }
+          @Override
+          public void onInterruptionEnd() {
+            ConstraintsMap params = new ConstraintsMap();
+            params.putString("event", "onInterruptionEnd");
+            FlutterWebRTCPlugin.sharedSingleton.sendEvent(params.toMap());
+          }
         });
         result.success(null);
         break;
@@ -824,6 +812,19 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       case "selectAudioOutput": {
         String deviceId = call.argument("deviceId");
         AudioSwitchManager.instance.selectAudioOutput(AudioDeviceKind.fromTypeName(deviceId));
+        result.success(null);
+        break;
+      }
+      case "regainAndroidAudioFocus": {
+        if (AudioSwitchManager.instance == null) {
+          resultError("regainAndroidAudioFocus",
+              "AudioSwitch manager is not initialized. Ensure plugin is attached before requesting focus.", result);
+          break;
+        }
+        AudioSwitchManager.instance.requestAudioFocus();
+        if (audioFocusManager != null) {
+          audioFocusManager.notifyManualAudioFocusRegain();
+        }
         result.success(null);
         break;
       }

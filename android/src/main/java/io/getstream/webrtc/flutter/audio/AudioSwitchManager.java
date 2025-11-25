@@ -42,8 +42,7 @@ public class AudioSwitchManager {
             Unit> audioDeviceChangeListener = (devices, currentDevice) -> null;
 
     @NonNull
-    public AudioManager.OnAudioFocusChangeListener audioFocusChangeListener = (i -> {
-    });
+    private final ForwardingAudioFocusChangeListener audioFocusChangeListener = new ForwardingAudioFocusChangeListener();
 
     @NonNull
     public List<Class<? extends AudioDevice>> preferredDeviceList;
@@ -160,7 +159,7 @@ public class AudioSwitchManager {
             handler.removeCallbacksAndMessages(null);
             handler.postAtFrontOfQueue(() -> {
                 if (!isActive) {
-                    Objects.requireNonNull(audioSwitch).activate();
+                    audioSwitch.activate();
                     isActive = true;
                 }
             });
@@ -405,6 +404,35 @@ public class AudioSwitchManager {
     public void clearCommunicationDevice() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             audioManager.clearCommunicationDevice();
+        }
+    }
+
+    public void setAudioFocusChangeListener(@Nullable AudioManager.OnAudioFocusChangeListener listener) {
+        audioFocusChangeListener.setDelegate(listener);
+    }
+
+    public void requestAudioFocus() {
+        handler.post(() -> {
+            if (audioSwitch != null) {
+                Objects.requireNonNull(audioSwitch).activate();
+            }
+        });
+    }
+
+    private static final class ForwardingAudioFocusChangeListener implements AudioManager.OnAudioFocusChangeListener {
+        @Nullable
+        private volatile AudioManager.OnAudioFocusChangeListener delegate;
+
+        @Override
+        public void onAudioFocusChange(int focusChange) {
+            AudioManager.OnAudioFocusChangeListener current = delegate;
+            if (current != null) {
+                current.onAudioFocusChange(focusChange);
+            }
+        }
+
+        void setDelegate(@Nullable AudioManager.OnAudioFocusChangeListener delegate) {
+            this.delegate = delegate;
         }
     }
 }

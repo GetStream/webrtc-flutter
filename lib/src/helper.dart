@@ -178,6 +178,15 @@ class Helper {
   static Future<void> clearAndroidCommunicationDevice() =>
       WebRTC.invokeMethod('clearAndroidCommunicationDevice');
 
+  /// Force Android to re-request audio focus after a loss.
+  static Future<void> regainAndroidAudioFocus() async {
+    if (WebRTC.platformIsAndroid) {
+      return await WebRTC.invokeMethod('regainAndroidAudioFocus');
+    } else {
+      throw Exception('regainAndroidAudioFocus is only supported on Android');
+    }
+  }
+
   /// Set the audio configuration for iOS
   static Future<void> setAppleAudioConfiguration(
           AppleAudioConfiguration appleAudioConfiguration) =>
