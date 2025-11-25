@@ -29,6 +29,7 @@ public class AudioFocusManager {
     private TelephonyCallback telephonyCallback;
 
     private AudioFocusChangeListener focusChangeListener;
+    private boolean interruptionActive = false;
 
     private final AudioManager.OnAudioFocusChangeListener audioSwitchFocusListener = focusChange -> {
         switch (focusChange) {
@@ -82,6 +83,7 @@ public class AudioFocusManager {
     }
 
     public void startMonitoring() {
+        interruptionActive = false;
         if (monitorAudioFocus) {
             if (AudioSwitchManager.instance != null) {
                 AudioSwitchManager.instance.setAudioFocusChangeListener(audioSwitchFocusListener);
@@ -100,6 +102,7 @@ public class AudioFocusManager {
         if (monitorAudioFocus && AudioSwitchManager.instance != null) {
             AudioSwitchManager.instance.setAudioFocusChangeListener(null);
         }
+        interruptionActive = false;
 
         if (monitorTelephony) {
             unregisterTelephonyListener();
@@ -200,7 +203,13 @@ public class AudioFocusManager {
             return;
         }
 
+        if (interruptionActive) {
+            Log.d(TAG, "Ignoring duplicate interruption start: " + logMessage);
+            return;
+        }
+
         Log.d(TAG, logMessage);
+        interruptionActive = true;
         focusChangeListener.onInterruptionStart();
     }
 
@@ -209,7 +218,20 @@ public class AudioFocusManager {
             return;
         }
 
+        if (!interruptionActive) {
+            Log.d(TAG, "Ignoring interruption end with no active interruption: " + logMessage);
+            return;
+        }
+
         Log.d(TAG, logMessage);
+        interruptionActive = false;
         focusChangeListener.onInterruptionEnd();
+    }
+
+    public void notifyManualAudioFocusRegain() {
+        if (!monitorAudioFocus) {
+            return;
+        }
+        handleInterruptionEnd("Audio focus manually requested");
     }
 }

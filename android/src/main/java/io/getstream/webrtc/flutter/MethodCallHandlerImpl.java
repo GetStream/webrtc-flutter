@@ -822,6 +822,9 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
           break;
         }
         AudioSwitchManager.instance.requestAudioFocus();
+        if (audioFocusManager != null) {
+          audioFocusManager.notifyManualAudioFocusRegain();
+        }
         result.success(null);
         break;
       }
