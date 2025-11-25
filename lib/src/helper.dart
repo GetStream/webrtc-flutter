@@ -183,7 +183,7 @@ class Helper {
     if (WebRTC.platformIsAndroid) {
       return await WebRTC.invokeMethod('regainAndroidAudioFocus');
     } else {
-      throw Exception('regainAndroidAudioFocus only support for Android');
+      throw Exception('regainAndroidAudioFocus is only supported on Android');
     }
   }
 

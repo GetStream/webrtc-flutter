@@ -159,7 +159,7 @@ public class AudioSwitchManager {
             handler.removeCallbacksAndMessages(null);
             handler.postAtFrontOfQueue(() -> {
                 if (!isActive) {
-                    Objects.requireNonNull(audioSwitch).activate();
+                    audioSwitch.activate();
                     isActive = true;
                 }
             });

@@ -29,7 +29,7 @@ public class AudioFocusManager {
     private TelephonyCallback telephonyCallback;
 
     private AudioFocusChangeListener focusChangeListener;
-    private boolean interruptionActive = false;
+    private volatile boolean interruptionActive = false;
 
     private final AudioManager.OnAudioFocusChangeListener audioSwitchFocusListener = focusChange -> {
         switch (focusChange) {
