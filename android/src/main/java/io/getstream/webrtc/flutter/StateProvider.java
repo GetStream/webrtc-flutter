@@ -5,6 +5,7 @@ import android.content.Context;
 
 import androidx.annotation.Nullable;
 import java.util.Map;
+import org.webrtc.AudioTrack;
 import org.webrtc.MediaStream;
 import org.webrtc.MediaStreamTrack;
 import org.webrtc.PeerConnectionFactory;
@@ -39,4 +40,8 @@ public interface StateProvider {
   Context getApplicationContext();
 
   BinaryMessenger getMessenger();
+
+  void onRemoteAudioTrackAdded(AudioTrack track);
+
+  void onRemoteAudioTrackRemoved(String trackId);
 }

@@ -94,6 +94,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -146,6 +147,9 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   public AudioProcessingFactoryProvider audioProcessingFactoryProvider;
 
   private ConstraintsMap initializedAndroidAudioConfiguration;
+  private final Map<String, Double> trackVolumeCache = new ConcurrentHashMap<>();
+  private final Map<String, Double> pausedTrackVolumes = new ConcurrentHashMap<>();
+  private volatile boolean isAudioPlayoutPaused = false;
 
   public static class LogSink implements Loggable {
     @Override
@@ -1147,6 +1151,24 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         }
         break;
       }
+      case "pauseAudioPlayout": {
+        executor.execute(() -> {
+          pauseAudioPlayoutInternal();
+          mainHandler.post(() -> {
+            result.success(null);
+          });
+        });
+        break;
+      }
+      case "resumeAudioPlayout": {
+        executor.execute(() -> {
+          resumeAudioPlayoutInternal();
+          mainHandler.post(() -> {
+            result.success(null);
+          });
+        });
+        break;
+      }
       case "startLocalRecording": {
         executor.execute(() -> {
           audioDeviceModule.prewarmRecording();
@@ -1220,6 +1242,53 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   private PeerConnection getPeerConnection(String id) {
     PeerConnectionObserver pco = mPeerConnectionObservers.get(id);
     return (pco == null) ? null : pco.getPeerConnection();
+  }
+
+  private void pauseAudioPlayoutInternal() {
+    isAudioPlayoutPaused = true;
+
+    for (PeerConnectionObserver observer : mPeerConnectionObservers.values()) {
+      for (Map.Entry<String, MediaStreamTrack> entry : observer.remoteTracks.entrySet()) {
+        MediaStreamTrack track = entry.getValue();
+        if (track instanceof AudioTrack) {
+          String trackId = track.id();
+          if (!pausedTrackVolumes.containsKey(trackId)) {
+            double previousVolume = trackVolumeCache.getOrDefault(trackId, 1.0);
+            pausedTrackVolumes.put(trackId, previousVolume);
+          }
+          try {
+            ((AudioTrack) track).setVolume(0.0);
+          } catch (Exception e) {
+            Log.e(TAG, "pauseAudioPlayoutInternal: setVolume failed for track " + track.id(), e);
+          }
+        }
+      }
+    }
+  }
+
+  private void resumeAudioPlayoutInternal() {
+    isAudioPlayoutPaused = false;
+
+    if (pausedTrackVolumes.isEmpty()) {
+      return;
+    }
+
+    Map<String, Double> volumesToRestore = new HashMap<>(pausedTrackVolumes);
+    pausedTrackVolumes.clear();
+
+    for (Map.Entry<String, Double> entry : volumesToRestore.entrySet()) {
+      String trackId = entry.getKey();
+      double targetVolume = entry.getValue();
+      MediaStreamTrack track = getTrackForId(trackId, null);
+      if (track instanceof AudioTrack) {
+        try {
+          ((AudioTrack) track).setVolume(targetVolume);
+          trackVolumeCache.put(trackId, targetVolume);
+        } catch (Exception e) {
+          Log.e(TAG, "resumeAudioPlayoutInternal: setVolume failed for track " + trackId, e);
+        }
+      }
+    }
   }
 
   private List<IceServer> createIceServers(ConstraintsArray iceServersArray) {
@@ -1781,6 +1850,11 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       Log.d(TAG, "setVolume(): " + id + "," + volume);
       try {
         ((AudioTrack) track).setVolume(volume);
+        trackVolumeCache.put(id, volume);
+        if (!pausedTrackVolumes.isEmpty() && pausedTrackVolumes.containsKey(id)) {
+          pausedTrackVolumes.put(id, volume);
+          ((AudioTrack) track).setVolume(0.0);
+        }
       } catch (Exception e) {
         Log.e(TAG, "setVolume(): error", e);
       }
@@ -2406,6 +2480,35 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     }
   }
 
+  @Override
+  public void onRemoteAudioTrackAdded(AudioTrack track) {
+    if (track == null) {
+      return;
+    }
+
+    String trackId = track.id();
+    trackVolumeCache.putIfAbsent(trackId, 1.0);
+
+    if (isAudioPlayoutPaused) {
+      double previousVolume = trackVolumeCache.getOrDefault(trackId, 1.0);
+      pausedTrackVolumes.put(trackId, previousVolume);
+      try {
+        track.setVolume(0.0);
+      } catch (Exception e) {
+        Log.e(TAG, "onRemoteAudioTrackAdded: setVolume failed for track " + trackId, e);
+      }
+    }
+  }
+
+  @Override
+  public void onRemoteAudioTrackRemoved(String trackId) {
+    if (trackId == null) {
+      return;
+    }
+    
+    pausedTrackVolumes.remove(trackId);
+    trackVolumeCache.remove(trackId);
+  }
 
   public void reStartCamera() {
     if (null == getUserMediaImpl) {

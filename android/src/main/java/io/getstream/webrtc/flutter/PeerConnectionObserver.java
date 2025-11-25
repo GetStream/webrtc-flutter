@@ -430,6 +430,7 @@ class PeerConnectionObserver implements PeerConnection.Observer, EventChannel.St
       String trackId = track.id();
 
       remoteTracks.put(trackId, track);
+      stateProvider.onRemoteAudioTrackAdded(track);
 
       ConstraintsMap trackInfo = new ConstraintsMap();
       trackInfo.putString("id", trackId);
@@ -462,6 +463,7 @@ class PeerConnectionObserver implements PeerConnection.Observer, EventChannel.St
     }
     for (AudioTrack track : mediaStream.audioTracks) {
       this.remoteTracks.remove(track.id());
+      stateProvider.onRemoteAudioTrackRemoved(track.id());
     }
 
     ConstraintsMap params = new ConstraintsMap();
@@ -500,6 +502,9 @@ class PeerConnectionObserver implements PeerConnection.Observer, EventChannel.St
 
       if ("audio".equals(track.kind())) {
         AudioSwitchManager.instance.start();
+        if (track instanceof AudioTrack) {
+          stateProvider.onRemoteAudioTrackAdded((AudioTrack) track);
+        }
       }
     }
 
@@ -538,6 +543,10 @@ class PeerConnectionObserver implements PeerConnection.Observer, EventChannel.St
 
     MediaStreamTrack track = rtpReceiver.track();
     String trackId = track.id();
+    remoteTracks.remove(trackId);
+    if ("audio".equals(track.kind())) {
+      stateProvider.onRemoteAudioTrackRemoved(trackId);
+    }
     ConstraintsMap trackInfo = new ConstraintsMap();
     trackInfo.putString("id", trackId);
     trackInfo.putString("label", track.kind());
