@@ -5,10 +5,10 @@ import android.content.Context;
 
 import androidx.annotation.Nullable;
 import java.util.Map;
-import org.webrtc.AudioTrack;
-import org.webrtc.MediaStream;
-import org.webrtc.MediaStreamTrack;
-import org.webrtc.PeerConnectionFactory;
+import io.getstream.webrtc.AudioTrack;
+import io.getstream.webrtc.MediaStream;
+import io.getstream.webrtc.MediaStreamTrack;
+import io.getstream.webrtc.PeerConnectionFactory;
 
 import io.flutter.plugin.common.BinaryMessenger;
 

@@ -12,13 +12,11 @@ import androidx.lifecycle.Lifecycle;
 import androidx.lifecycle.LifecycleOwner;
 
 import io.getstream.webrtc.flutter.audio.AudioProcessingFactoryProvider;
-import io.getstream.webrtc.flutter.audio.AudioProcessingController;
 import io.getstream.webrtc.flutter.audio.AudioSwitchManager;
 import io.getstream.webrtc.flutter.utils.AnyThreadSink;
 import io.getstream.webrtc.flutter.utils.ConstraintsMap;
 
-import org.webrtc.ExternalAudioProcessingFactory;
-import org.webrtc.MediaStreamTrack;
+import io.getstream.webrtc.MediaStreamTrack;
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.embedding.engine.plugins.activity.ActivityAware;

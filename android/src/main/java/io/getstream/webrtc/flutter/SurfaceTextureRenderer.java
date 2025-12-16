@@ -1,14 +1,13 @@
 package io.getstream.webrtc.flutter;
 
-import android.graphics.SurfaceTexture;
 import android.view.Surface;
 
-import org.webrtc.EglBase;
-import org.webrtc.EglRenderer;
-import org.webrtc.GlRectDrawer;
-import org.webrtc.RendererCommon;
-import org.webrtc.ThreadUtils;
-import org.webrtc.VideoFrame;
+import io.getstream.webrtc.EglBase;
+import io.getstream.webrtc.EglRenderer;
+import io.getstream.webrtc.GlRectDrawer;
+import io.getstream.webrtc.RendererCommon;
+import io.getstream.webrtc.ThreadUtils;
+import io.getstream.webrtc.VideoFrame;
 
 import java.util.concurrent.CountDownLatch;
 

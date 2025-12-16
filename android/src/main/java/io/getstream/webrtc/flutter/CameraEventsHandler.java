@@ -2,7 +2,7 @@ package io.getstream.webrtc.flutter;
 
 import android.util.Log;
 
-import org.webrtc.CameraVideoCapturer;
+import io.getstream.webrtc.CameraVideoCapturer;
 
 class CameraEventsHandler implements CameraVideoCapturer.CameraEventsHandler {
     public enum CameraState {
