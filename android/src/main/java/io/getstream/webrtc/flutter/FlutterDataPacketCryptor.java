@@ -4,11 +4,11 @@ import androidx.annotation.NonNull;
 
 import io.getstream.webrtc.flutter.utils.ConstraintsMap;
 
-import org.webrtc.DataPacketCryptor;
-import org.webrtc.DataPacketCryptorFactory;
-import org.webrtc.FrameCryptor;
-import org.webrtc.FrameCryptorAlgorithm;
-import org.webrtc.FrameCryptorKeyProvider;
+import io.getstream.webrtc.DataPacketCryptor;
+import io.getstream.webrtc.DataPacketCryptorFactory;
+import io.getstream.webrtc.FrameCryptor;
+import io.getstream.webrtc.FrameCryptorAlgorithm;
+import io.getstream.webrtc.FrameCryptorKeyProvider;
 
 import java.util.HashMap;
 import java.util.Map;
