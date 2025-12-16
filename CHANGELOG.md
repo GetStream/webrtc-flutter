@@ -1,6 +1,13 @@
 
 # Changelog
 
+[2.2.1] - 2025-12-16
+* Synced flutter-webrtc v1.2.1
+	* [Linux] fix: Enable software AEC/NS/AGC for linux.
+	* [Android] fix: Removed redundant null check and release for audioFileRenderer.
+	* [Web] fix: Fix Android chrome mobile not rendering html
+	* [Web] fix: Clip hard edge on web's rtc_video_view (#1936)
+
 [2.2.0] - 2025-11-24
 * Added `Helper.pauseAudioPlayout()` / `Helper.resumeAudioPlayout()` to mute and restore remote playback with platform-specific handling for iOS/macOS and Android.
 * [Android] Improved the audio focus handling for interruption purposes (`handleCallInterruptionCallbacks`). It now uses AudioSwitch and won't trigger unwanted interaction detections when focus is requested. 
@@ -12,7 +19,7 @@
 
 [2.0.0] - 2025-10-31
 * [Android] Fixed the camera device facing mode detection.
-* Synced flutter-webrtc v0.14.2
+* Synced flutter-webrtc v1.2.0
 	* [Doc] fix: typo in package description (#1895)
 	* [Android] fix: Video recording crashing and freezing on Android 14 Devices (#1886)
 	* [Android] fix: Add audio recording for Android Platform (#1884)
