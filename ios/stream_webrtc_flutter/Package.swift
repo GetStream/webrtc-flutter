@@ -11,7 +11,7 @@ let package = Package(
     ],
     dependencies: [
         .package(
-            url: "https://github.com/GetStream/stream-video-swift-webrtc.git", exact: "137.0.43"
+            url: "https://github.com/GetStream/stream-video-swift-webrtc.git", exact: "137.0.54"
         )
 
     ],

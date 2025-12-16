@@ -379,7 +379,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     for (NSString* streamId in self.localStreams) {
       RTCMediaStream* stream = [self.localStreams objectForKey:streamId];
       for (RTCVideoTrack* track in stream.videoTracks) {
-        if ([trackId isEqualToString:trackId]) {
+        if ([trackId isEqualToString:track.trackId]) {
           [stream addVideoTrack:videoTrack];
         }
       }
