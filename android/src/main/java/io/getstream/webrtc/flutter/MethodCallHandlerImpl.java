@@ -209,10 +209,12 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
    * tracks.
    */
   private boolean isMicrophoneMuted() {
-    for (LocalTrack track : localTracks.values()) {
-      if (track instanceof LocalAudioTrack) {
-        if (track.enabled()) {
-          return false; 
+    synchronized (localTracks) {
+      for (LocalTrack track : localTracks.values()) {
+        if (track instanceof LocalAudioTrack) {
+          if (track.enabled()) {
+            return false; 
+          }
         }
       }
     }

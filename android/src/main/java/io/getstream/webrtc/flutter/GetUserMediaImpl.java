@@ -708,8 +708,6 @@ public class GetUserMediaImpl {
             localCapturer.stopCapture();
             Log.d(TAG, "Screen audio capture stopped");
         }
-
-        currentScreenCapturer = null;
     }
 
     /**

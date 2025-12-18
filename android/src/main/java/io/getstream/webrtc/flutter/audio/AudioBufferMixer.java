@@ -51,15 +51,24 @@ public class AudioBufferMixer {
         srcBuffer.asShortBuffer().get(srcSamples, 0, srcSamplesToRead);
 
         // Mix samples with clipping
+        // Only mix up to the minimum of both buffers, then copy remaining samples
+        int mixableCount = Math.min(destSamplesToRead, srcSamplesToRead);
+
         byte[] mixedBytes = new byte[bytesToMix];
         for (int i = 0; i < samplesToMix; i++) {
             int sum;
-            if (i >= destSamplesToRead) {
-                sum = srcSamples[i];
-            } else if (i >= srcSamplesToRead) {
-                sum = destSamples[i];
-            } else {
+            if (i < mixableCount) {
+                // Both buffers have valid data at this index - mix them
                 sum = destSamples[i] + srcSamples[i];
+            } else if (i < destSamplesToRead) {
+                // Only dest buffer has valid data at this index
+                sum = destSamples[i];
+            } else if (i < srcSamplesToRead) {
+                // Only src buffer has valid data at this index
+                sum = srcSamples[i];
+            } else {
+                // Neither buffer has valid data - output silence
+                sum = 0;
             }
 
             if (sum > Short.MAX_VALUE) {

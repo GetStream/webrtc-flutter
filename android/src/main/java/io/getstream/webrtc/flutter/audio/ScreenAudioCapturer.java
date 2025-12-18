@@ -36,9 +36,9 @@ public class ScreenAudioCapturer {
     private static final int SAMPLE_RATE = 48000; // Standard WebRTC sample rate
 
     private final Context context;
-    private AudioRecord screenAudioRecord;
+    private volatile AudioRecord screenAudioRecord;
     private MediaProjection mediaProjection;
-    private ByteBuffer screenAudioBuffer;
+    private volatile ByteBuffer screenAudioBuffer;
     private volatile boolean isCapturing = false;
 
     public ScreenAudioCapturer(Context context) {
@@ -129,24 +129,27 @@ public class ScreenAudioCapturer {
         }
 
         try {
+            ByteBuffer localBuffer = screenAudioBuffer;
+
             // Ensure buffer has enough capacity
-            if (screenAudioBuffer == null || screenAudioBuffer.capacity() < bytesRequested) {
-                screenAudioBuffer = ByteBuffer.allocateDirect(bytesRequested);
-                screenAudioBuffer.order(ByteOrder.LITTLE_ENDIAN);
+            if (localBuffer == null || localBuffer.capacity() < bytesRequested) {
+                localBuffer = ByteBuffer.allocateDirect(bytesRequested);
+                localBuffer.order(ByteOrder.LITTLE_ENDIAN);
+                screenAudioBuffer = localBuffer;
             }
 
-            screenAudioBuffer.clear();
-            screenAudioBuffer.limit(bytesRequested);
+            localBuffer.clear();
+            localBuffer.limit(bytesRequested);
 
             int bytesRead = localAudioRecord.read(
-                    screenAudioBuffer,
+                    localBuffer,
                     bytesRequested,
-                    AudioRecord.READ_NON_BLOCKING);
+                    AudioRecord.READ_BLOCKING);
 
             if (bytesRead > 0) {
-                screenAudioBuffer.limit(bytesRead);
-                screenAudioBuffer.position(0);
-                return screenAudioBuffer;
+                localBuffer.limit(bytesRead);
+                localBuffer.position(0);
+                return localBuffer;
             }
 
         } catch (Exception e) {
