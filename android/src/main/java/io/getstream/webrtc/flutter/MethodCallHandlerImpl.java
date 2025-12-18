@@ -23,6 +23,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 
+import io.getstream.webrtc.flutter.audio.AudioBufferMixer;
 import io.getstream.webrtc.flutter.audio.AudioDeviceKind;
 import io.getstream.webrtc.flutter.audio.AudioProcessingFactoryProvider;
 import io.getstream.webrtc.flutter.audio.AudioProcessingController;
@@ -202,6 +203,25 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     mPeerConnectionObservers.clear();
   }
 
+  /**
+   * Checks if the microphone is muted by examining all local audio tracks.
+   * Returns true if all audio tracks are disabled or if there are no audio
+   * tracks.
+   */
+  private boolean isMicrophoneMuted() {
+    synchronized (localTracks) {
+      for (LocalTrack track : localTracks.values()) {
+        if (track instanceof LocalAudioTrack) {
+          if (track.enabled()) {
+            return false; 
+          }
+        }
+      }
+    }
+
+    return true; 
+  }
+
   private void initialize(boolean bypassVoiceProcessing, int networkIgnoreMask, boolean forceSWCodec, List<String> forceSWCodecList,
   @Nullable ConstraintsMap androidAudioConfiguration, Severity logSeverity, @Nullable Integer audioSampleRate, @Nullable Integer audioOutputSampleRate) {
     if (mFactory != null) {
@@ -314,6 +334,24 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     if (audioAttributes != null) {
       audioDeviceModuleBuilder.setAudioAttributes(audioAttributes);
     }
+
+    // Set up audio buffer callback for screen audio mixing
+    audioDeviceModuleBuilder.setAudioBufferCallback(
+        (audioBuffer, audioFormat, channelCount, sampleRate, bytesRead, captureTimeNs) -> {
+          boolean isMicrophoneMuted = isMicrophoneMuted();
+          if (!isMicrophoneMuted && bytesRead > 0 && getUserMediaImpl != null && getUserMediaImpl.isScreenAudioEnabled()) {
+            // Get screen audio bytes and mix with microphone audio
+            ByteBuffer screenAudioBuffer = getUserMediaImpl.getScreenAudioBytes(bytesRead);
+            if (screenAudioBuffer != null && screenAudioBuffer.remaining() > 0) {
+              AudioBufferMixer.mixScreenAudioWithMicrophone(
+                  audioBuffer,
+                  screenAudioBuffer,
+                  bytesRead);
+            }
+          }
+
+          return captureTimeNs;
+        });
 
     audioDeviceModule = audioDeviceModuleBuilder.createAudioDeviceModule();
 

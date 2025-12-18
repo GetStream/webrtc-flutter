@@ -36,6 +36,9 @@ import androidx.annotation.RequiresApi;
 import io.getstream.webrtc.flutter.audio.AudioSwitchManager;
 import io.getstream.webrtc.flutter.audio.AudioUtils;
 import io.getstream.webrtc.flutter.audio.LocalAudioTrack;
+import io.getstream.webrtc.flutter.audio.ScreenAudioCapturer;
+
+import java.nio.ByteBuffer;
 import io.getstream.webrtc.flutter.record.AudioChannel;
 import io.getstream.webrtc.flutter.record.AudioSamplesInterceptor;
 import io.getstream.webrtc.flutter.record.MediaRecorderImpl;
@@ -127,6 +130,9 @@ public class GetUserMediaImpl {
     private boolean isTorchOn;
     private Intent mediaProjectionData = null;
 
+    private ScreenAudioCapturer screenAudioCapturer;
+    private volatile boolean screenAudioEnabled = false;
+    private OrientationAwareScreenCapturer currentScreenCapturer;
 
     public void screenRequestPermissions(ResultReceiver resultReceiver) {
         mediaProjectionData = null;
@@ -176,15 +182,40 @@ public class GetUserMediaImpl {
 
         private ResultReceiver resultReceiver = null;
         private int requestCode = 0;
-        private final int resultCode = 0;
+        private int resultCode = 0;
+        private boolean hasRequestedPermission = false;
 
         private void checkSelfPermissions(boolean requestPermissions) {
+            // Avoid requesting permission multiple times
+            if (hasRequestedPermission) {
+                return;
+            }
+
             if (resultCode != Activity.RESULT_OK) {
                 Activity activity = this.getActivity();
+                if (activity == null || activity.isFinishing()) {
+                    return;
+                }
+
                 Bundle args = getArguments();
+                if (args == null) {
+                    return;
+                }
+
                 resultReceiver = args.getParcelable(RESULT_RECEIVER);
                 requestCode = args.getInt(REQUEST_CODE);
-                requestStart(activity, requestCode);
+
+                hasRequestedPermission = true;
+
+                // Post the permission request to allow the activity to fully stabilize.
+                // This helps prevent the app from going to background on Samsung and other
+                // devices when the MediaProjection permission dialog appears.
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    Activity currentActivity = getActivity();
+                    if (currentActivity != null && !currentActivity.isFinishing() && isAdded()) {
+                        requestStart(currentActivity, requestCode);
+                    }
+                }, 100);
             }
         }
 
@@ -495,6 +526,9 @@ public class GetUserMediaImpl {
 
     void getDisplayMedia(
             final ConstraintsMap constraints, final Result result, final MediaStream mediaStream) {
+        // Check if audio is requested for screen share
+        final boolean includeAudio = parseIncludeAudio(constraints);
+
         if (mediaProjectionData == null) {
             screenRequestPermissions(
                     new ResultReceiver(new Handler(Looper.getMainLooper())) {
@@ -507,21 +541,41 @@ public class GetUserMediaImpl {
                                 resultError("screenRequestPermissions", "User didn't give permission to capture the screen.", result);
                                 return;
                             }
-                            getDisplayMedia(result, mediaStream, mediaProjectionData);
+                            getDisplayMedia(result, mediaStream, mediaProjectionData, includeAudio);
                         }
                     });
         } else {
-            getDisplayMedia(result, mediaStream, mediaProjectionData);
+            getDisplayMedia(result, mediaStream, mediaProjectionData, includeAudio);
         }
     }
 
-    private void getDisplayMedia(final Result result, final MediaStream mediaStream, final Intent mediaProjectionData) {
+    /**
+     * Parses the includeAudio flag from constraints.
+     * Checks for audio: true or audio: { ... } in constraints.
+     */
+    private boolean parseIncludeAudio(ConstraintsMap constraints) {
+        if (constraints == null || !constraints.hasKey("audio")) {
+            return false;
+        }
+
+        ObjectType audioType = constraints.getType("audio");
+        if (audioType == ObjectType.Boolean) {
+            return constraints.getBoolean("audio");
+        } else if (audioType == ObjectType.Map) {
+            // If audio is a map/object, we treat it as audio enabled
+            return true;
+        }
+
+        return false;
+    }
+
+    private void getDisplayMedia(final Result result, final MediaStream mediaStream,
+            final Intent mediaProjectionData, final boolean includeAudio) {
         /* Create ScreenCapture */
         VideoTrack displayTrack = null;
-        VideoCapturer videoCapturer = null;
         String trackId = stateProvider.getNextTrackUUID();
 
-        videoCapturer = new OrientationAwareScreenCapturer(
+        OrientationAwareScreenCapturer videoCapturer = new OrientationAwareScreenCapturer(
                 applicationContext,
                 mediaProjectionData,
                 new MediaProjection.Callback() {
@@ -529,18 +583,33 @@ public class GetUserMediaImpl {
                     public void onStop() {
                         super.onStop();
 
+                        // Stop screen audio capture when screen sharing stops
+                        stopScreenAudioCapture();
+
                         ConstraintsMap params = new ConstraintsMap();
                         params.putString("event", EVENT_DISPLAY_MEDIA_STOPPED);
                         params.putString("trackId", trackId);
                         FlutterWebRTCPlugin.sharedSingleton.sendEvent(params.toMap());
                     }
-                }
-            );
+                });
 
-        if (videoCapturer == null) {
-            resultError("screenRequestPermissions", "GetDisplayMediaFailed, User revoked permission to capture the screen.", result);
-            return;
+        // Set up screen audio capture listener if audio is requested
+        if (includeAudio && ScreenAudioCapturer.isSupported()) {
+            videoCapturer.setMediaProjectionReadyListener(
+                    new OrientationAwareScreenCapturer.MediaProjectionReadyListener() {
+                        @Override
+                        public void onMediaProjectionReady(MediaProjection mediaProjection) {
+                            startScreenAudioCapture(mediaProjection);
+                        }
+
+                        @Override
+                        public void onMediaProjectionStopped() {
+                            stopScreenAudioCapture();
+                        }
+                    });
         }
+
+        currentScreenCapturer = videoCapturer;
 
         PeerConnectionFactory pcFactory = stateProvider.getPeerConnectionFactory();
         VideoSource videoSource = pcFactory.createVideoSource(true);
@@ -566,7 +635,8 @@ public class GetUserMediaImpl {
         info.capturer = videoCapturer;
 
         videoCapturer.startCapture(info.width, info.height, info.fps);
-        Log.d(TAG, "OrientationAwareScreenCapturer.startCapture: " + info.width + "x" + info.height + "@" + info.fps);
+        Log.d(TAG, "OrientationAwareScreenCapturer.startCapture: " + info.width + "x" + info.height + "@" + info.fps +
+                ", includeAudio: " + includeAudio);
 
         mVideoCapturers.put(trackId, info);
         mVideoSources.put(trackId, videoSource);
@@ -607,6 +677,56 @@ public class GetUserMediaImpl {
         successResult.putArray("audioTracks", audioTracks.toArrayList());
         successResult.putArray("videoTracks", videoTracks.toArrayList());
         result.success(successResult.toMap());
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.Q)
+    private void startScreenAudioCapture(MediaProjection mediaProjection) {
+        if (!ScreenAudioCapturer.isSupported()) {
+            Log.w(TAG, "Screen audio capture not supported on this device");
+            return;
+        }
+
+        if (screenAudioCapturer == null) {
+            screenAudioCapturer = new ScreenAudioCapturer(applicationContext);
+        }
+
+        boolean started = screenAudioCapturer.startCapture(mediaProjection);
+        screenAudioEnabled = started;
+
+        if (started) {
+            Log.d(TAG, "Screen audio capture started successfully");
+        } else {
+            Log.w(TAG, "Failed to start screen audio capture");
+        }
+    }
+
+    private synchronized void stopScreenAudioCapture() {
+        screenAudioEnabled = false;
+
+        ScreenAudioCapturer localCapturer = screenAudioCapturer;
+        if (localCapturer != null) {
+            localCapturer.stopCapture();
+            Log.d(TAG, "Screen audio capture stopped");
+        }
+    }
+
+    /**
+     * Returns whether screen audio capture is currently enabled.
+     */
+    public boolean isScreenAudioEnabled() {
+        return screenAudioEnabled && screenAudioCapturer != null && screenAudioCapturer.isCapturing();
+    }
+
+    /**
+     * Gets screen audio bytes for mixing with microphone audio.
+     * Returns null if screen audio capture is not active.
+     */
+    public ByteBuffer getScreenAudioBytes(int bytesRequested) {
+        if (!isScreenAudioEnabled()) {
+            return null;
+        }
+        
+        return screenAudioCapturer.getScreenAudioBytes(bytesRequested);
     }
 
     /**
