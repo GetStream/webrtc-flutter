@@ -47,10 +47,21 @@ public class OrientationAwareScreenCapturer implements VideoCapturer, VideoSink 
     private long numCapturedFrames = 0;
     private MediaProjection mediaProjection;
     private boolean isDisposed = false;
+    private volatile boolean isStopping = false;
     private MediaProjectionManager mediaProjectionManager;
     private WindowManager windowManager;
     private boolean isPortrait;
     private Context context;
+    private MediaProjectionReadyListener mediaProjectionReadyListener;
+
+    /**
+     * Listener interface for when MediaProjection becomes available.
+     */
+    public interface MediaProjectionReadyListener {
+        void onMediaProjectionReady(MediaProjection mediaProjection);
+
+        void onMediaProjectionStopped();
+    }
 
     /**
      * Constructs a new Screen Capturer.
@@ -69,7 +80,19 @@ public class OrientationAwareScreenCapturer implements VideoCapturer, VideoSink 
         this.context = context;
     }
 
+    public void setMediaProjectionReadyListener(MediaProjectionReadyListener listener) {
+        this.mediaProjectionReadyListener = listener;
+    }
+
+    public MediaProjection getMediaProjection() {
+        return mediaProjection;
+    }
+
     public void onFrame(VideoFrame frame) {
+        if (isStopping || isDisposed) {
+            return;
+        }
+
         checkNotDisposed();
         this.isPortrait = isDeviceOrientationPortrait();
         final int max = Math.max(this.height, this.width);
@@ -79,6 +102,7 @@ public class OrientationAwareScreenCapturer implements VideoCapturer, VideoSink 
         } else {
             changeCaptureFormat(max, min, 15);
         }
+
         capturerObserver.onFrameCaptured(frame);
     }
 
@@ -114,7 +138,7 @@ public class OrientationAwareScreenCapturer implements VideoCapturer, VideoSink 
     @Override
     public synchronized void startCapture(
             final int width, final int height, final int ignoredFramerate) {
-        //checkNotDisposed();
+        isStopping = false;
 
         this.isPortrait = isDeviceOrientationPortrait();
         if (this.isPortrait) {
@@ -134,39 +158,74 @@ public class OrientationAwareScreenCapturer implements VideoCapturer, VideoSink 
         createVirtualDisplay();
         capturerObserver.onCapturerStarted(true);
         surfaceTextureHelper.startListening(this);
+
+        // Notify listener that MediaProjection is ready (for screen audio capture)
+        if (mediaProjectionReadyListener != null) {
+            mediaProjectionReadyListener.onMediaProjectionReady(mediaProjection);
+        }
     }
 
     @Override
     public synchronized void stopCapture() {
-        checkNotDisposed();
-        ThreadUtils.invokeAtFrontUninterruptibly(surfaceTextureHelper.getHandler(), new Runnable() {
-            @Override
-            public void run() {
-                surfaceTextureHelper.stopListening();
+        isStopping = true;
+
+        if (isDisposed) {
+            return;
+        }
+
+        // Notify listener before stopping (for screen audio capture cleanup)
+        if (mediaProjectionReadyListener != null) {
+            mediaProjectionReadyListener.onMediaProjectionStopped();
+        }
+
+        try {
+            surfaceTextureHelper.stopListening();
+        } catch (Exception e) {
+            Log.e("ScreenCapturer", "Error stopping listening", e);
+        }
+
+        if (capturerObserver != null) {
+            try {
                 capturerObserver.onCapturerStopped();
-                if (virtualDisplay != null) {
-                    virtualDisplay.release();
-                    virtualDisplay = null;
-                }
-                if (mediaProjection != null) {
-                    // Unregister the callback before stopping, otherwise the callback recursively
-                    // calls this method.
-                    mediaProjection.unregisterCallback(mediaProjectionCallback);
-                    mediaProjection.stop();
-                    mediaProjection = null;
-                }
+            } catch (Exception e) {
+                Log.e("ScreenCapturer", "Error notifying capturer stopped", e);
             }
-        });
+        }
+
+        if (virtualDisplay != null) {
+            try {
+                virtualDisplay.release();
+                virtualDisplay = null;
+            } catch (Exception e) {
+                Log.e("ScreenCapturer", "Error releasing virtual display", e);
+            }
+        }
+
+        if (mediaProjection != null) {
+            try {
+                mediaProjection.unregisterCallback(mediaProjectionCallback);
+            } catch (Exception e) {
+                Log.e("ScreenCapturer", "Error unregistering callback", e);
+            }
+            try {
+                mediaProjection.stop();
+                mediaProjection = null;
+            } catch (Exception e) {
+                Log.e("ScreenCapturer", "Error stopping media projection", e);
+            }
+        }
     }
 
     @Override
     public synchronized void dispose() {
+        isStopping = true;
         isDisposed = true;
     }
 
     /**
      * Changes output video format. This method can be used to scale the output
-     * video, or to change orientation when the captured screen is rotated for example.
+     * video, or to change orientation when the captured screen is rotated for
+     * example.
      *
      * @param width            new output video width
      * @param height           new output video height
@@ -175,39 +234,74 @@ public class OrientationAwareScreenCapturer implements VideoCapturer, VideoSink 
     @Override
     public synchronized void changeCaptureFormat(
             final int width, final int height, final int ignoredFramerate) {
+        if (isStopping || isDisposed) {
+            return;
+        }
+
         checkNotDisposed();
         if (this.oldWidth != width || this.oldHeight != height) {
             this.oldWidth = width;
             this.oldHeight = height;
 
+            if (surfaceTextureHelper == null || virtualDisplay == null) {
+                return;
+            }
+
             if (oldHeight > oldWidth) {
-                ThreadUtils.invokeAtFrontUninterruptibly(surfaceTextureHelper.getHandler(), new Runnable() {
-                    @Override
-                    public void run() {
-                        if (virtualDisplay != null && surfaceTextureHelper != null) {
-                            virtualDisplay.setSurface(new Surface(surfaceTextureHelper.getSurfaceTexture()));
-                            surfaceTextureHelper.setTextureSize(oldWidth, oldHeight);
-                            virtualDisplay.resize(oldWidth, oldHeight, VIRTUAL_DISPLAY_DPI);
+                if (surfaceTextureHelper.getHandler() != null) {
+                    surfaceTextureHelper.getHandler().post(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (isStopping || virtualDisplay == null || surfaceTextureHelper == null) {
+                                return;
+                            }
+                            
+                            try {
+                                virtualDisplay.setSurface(new Surface(surfaceTextureHelper.getSurfaceTexture()));
+                                surfaceTextureHelper.setTextureSize(oldWidth, oldHeight);
+                                virtualDisplay.resize(oldWidth, oldHeight, VIRTUAL_DISPLAY_DPI);
+                            } catch (Exception e) {
+                                Log.e("ScreenCapturer", "Error changing capture format (portrait)", e);
+                            }
                         }
-                    }
-                });
+                    });
+                }
             }
 
             if (oldWidth > oldHeight) {
-                surfaceTextureHelper.setTextureSize(oldWidth, oldHeight);
-                virtualDisplay.setSurface(new Surface(surfaceTextureHelper.getSurfaceTexture()));
+                try {
+                    surfaceTextureHelper.setTextureSize(oldWidth, oldHeight);
+                    virtualDisplay.setSurface(new Surface(surfaceTextureHelper.getSurfaceTexture()));
+                } catch (Exception e) {
+                    Log.e("ScreenCapturer", "Error setting texture size (landscape)", e);
+                    return;
+                }
+
                 final Handler handler = new Handler(Looper.getMainLooper());
                 handler.postDelayed(new Runnable() {
                     @Override
                     public void run() {
-                        ThreadUtils.invokeAtFrontUninterruptibly(surfaceTextureHelper.getHandler(), new Runnable() {
-                            @Override
-                            public void run() {
-                                if (virtualDisplay != null && surfaceTextureHelper != null) {
-                                    virtualDisplay.resize(oldWidth, oldHeight, VIRTUAL_DISPLAY_DPI);
+                        if (isStopping || surfaceTextureHelper == null) {
+                            return;
+                        }
+
+                        Handler textureHandler = surfaceTextureHelper.getHandler();
+                        if (textureHandler != null) {
+                            textureHandler.post(new Runnable() {
+                                @Override
+                                public void run() {
+                                    if (isStopping || virtualDisplay == null || surfaceTextureHelper == null) {
+                                        return;
+                                    }
+
+                                    try {
+                                        virtualDisplay.resize(oldWidth, oldHeight, VIRTUAL_DISPLAY_DPI);
+                                    } catch (Exception e) {
+                                        Log.e("ScreenCapturer", "Error resizing virtual display", e);
+                                    }
                                 }
-                            }
-                        });
+                            });
+                        }
                     }
                 }, 700);
             }
