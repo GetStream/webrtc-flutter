@@ -182,15 +182,40 @@ public class GetUserMediaImpl {
 
         private ResultReceiver resultReceiver = null;
         private int requestCode = 0;
-        private final int resultCode = 0;
+        private int resultCode = 0;
+        private boolean hasRequestedPermission = false;
 
         private void checkSelfPermissions(boolean requestPermissions) {
+            // Avoid requesting permission multiple times
+            if (hasRequestedPermission) {
+                return;
+            }
+
             if (resultCode != Activity.RESULT_OK) {
                 Activity activity = this.getActivity();
+                if (activity == null || activity.isFinishing()) {
+                    return;
+                }
+
                 Bundle args = getArguments();
+                if (args == null) {
+                    return;
+                }
+
                 resultReceiver = args.getParcelable(RESULT_RECEIVER);
                 requestCode = args.getInt(REQUEST_CODE);
-                requestStart(activity, requestCode);
+
+                hasRequestedPermission = true;
+
+                // Post the permission request to allow the activity to fully stabilize.
+                // This helps prevent the app from going to background on Samsung and other
+                // devices when the MediaProjection permission dialog appears.
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    Activity currentActivity = getActivity();
+                    if (currentActivity != null && !currentActivity.isFinishing() && isAdded()) {
+                        requestStart(currentActivity, requestCode);
+                    }
+                }, 100);
             }
         }
 
