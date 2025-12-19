@@ -1,6 +1,9 @@
 
 # Changelog
 
+[2.2.2] - 2025-12-19
+* [Android] Added support for screen sharing audio on Android by mixing the microphone audio with recorded screen audio.
+
 [2.2.1] - 2025-12-16
 * Synced flutter-webrtc v1.2.1
 	* [Linux] fix: Enable software AEC/NS/AGC for linux.
