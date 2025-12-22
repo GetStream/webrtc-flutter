@@ -111,13 +111,13 @@ import io.flutter.view.TextureRegistry.SurfaceTextureEntry;
 public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   static public final String TAG = "FlutterWebRTCPlugin";
 
-  private final Map<String, PeerConnectionObserver> mPeerConnectionObservers = new HashMap<>();
+  private final Map<String, PeerConnectionObserver> mPeerConnectionObservers = new ConcurrentHashMap<>();
   private final BinaryMessenger messenger;
   private final Context context;
   private final TextureRegistry textures;
   private PeerConnectionFactory mFactory;
-  private final Map<String, MediaStream> localStreams = new HashMap<>();
-  private final Map<String, LocalTrack> localTracks = new HashMap<>();
+  private final Map<String, MediaStream> localStreams = new ConcurrentHashMap<>();
+  private final Map<String, LocalTrack> localTracks = new ConcurrentHashMap<>();
   private final LongSparseArray<FlutterRTCVideoRenderer> renders = new LongSparseArray<>();
 
   public RecordSamplesReadyCallbackAdapter recordSamplesReadyCallbackAdapter;
@@ -209,16 +209,13 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
    * tracks.
    */
   private boolean isMicrophoneMuted() {
-    synchronized (localTracks) {
-      for (LocalTrack track : localTracks.values()) {
-        if (track instanceof LocalAudioTrack) {
-          if (track.enabled()) {
-            return false; 
-          }
+    for (LocalTrack track : localTracks.values()) {
+      if (track instanceof LocalAudioTrack) {
+        if (track.enabled()) {
+          return false; 
         }
       }
     }
-
     return true; 
   }
 
