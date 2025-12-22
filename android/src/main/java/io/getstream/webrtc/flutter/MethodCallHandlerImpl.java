@@ -111,13 +111,13 @@ import io.flutter.view.TextureRegistry.SurfaceTextureEntry;
 public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   static public final String TAG = "FlutterWebRTCPlugin";
 
-  private final Map<String, PeerConnectionObserver> mPeerConnectionObservers = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<String, PeerConnectionObserver> mPeerConnectionObservers = new ConcurrentHashMap<>();
   private final BinaryMessenger messenger;
   private final Context context;
   private final TextureRegistry textures;
   private PeerConnectionFactory mFactory;
-  private final Map<String, MediaStream> localStreams = new ConcurrentHashMap<>();
-  private final Map<String, LocalTrack> localTracks = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<String, MediaStream> localStreams = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<String, LocalTrack> localTracks = new ConcurrentHashMap<>();
   private final LongSparseArray<FlutterRTCVideoRenderer> renders = new LongSparseArray<>();
 
   public RecordSamplesReadyCallbackAdapter recordSamplesReadyCallbackAdapter;
@@ -149,8 +149,8 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   public AudioProcessingFactoryProvider audioProcessingFactoryProvider;
 
   private ConstraintsMap initializedAndroidAudioConfiguration;
-  private final Map<String, Double> trackVolumeCache = new ConcurrentHashMap<>();
-  private final Map<String, Double> pausedTrackVolumes = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<String, Double> trackVolumeCache = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<String, Double> pausedTrackVolumes = new ConcurrentHashMap<>();
   private volatile boolean isAudioPlayoutPaused = false;
 
   public static class LogSink implements Loggable {
