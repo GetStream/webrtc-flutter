@@ -1,6 +1,9 @@
 
 # Changelog
 
+[2.2.3] - 2025-12-22
+* [Android] Fixed concurrency issues in local tracks access that could cause a crash.
+
 [2.2.2] - 2025-12-19
 * [Android] Added support for screen sharing audio on Android by mixing the microphone audio with recorded screen audio.
 
