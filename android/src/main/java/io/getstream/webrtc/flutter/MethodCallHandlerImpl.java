@@ -12,6 +12,8 @@ import android.media.AudioManager;
 import android.media.MediaRecorder;
 import android.media.AudioAttributes;
 import android.media.AudioDeviceInfo;
+import android.media.audiofx.AcousticEchoCanceler;
+import android.media.audiofx.NoiseSuppressor;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -84,6 +86,7 @@ import org.webrtc.SessionDescription.Type;
 import org.webrtc.VideoTrack;
 import org.webrtc.audio.AudioDeviceModule;
 import org.webrtc.audio.JavaAudioDeviceModule;
+import org.webrtc.audio.WebRtcAudioUtils;
 import org.webrtc.video.CustomVideoDecoderFactory;
 import org.webrtc.video.CustomVideoEncoderFactory;
 
@@ -259,8 +262,43 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
                   .setContentType(contentType)
                   .build();
       }
+
+      if (AudioSwitchManager.instance != null) {
+        AudioSwitchManager.instance.setAudioConfiguration(androidAudioConfiguration.toMap());
+      }
+
+      AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+      if (audioManager != null) {
+        Integer audioMode = AudioUtils.getAudioModeForString(
+            androidAudioConfiguration.getString("androidAudioMode"));
+        if (audioMode != null) {
+          audioManager.setMode(audioMode);
+        } else {
+          audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        }
+
+        Integer streamType = AudioUtils.getStreamTypeForString(
+            androidAudioConfiguration.getString("androidAudioStreamType"));
+        if (streamType != null) {
+          boolean useSpeaker = (streamType == AudioManager.STREAM_MUSIC);
+          audioManager.setSpeakerphoneOn(useSpeaker);
+        }
+      } else {
+        // No configuration provided - set default MODE_IN_COMMUNICATION for AEC to work
+        if (audioManager != null) {
+          audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        }
+      }
+
     }
+
     JavaAudioDeviceModule.Builder audioDeviceModuleBuilder = JavaAudioDeviceModule.builder(context);
+    Boolean isDeviceSupportHWAec = AcousticEchoCanceler.isAvailable();
+    Boolean isDeviceSupportHWNs = NoiseSuppressor.isAvailable();
+    
+    if (audioAttributes != null) {
+      audioDeviceModuleBuilder.setAudioAttributes(audioAttributes);
+    }
 
     recordSamplesReadyCallbackAdapter = new RecordSamplesReadyCallbackAdapter();
     playbackSamplesReadyCallbackAdapter = new PlaybackSamplesReadyCallbackAdapter();
@@ -272,11 +310,9 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
                         .setUseStereoOutput(true)
                         .setAudioSource(MediaRecorder.AudioSource.MIC);
     } else {
-      boolean useHardwareAudioProcessing = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q;
-      boolean useLowLatency = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O;
-      audioDeviceModuleBuilder.setUseHardwareAcousticEchoCanceler(useHardwareAudioProcessing)
-                        .setUseLowLatency(useLowLatency)
-                        .setUseHardwareNoiseSuppressor(useHardwareAudioProcessing);
+      audioDeviceModuleBuilder
+            .setUseHardwareAcousticEchoCanceler(isDeviceSupportHWAec)
+            .setUseHardwareNoiseSuppressor(isDeviceSupportHWNs);
     }
 
     // Configure audio sample rates if specified
@@ -328,10 +364,6 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       }
     });
 
-    if (audioAttributes != null) {
-      audioDeviceModuleBuilder.setAudioAttributes(audioAttributes);
-    }
-
     // Set up audio buffer callback for screen audio mixing
     audioDeviceModuleBuilder.setAudioBufferCallback(
         (audioBuffer, audioFormat, channelCount, sampleRate, bytesRead, captureTimeNs) -> {
@@ -353,11 +385,10 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     audioDeviceModule = audioDeviceModuleBuilder.createAudioDeviceModule();
 
     if(!bypassVoiceProcessing) {
-       if(JavaAudioDeviceModule.isBuiltInNoiseSuppressorSupported()) {
+       if(isDeviceSupportHWNs) {
          audioDeviceModule.setNoiseSuppressorEnabled(true);
        }
     }
-
 
     getUserMediaImpl.audioDeviceModule = (JavaAudioDeviceModule) audioDeviceModule;
 
