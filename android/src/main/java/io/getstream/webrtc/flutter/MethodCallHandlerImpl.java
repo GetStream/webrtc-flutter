@@ -312,7 +312,8 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     } else {
       audioDeviceModuleBuilder
             .setUseHardwareAcousticEchoCanceler(isDeviceSupportHWAec)
-            .setUseHardwareNoiseSuppressor(isDeviceSupportHWNs);
+            .setUseHardwareNoiseSuppressor(isDeviceSupportHWNs)
+            .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION);
     }
 
     // Configure audio sample rates if specified
