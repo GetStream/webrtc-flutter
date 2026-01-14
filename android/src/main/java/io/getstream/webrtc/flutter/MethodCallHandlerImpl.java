@@ -266,30 +266,6 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       if (AudioSwitchManager.instance != null) {
         AudioSwitchManager.instance.setAudioConfiguration(androidAudioConfiguration.toMap());
       }
-
-      AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-      if (audioManager != null) {
-        Integer audioMode = AudioUtils.getAudioModeForString(
-            androidAudioConfiguration.getString("androidAudioMode"));
-        if (audioMode != null) {
-          audioManager.setMode(audioMode);
-        } else {
-          audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
-        }
-
-        Integer streamType = AudioUtils.getStreamTypeForString(
-            androidAudioConfiguration.getString("androidAudioStreamType"));
-        if (streamType != null) {
-          boolean useSpeaker = (streamType == AudioManager.STREAM_MUSIC);
-          audioManager.setSpeakerphoneOn(useSpeaker);
-        }
-      } else {
-        // No configuration provided - set default MODE_IN_COMMUNICATION for AEC to work
-        if (audioManager != null) {
-          audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
-        }
-      }
-
     }
 
     JavaAudioDeviceModule.Builder audioDeviceModuleBuilder = JavaAudioDeviceModule.builder(context);
