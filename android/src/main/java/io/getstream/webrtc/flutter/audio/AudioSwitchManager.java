@@ -325,6 +325,8 @@ public class AudioSwitchManager {
             forceHandleAudioRouting = (Boolean) configuration.get("forceHandleAudioRouting");
         }
         setForceHandleAudioRouting(forceHandleAudioRouting);
+
+        applyAudioManagerSettings();
     }
 
     public void setManageAudioFocus(@Nullable Boolean manage) {
@@ -399,6 +401,10 @@ public class AudioSwitchManager {
             this.forceHandleAudioRouting = force;
             Objects.requireNonNull(audioSwitch).setForceHandleAudioRouting(this.forceHandleAudioRouting);
         }
+    }
+
+    private void applyAudioManagerSettings() {
+        audioManager.setMode(audioMode);
     }
 
     public void clearCommunicationDevice() {
