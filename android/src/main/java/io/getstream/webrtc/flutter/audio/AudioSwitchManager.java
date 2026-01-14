@@ -70,7 +70,7 @@ public class AudioSwitchManager {
     /**
      * The audio mode to use while started.
      * <br />
-     * Defaults to AudioManager.MODE_NORMAL.
+     * Defaults to AudioManager.MODE_IN_COMMUNICATION.
      */
     private int audioMode = AudioManager.MODE_IN_COMMUNICATION;
 
