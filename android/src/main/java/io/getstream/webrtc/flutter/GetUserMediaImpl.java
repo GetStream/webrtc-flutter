@@ -1048,6 +1048,16 @@ public class GetUserMediaImpl {
         VideoSource videoSource = mVideoSources.get(trackId);
         SurfaceTextureHelper surfaceTextureHelper = mSurfaceTextureHelpers.get(trackId);
 
+        if (videoSource == null) {
+            Log.e(TAG, "setVideoEffect() VideoSource not found for trackId: " + trackId);
+            return;
+        }
+
+        if (surfaceTextureHelper == null) {
+            Log.e(TAG, "setVideoEffect() SurfaceTextureHelper not found for trackId: " + trackId);
+            return;
+        }
+
         if (names != null && !names.isEmpty()) {
             List<VideoFrameProcessor> processors = names.stream()
                 .filter(name -> name instanceof String)
