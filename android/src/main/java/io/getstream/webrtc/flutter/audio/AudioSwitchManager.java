@@ -161,6 +161,8 @@ public class AudioSwitchManager {
                 if (!isActive) {
                     audioSwitch.activate();
                     isActive = true;
+
+                    reapplyAudioConfiguration();
                 }
             });
         }
@@ -204,6 +206,7 @@ public class AudioSwitchManager {
             }
             if (audioDevice != null) {
                 Objects.requireNonNull(audioSwitch).selectDevice(audioDevice);
+                reapplyAudioConfiguration();
             }
         });
     }
@@ -248,6 +251,7 @@ public class AudioSwitchManager {
             } else {
                 handler.post(() -> {
                     Objects.requireNonNull(audioSwitch).selectDevice(null);
+                    reapplyAudioConfiguration();
                 });
             }
         }
@@ -407,6 +411,24 @@ public class AudioSwitchManager {
         audioManager.setMode(audioMode);
     }
 
+    private void reapplyAudioConfiguration() {
+        if (audioSwitch == null) {
+            return;
+        }
+
+        handler.post(() -> {
+            Objects.requireNonNull(audioSwitch).setManageAudioFocus(manageAudioFocus);
+            Objects.requireNonNull(audioSwitch).setFocusMode(focusMode);
+            Objects.requireNonNull(audioSwitch).setAudioMode(audioMode);
+            Objects.requireNonNull(audioSwitch).setAudioStreamType(audioStreamType);
+            Objects.requireNonNull(audioSwitch).setAudioAttributeContentType(audioAttributeContentType);
+            Objects.requireNonNull(audioSwitch).setAudioAttributeUsageType(audioAttributeUsageType);
+            Objects.requireNonNull(audioSwitch).setForceHandleAudioRouting(forceHandleAudioRouting);
+            
+            applyAudioManagerSettings();
+        });
+    }
+
     public void clearCommunicationDevice() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             audioManager.clearCommunicationDevice();
@@ -421,11 +443,12 @@ public class AudioSwitchManager {
         handler.post(() -> {
             if (audioSwitch != null) {
                 Objects.requireNonNull(audioSwitch).activate();
+                reapplyAudioConfiguration();
             }
         });
     }
 
-    private static final class ForwardingAudioFocusChangeListener implements AudioManager.OnAudioFocusChangeListener {
+    private final class ForwardingAudioFocusChangeListener implements AudioManager.OnAudioFocusChangeListener {
         @Nullable
         private volatile AudioManager.OnAudioFocusChangeListener delegate;
 
@@ -434,6 +457,12 @@ public class AudioSwitchManager {
             AudioManager.OnAudioFocusChangeListener current = delegate;
             if (current != null) {
                 current.onAudioFocusChange(focusChange);
+            }
+            
+            if (focusChange == AudioManager.AUDIOFOCUS_GAIN || 
+                focusChange == AudioManager.AUDIOFOCUS_GAIN_TRANSIENT ||
+                focusChange == AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK) {
+                reapplyAudioConfiguration();
             }
         }
 
