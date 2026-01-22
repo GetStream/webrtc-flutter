@@ -581,6 +581,7 @@ void FlutterMediaStream::MediaStreamTrackClone(
               scoped_refptr<RTCAudioTrack> track =
                   base_->factory_->CreateAudioTrack(audio_source, new_track_id);
               base_->audio_sources_[track->id().std_string()] = audio_source;
+              base_->local_tracks_[track->id().std_string()] = track;
 
               track_params[EncodableValue("readyState")] = "live";
               track_params[EncodableValue("kind")] =
@@ -598,6 +599,7 @@ void FlutterMediaStream::MediaStreamTrackClone(
               scoped_refptr<RTCVideoTrack> track =
                   base_->factory_->CreateVideoTrack(video_source, new_track_id);
               base_->video_sources_[track->id().std_string()] = video_source;
+              base_->local_tracks_[track->id().std_string()] = track;
 
               track_params[EncodableValue("readyState")] = "live";
               track_params[EncodableValue("kind")] =
