@@ -12,9 +12,13 @@
 #import "LocalVideoTrack.h"
 
 #if TARGET_OS_OSX
+#import "SystemAudioMixer.h"
+#import "AudioManager.h"
 RTCDesktopMediaList* _screen = nil;
 RTCDesktopMediaList* _window = nil;
 NSArray<RTCDesktopSource*>* _captureSources;
+// Store active system audio mixers by track UUID (macOS 13.0+)
+NSMutableDictionary* _systemAudioMixers = nil;
 #endif
 
 @implementation FlutterWebRTCPlugin (DesktopCapturer)
@@ -78,7 +82,7 @@ NSArray<RTCDesktopSource*>* _captureSources;
 #if TARGET_OS_OSX
   /* example for constraints:
       {
-          'audio': false,
+          'audio': false,  // or true for system audio capture
           'video": {
               'deviceId':  {'exact': sourceId},
               'mandatory': {
@@ -90,6 +94,16 @@ NSArray<RTCDesktopSource*>* _captureSources;
   NSString* sourceId = nil;
   BOOL useDefaultScreen = NO;
   NSInteger fps = 30;
+  
+  // Check if audio (system audio) is requested
+  BOOL includeSystemAudio = NO;
+  id audioConstraints = constraints[@"audio"];
+  if ([audioConstraints isKindOfClass:[NSNumber class]] && [audioConstraints boolValue] == YES) {
+    includeSystemAudio = YES;
+  } else if ([audioConstraints isKindOfClass:[NSDictionary class]]) {
+    includeSystemAudio = YES;
+  }
+  
   id videoConstraints = constraints[@"video"];
   if ([videoConstraints isKindOfClass:[NSNumber class]] && [videoConstraints boolValue] == YES) {
     useDefaultScreen = YES;
@@ -135,10 +149,56 @@ NSArray<RTCDesktopSource*>* _captureSources;
   NSLog(@"start desktop capture: sourceId: %@, type: %@, fps: %lu", sourceId,
         source.sourceType == RTCDesktopSourceTypeScreen ? @"screen" : @"window", fps);
 
+  // Start system audio capture if requested (macOS 13.0+)
+  // Use id type to avoid availability warnings - actual type checking done at runtime
+  __block id systemAudioMixerObj = nil;
+  if (includeSystemAudio) {
+    if (@available(macOS 13.0, *)) {
+      if ([SystemAudioMixer isSupported]) {
+        // Initialize the mixers dictionary if needed
+        if (_systemAudioMixers == nil) {
+          _systemAudioMixers = [NSMutableDictionary dictionary];
+        }
+        
+        SystemAudioMixer *mixer = [[SystemAudioMixer alloc] init];
+        systemAudioMixerObj = mixer;
+        _systemAudioMixers[trackUUID] = mixer;
+        
+        // Register the mixer with the audio processing adapter
+        [AudioManager.sharedInstance.capturePostProcessingAdapter addProcessing:mixer];
+        
+        // Start capturing system audio
+        [mixer startWithCompletion:^(NSError * _Nullable error) {
+          if (error) {
+            NSLog(@"Failed to start system audio capture: %@", error);
+          } else {
+            NSLog(@"System audio capture started for track: %@", trackUUID);
+          }
+        }];
+      } else {
+        NSLog(@"System audio mixing not supported on this device");
+      }
+    } else {
+      NSLog(@"System audio capture requires macOS 13.0 or later");
+    }
+  }
+
   self.videoCapturerStopHandlers[trackUUID] = ^(CompletionHandler handler) {
     NSLog(@"stop desktop capture: sourceId: %@, type: %@, trackID %@", sourceId,
           source.sourceType == RTCDesktopSourceTypeScreen ? @"screen" : @"window", trackUUID);
     [desktopCapturer stopCapture];
+    
+    // Stop and cleanup system audio mixer if it was active
+    if (systemAudioMixerObj) {
+      if (@available(macOS 13.0, *)) {
+        SystemAudioMixer *mixer = (SystemAudioMixer *)systemAudioMixerObj;
+        [AudioManager.sharedInstance.capturePostProcessingAdapter removeProcessing:mixer];
+        [mixer stop];
+        [_systemAudioMixers removeObjectForKey:trackUUID];
+        NSLog(@"System audio capture stopped for track: %@", trackUUID);
+      }
+    }
+    
     handler();
   };
 #endif
