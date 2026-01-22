@@ -112,19 +112,24 @@ API_AVAILABLE(macos(13.0))
     }
     
     // Get audio buffer list
-    CMBlockBufferRef blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer);
-    if (!blockBuffer) {
+    CMBlockBufferRef blockBuffer = NULL;
+    
+    // AudioBufferList has a variable-length array - allocate space for stereo (2 buffers)
+    // sizeof(AudioBufferList) includes 1 AudioBuffer, add 1 more for stereo
+    size_t bufferListSize = sizeof(AudioBufferList) + sizeof(AudioBuffer);
+    AudioBufferList *audioBufferList = (AudioBufferList *)malloc(bufferListSize);
+    if (!audioBufferList) {
+        NSLog(@"SystemAudioMixer: Failed to allocate audio buffer list");
         return;
     }
     
-    AudioBufferList audioBufferList;
     size_t blockBufferOffset = 0;
     
     OSStatus status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
         sampleBuffer,
         &blockBufferOffset,
-        &audioBufferList,
-        sizeof(audioBufferList),
+        audioBufferList,
+        bufferListSize,
         NULL,
         NULL,
         kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
@@ -133,6 +138,7 @@ API_AVAILABLE(macos(13.0))
     
     if (status != noErr) {
         NSLog(@"SystemAudioMixer: Failed to get audio buffer list: %d", (int)status);
+        free(audioBufferList);
         return;
     }
     
@@ -142,12 +148,13 @@ API_AVAILABLE(macos(13.0))
     
     if (!asbd) {
         CFRelease(blockBuffer);
+        free(audioBufferList);
         return;
     }
     
     // Process each buffer
-    for (UInt32 i = 0; i < audioBufferList.mNumberBuffers; i++) {
-        AudioBuffer buffer = audioBufferList.mBuffers[i];
+    for (UInt32 i = 0; i < audioBufferList->mNumberBuffers; i++) {
+        AudioBuffer buffer = audioBufferList->mBuffers[i];
         
         if (buffer.mData && buffer.mDataByteSize > 0) {
             [self writeSystemAudioToRingBuffer:(float *)buffer.mData
@@ -158,6 +165,7 @@ API_AVAILABLE(macos(13.0))
     }
     
     CFRelease(blockBuffer);
+    free(audioBufferList);
 }
 
 - (void)writeSystemAudioToRingBuffer:(float *)samples
