@@ -95,13 +95,12 @@ NSMutableDictionary* _systemAudioMixers = nil;
   BOOL useDefaultScreen = NO;
   NSInteger fps = 30;
   
-  // Check if audio (system audio) is requested
-  BOOL includeSystemAudio = NO;
+  // Check if audio (system audio) is requested - enabled by default on macOS
+  BOOL includeSystemAudio = YES;  // Default to YES for macOS screen sharing
   id audioConstraints = constraints[@"audio"];
-  if ([audioConstraints isKindOfClass:[NSNumber class]] && [audioConstraints boolValue] == YES) {
-    includeSystemAudio = YES;
-  } else if ([audioConstraints isKindOfClass:[NSDictionary class]]) {
-    includeSystemAudio = YES;
+  if ([audioConstraints isKindOfClass:[NSNumber class]] && [audioConstraints boolValue] == NO) {
+    // Only disable if explicitly set to false
+    includeSystemAudio = NO;
   }
   
   id videoConstraints = constraints[@"video"];
