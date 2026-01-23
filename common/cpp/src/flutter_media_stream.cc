@@ -566,53 +566,79 @@ void FlutterMediaStream::MediaStreamTrackDispose(
 void FlutterMediaStream::MediaStreamTrackClone(
     const std::string& track_id,
     std::unique_ptr<MethodResultProxy> result) {
-  
-    std::string new_track_id = base_->GenerateUUID();
 
+    std::string new_track_id = base_->GenerateUUID();
     EncodableMap track_params;
 
-    for (auto it : base_->local_streams_) {
-        auto stream = it.second;
-        auto audio_tracks = stream->audio_tracks();
-        for (auto original_audio_track : audio_tracks.std_vector()) {
-            if (original_audio_track->id().std_string() == track_id) {
-                // clone audio track
-              auto audio_source = base_->audio_sources_[track_id];
-              scoped_refptr<RTCAudioTrack> track =
-                  base_->factory_->CreateAudioTrack(audio_source, new_track_id);
-              base_->audio_sources_[track->id().std_string()] = audio_source;
-              base_->local_tracks_[track->id().std_string()] = track;
-
-              track_params[EncodableValue("readyState")] = "live";
-              track_params[EncodableValue("kind")] =
-                  EncodableValue(track->kind().std_string());
-              track_params[EncodableValue("enabled")] =
-                  EncodableValue(track->enabled());
-            }
-        }
-        auto video_tracks = stream->video_tracks();
-        for (auto original_video_track : video_tracks.std_vector()) {
-            if (original_video_track->id().std_string() == track_id) {
-                // clone video track
-              auto video_source = base_->video_sources_[track_id];
-              //TODO copy surface texture
-              scoped_refptr<RTCVideoTrack> track =
-                  base_->factory_->CreateVideoTrack(video_source, new_track_id);
-              base_->video_sources_[track->id().std_string()] = video_source;
-              base_->local_tracks_[track->id().std_string()] = track;
-
-              track_params[EncodableValue("readyState")] = "live";
-              track_params[EncodableValue("kind")] =
-                  EncodableValue(track->kind().std_string());
-              track_params[EncodableValue("enabled")] =
-                  EncodableValue(track->enabled());
-            }
-        }
+    // Look up the track directly from local_tracks_
+    auto track_it = base_->local_tracks_.find(track_id);
+    if (track_it == base_->local_tracks_.end()) {
+        result->Error("MediaStreamTrackCloneFailed",
+                      "Track not found for id: " + track_id);
+        return;
     }
+
+    scoped_refptr<RTCMediaTrack> original_track = track_it->second;
+    std::string kind = original_track->kind().std_string();
+
+    if (kind == "audio") {
+        // Clone audio track
+        auto audio_source_it = base_->audio_sources_.find(track_id);
+        if (audio_source_it == base_->audio_sources_.end()) {
+            result->Error("MediaStreamTrackCloneFailed",
+                          "Audio source not found for track: " + track_id);
+            return;
+        }
+
+        auto audio_source = audio_source_it->second;
+        scoped_refptr<RTCAudioTrack> track =
+            base_->factory_->CreateAudioTrack(audio_source, new_track_id.c_str());
+
+        base_->audio_sources_[new_track_id] = audio_source;
+        base_->local_tracks_[new_track_id] = track;
+
+        track_params[EncodableValue("readyState")] = "live";
+        track_params[EncodableValue("kind")] =
+            EncodableValue(track->kind().std_string());
+        track_params[EncodableValue("enabled")] =
+            EncodableValue(track->enabled());
+    } else if (kind == "video") {
+        // Clone video track
+        auto video_source_it = base_->video_sources_.find(track_id);
+        if (video_source_it == base_->video_sources_.end()) {
+            result->Error("MediaStreamTrackCloneFailed",
+                          "Video source not found for track: " + track_id);
+            return;
+        }
+
+        auto video_source = video_source_it->second;
+        scoped_refptr<RTCVideoTrack> track =
+            base_->factory_->CreateVideoTrack(video_source, new_track_id.c_str());
+
+        base_->video_sources_[new_track_id] = video_source;
+        base_->local_tracks_[new_track_id] = track;
+
+        // Copy video capturer reference so the cloned track shares the same capturer
+        auto capturer_it = base_->video_capturers_.find(track_id);
+        if (capturer_it != base_->video_capturers_.end()) {
+            base_->video_capturers_[new_track_id] = capturer_it->second;
+        }
+
+        track_params[EncodableValue("readyState")] = "live";
+        track_params[EncodableValue("kind")] =
+            EncodableValue(track->kind().std_string());
+        track_params[EncodableValue("enabled")] =
+            EncodableValue(track->enabled());
+    } else {
+        result->Error("MediaStreamTrackCloneFailed",
+                      "Unknown track kind: " + kind);
+        return;
+    }
+
     track_params[EncodableValue("id")] = EncodableValue(new_track_id);
     track_params[EncodableValue("label")] = EncodableValue(new_track_id);
     track_params[EncodableValue("remote")] = EncodableValue(false);
 
     result->Success(EncodableValue(track_params));
-    }
+}
 }  // namespace stream_webrtc_flutter_plugin
