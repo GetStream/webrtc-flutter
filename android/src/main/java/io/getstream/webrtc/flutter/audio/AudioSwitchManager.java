@@ -159,11 +159,13 @@ public class AudioSwitchManager {
             handler.removeCallbacksAndMessages(null);
             handler.postAtFrontOfQueue(() -> {
                 if (!isActive) {
+                    applyAudioConfiguration();
+                    
                     audioSwitch.activate();
                     isActive = true;
 
-                    reapplyAudioConfiguration();
-                }
+                    applyAudioManagerSettings();
+                } 
             });
         }
     }
@@ -206,8 +208,9 @@ public class AudioSwitchManager {
             }
             if (audioDevice != null) {
                 Objects.requireNonNull(audioSwitch).selectDevice(audioDevice);
-                reapplyAudioConfiguration();
-            }
+                applyAudioConfiguration();
+                applyAudioManagerSettings();
+            } 
         });
     }
 
@@ -251,7 +254,8 @@ public class AudioSwitchManager {
             } else {
                 handler.post(() -> {
                     Objects.requireNonNull(audioSwitch).selectDevice(null);
-                    reapplyAudioConfiguration();
+                    applyAudioConfiguration();
+                    applyAudioManagerSettings();
                 });
             }
         }
@@ -442,8 +446,11 @@ public class AudioSwitchManager {
     public void requestAudioFocus() {
         handler.post(() -> {
             if (audioSwitch != null) {
+                applyAudioConfiguration();
+                
                 Objects.requireNonNull(audioSwitch).activate();
-                reapplyAudioConfiguration();
+                
+                applyAudioManagerSettings();
             }
         });
     }
@@ -462,7 +469,8 @@ public class AudioSwitchManager {
             if (focusChange == AudioManager.AUDIOFOCUS_GAIN || 
                 focusChange == AudioManager.AUDIOFOCUS_GAIN_TRANSIENT ||
                 focusChange == AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK) {
-                reapplyAudioConfiguration();
+                applyAudioConfiguration();
+                applyAudioManagerSettings();
             }
         }
 
