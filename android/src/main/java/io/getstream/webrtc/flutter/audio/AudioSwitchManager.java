@@ -415,7 +415,7 @@ public class AudioSwitchManager {
         audioManager.setMode(audioMode);
     }
 
-    private void reapplyAudioConfiguration() {
+    private void applyAudioConfiguration() {
         if (audioSwitch == null) {
             return;
         }
