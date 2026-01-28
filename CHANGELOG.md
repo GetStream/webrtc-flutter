@@ -3,6 +3,7 @@
 
 [2.2.4] - 2025-12-22
 * Fixed possible crash when applying filters to a disposed video track.
+* Fixed cloneTrack for Windows and Linux
 
 [2.2.3] - 2025-12-22
 * [Android] Fixed concurrency issues in local tracks access that could cause a crash.
