@@ -208,18 +208,27 @@ API_AVAILABLE(macos(13.0))
   if (frameCount <= 0) return;
 
   // Get the audio buffer list from the sample buffer.
+  // Use the same flags in both calls -- the alignment flag affects the required size.
+  uint32_t ablFlags = kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment;
+
   size_t bufferListSizeNeeded = 0;
-  CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-      sampleBuffer, &bufferListSizeNeeded, NULL, 0, NULL, NULL, 0, NULL);
+  OSStatus sizeStatus = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+      sampleBuffer, &bufferListSizeNeeded, NULL, 0, NULL, NULL, ablFlags, NULL);
+
+  if (sizeStatus != noErr && sizeStatus != kCMSampleBufferError_ArrayTooSmall) {
+    NSLog(@"ScreenAudioCapturer: Failed to get buffer list size: %d", (int)sizeStatus);
+    return;
+  }
 
   AudioBufferList* abl = (AudioBufferList*)malloc(bufferListSizeNeeded);
   CMBlockBufferRef retainedBlockBuffer = NULL;
 
   OSStatus status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
       sampleBuffer, NULL, abl, bufferListSizeNeeded, NULL, NULL,
-      kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment, &retainedBlockBuffer);
+      ablFlags, &retainedBlockBuffer);
 
   if (status != noErr) {
+    NSLog(@"ScreenAudioCapturer: Failed to get audio buffer list: %d", (int)status);
     free(abl);
     if (retainedBlockBuffer) CFRelease(retainedBlockBuffer);
     return;
