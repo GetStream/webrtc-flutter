@@ -44,12 +44,27 @@ API_AVAILABLE(macos(13.0))
 }
 
 - (void)audioProcessingProcess:(RTC_OBJC_TYPE(RTCAudioBuffer)*)audioBuffer {
-  if (!_capturer || !_capturer.isCapturing) return;
+  // [DBG] Checkpoint 3: Is the mixer being called?
+  static int mixCallCount = 0;
+  ++mixCallCount;
+
+  if (!_capturer || !_capturer.isCapturing) {
+    if (mixCallCount % 100 == 1) {
+      NSLog(@"ScreenAudioMixer: [DBG] called #%d but capturer not ready (capturer=%p, isCapturing=%d)",
+            mixCallCount, _capturer, _capturer ? _capturer.isCapturing : 0);
+    }
+    return;
+  }
 
   NSInteger frames = audioBuffer.frames;
   NSInteger channels = audioBuffer.channels;
 
   if (frames <= 0 || channels <= 0) return;
+
+  if (mixCallCount % 100 == 1) {
+    NSLog(@"ScreenAudioMixer: [DBG] audioProcessingProcess called #%d, frames=%ld, channels=%ld",
+          mixCallCount, (long)frames, (long)channels);
+  }
 
   // Ensure our temporary mix buffer is large enough for mono frames.
   if (_mixBufferCapacity < frames) {
@@ -61,6 +76,15 @@ API_AVAILABLE(macos(13.0))
   // Read mono system audio frames from the capturer.
   // The capturer delivers normalized float32 in [-1.0, 1.0].
   NSInteger framesRead = [_capturer readFrames:_mixBuffer count:frames];
+
+  // [DBG] Checkpoint 4: What did we actually read, and what does the mic buffer look like?
+  if (mixCallCount % 100 == 1) {
+    float micSample = (frames > 0 && channels > 0) ? [audioBuffer rawBufferForChannel:0][0] : 0.0f;
+    float sysSample = (framesRead > 0) ? _mixBuffer[0] : 0.0f;
+    NSLog(@"ScreenAudioMixer: [DBG] framesRead=%ld, sysAudio[0]=%f, micAudio[0]=%f",
+          (long)framesRead, sysSample, micSample);
+  }
+
   if (framesRead <= 0) return;
 
   // Mix system audio into each channel of the RTCAudioBuffer.
