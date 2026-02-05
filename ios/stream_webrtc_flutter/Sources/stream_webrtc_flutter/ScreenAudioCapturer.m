@@ -207,13 +207,6 @@ API_AVAILABLE(macos(13.0))
 
   if (frameCount <= 0) return;
 
-  // [DBG] Checkpoint 1: SCStream audio callback is firing.
-  static int sampleCount = 0;
-  if (++sampleCount % 100 == 1) {
-    NSLog(@"ScreenAudioCapturer: [DBG] received audio callback #%d, frames=%ld, channels=%ld, isFloat=%d, nonInterleaved=%d",
-          sampleCount, (long)frameCount, (long)channelCount, isFloat, isNonInterleaved);
-  }
-
   // Get the audio buffer list from the sample buffer.
   // Use the same flags in both calls -- the alignment flag affects the required size.
   uint32_t ablFlags = kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment;
@@ -285,12 +278,6 @@ API_AVAILABLE(macos(13.0))
   _availableFrames += frameCount;
   if (_availableFrames > _ringBufferCapacity) {
     _availableFrames = _ringBufferCapacity;
-  }
-
-  // [DBG] Checkpoint 2: Ring buffer state after write.
-  if (sampleCount % 100 == 1) {
-    NSLog(@"ScreenAudioCapturer: [DBG] ringBuffer availableFrames=%ld, writePos=%ld",
-          (long)_availableFrames, (long)_writePos);
   }
 
   os_unfair_lock_unlock(&_lock);
