@@ -400,9 +400,12 @@ public class GetUserMediaImpl {
         String deviceId = null;
         if (constraints.getType("audio") == ObjectType.Boolean) {
             addDefaultAudioConstraints(audioConstraints);
-        } else {
+        } else if (constraints.getType("audio") == ObjectType.Map) {
             audioConstraints = MediaConstraintsUtils.parseMediaConstraints(constraints.getMap("audio"));
             deviceId = getSourceIdConstraint(constraints.getMap("audio"));
+        } else {
+            // Fallback for null or unexpected types
+            addDefaultAudioConstraints(audioConstraints);
         }
 
         Log.i(TAG, "getUserMedia(audio): " + audioConstraints);

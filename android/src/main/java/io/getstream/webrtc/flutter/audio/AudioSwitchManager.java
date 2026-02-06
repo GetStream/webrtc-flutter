@@ -1,12 +1,14 @@
 package io.getstream.webrtc.flutter.audio;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.content.Context;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -14,6 +16,7 @@ import androidx.annotation.Nullable;
 import com.twilio.audioswitch.AudioDevice;
 import com.twilio.audioswitch.AudioSwitch;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +35,10 @@ public class AudioSwitchManager {
     private final Context context;
     @NonNull
     private final AudioManager audioManager;
+
+    // WeakReference to avoid memory leaks with Activity
+    @Nullable
+    private WeakReference<Activity> activityRef;
 
     public boolean loggingEnabled;
     private boolean isActive = false;
@@ -159,13 +166,13 @@ public class AudioSwitchManager {
             handler.removeCallbacksAndMessages(null);
             handler.postAtFrontOfQueue(() -> {
                 if (!isActive) {
-                    applyAudioConfiguration();
-                    
-                    audioSwitch.activate();
-                    isActive = true;
-
-                    applyAudioManagerSettings();
-                } 
+                    if (audioSwitch != null) {
+                        ensureAudioConfigurationPersistsWith(() -> {
+                            audioSwitch.activate();
+                            isActive = true;
+                        });
+                    }
+                }
             });
         }
     }
@@ -207,10 +214,13 @@ public class AudioSwitchManager {
                 }
             }
             if (audioDevice != null) {
-                Objects.requireNonNull(audioSwitch).selectDevice(audioDevice);
-                applyAudioConfiguration();
-                applyAudioManagerSettings();
-            } 
+                final AudioDevice deviceToSelect = audioDevice;
+                if (audioSwitch != null) {
+                    ensureAudioConfigurationPersistsWith(() -> {
+                        Objects.requireNonNull(audioSwitch).selectDevice(deviceToSelect);
+                    });
+                }
+            }
         });
     }
 
@@ -253,9 +263,11 @@ public class AudioSwitchManager {
                 selectAudioOutput(audioDevice.getClass());
             } else {
                 handler.post(() -> {
-                    Objects.requireNonNull(audioSwitch).selectDevice(null);
-                    applyAudioConfiguration();
-                    applyAudioManagerSettings();
+                    if (audioSwitch != null) {
+                        ensureAudioConfigurationPersistsWith(() -> {
+                            Objects.requireNonNull(audioSwitch).selectDevice(null);
+                        });
+                    }
                 });
             }
         }
@@ -338,9 +350,11 @@ public class AudioSwitchManager {
     }
 
     public void setManageAudioFocus(@Nullable Boolean manage) {
-        if (manage != null && audioSwitch != null) {
+        if (manage != null) {
             this.manageAudioFocus = manage;
-            Objects.requireNonNull(audioSwitch).setManageAudioFocus(this.manageAudioFocus);
+            if (audioSwitch != null) {
+                Objects.requireNonNull(audioSwitch).setManageAudioFocus(this.manageAudioFocus);
+            }
         }
     }
 
@@ -405,9 +419,11 @@ public class AudioSwitchManager {
     }
 
     public void setForceHandleAudioRouting(@Nullable Boolean force) {
-        if (force != null && audioSwitch != null) {
+        if (force != null) {
             this.forceHandleAudioRouting = force;
-            Objects.requireNonNull(audioSwitch).setForceHandleAudioRouting(this.forceHandleAudioRouting);
+            if (audioSwitch != null) {
+                Objects.requireNonNull(audioSwitch).setForceHandleAudioRouting(this.forceHandleAudioRouting);
+            }
         }
     }
 
@@ -415,22 +431,45 @@ public class AudioSwitchManager {
         audioManager.setMode(audioMode);
     }
 
-    private void applyAudioConfiguration() {
+    public void setActivity(@Nullable Activity activity) {
+        this.activityRef = activity != null ? new WeakReference<>(activity) : null;
+    }
+
+    @Nullable
+    private Activity getActivity() {
+        return activityRef != null ? activityRef.get() : null;
+    }
+
+    private void applyVolumeControlStream() {
+        Activity activity = getActivity();
+        if (activity != null && !activity.isFinishing() && !activity.isDestroyed()) {
+            activity.setVolumeControlStream(audioStreamType);
+        }
+    }
+
+    private void applyAudioConfigurationSync() {
         if (audioSwitch == null) {
             return;
         }
 
-        handler.post(() -> {
-            Objects.requireNonNull(audioSwitch).setManageAudioFocus(manageAudioFocus);
-            Objects.requireNonNull(audioSwitch).setFocusMode(focusMode);
-            Objects.requireNonNull(audioSwitch).setAudioMode(audioMode);
-            Objects.requireNonNull(audioSwitch).setAudioStreamType(audioStreamType);
-            Objects.requireNonNull(audioSwitch).setAudioAttributeContentType(audioAttributeContentType);
-            Objects.requireNonNull(audioSwitch).setAudioAttributeUsageType(audioAttributeUsageType);
-            Objects.requireNonNull(audioSwitch).setForceHandleAudioRouting(forceHandleAudioRouting);
-            
-            applyAudioManagerSettings();
-        });
+        Objects.requireNonNull(audioSwitch).setManageAudioFocus(manageAudioFocus);
+        Objects.requireNonNull(audioSwitch).setFocusMode(focusMode);
+        Objects.requireNonNull(audioSwitch).setAudioMode(audioMode);
+        Objects.requireNonNull(audioSwitch).setAudioStreamType(audioStreamType);
+        Objects.requireNonNull(audioSwitch).setAudioAttributeContentType(audioAttributeContentType);
+        Objects.requireNonNull(audioSwitch).setAudioAttributeUsageType(audioAttributeUsageType);
+        Objects.requireNonNull(audioSwitch).setForceHandleAudioRouting(forceHandleAudioRouting);
+    }
+
+    private void ensureAudioConfigurationPersistsWith(Runnable action) {
+        applyAudioManagerSettings();
+
+        action.run();
+        applyAudioConfigurationSync();
+
+        // Reapply the audio mode to ensure the audio is routed correctly.
+        applyAudioManagerSettings();
+        applyVolumeControlStream();
     }
 
     public void clearCommunicationDevice() {
@@ -446,11 +485,9 @@ public class AudioSwitchManager {
     public void requestAudioFocus() {
         handler.post(() -> {
             if (audioSwitch != null) {
-                applyAudioConfiguration();
-                
-                Objects.requireNonNull(audioSwitch).activate();
-                
-                applyAudioManagerSettings();
+                ensureAudioConfigurationPersistsWith(() -> {
+                    Objects.requireNonNull(audioSwitch).activate();
+                });
             }
         });
     }
@@ -465,12 +502,15 @@ public class AudioSwitchManager {
             if (current != null) {
                 current.onAudioFocusChange(focusChange);
             }
-            
-            if (focusChange == AudioManager.AUDIOFOCUS_GAIN || 
-                focusChange == AudioManager.AUDIOFOCUS_GAIN_TRANSIENT ||
-                focusChange == AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK) {
-                applyAudioConfiguration();
-                applyAudioManagerSettings();
+
+            if (focusChange == AudioManager.AUDIOFOCUS_GAIN ||
+                    focusChange == AudioManager.AUDIOFOCUS_GAIN_TRANSIENT ||
+                    focusChange == AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK) {
+                handler.post(() -> {
+                    ensureAudioConfigurationPersistsWith(() -> {
+                        // No action needed — just re-enforce current configuration
+                    });
+                });
             }
         }
 

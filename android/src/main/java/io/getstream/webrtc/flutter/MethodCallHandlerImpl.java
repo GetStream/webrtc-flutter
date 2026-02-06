@@ -156,6 +156,12 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   private final ConcurrentHashMap<String, Double> pausedTrackVolumes = new ConcurrentHashMap<>();
   private volatile boolean isAudioPlayoutPaused = false;
 
+  // Previous initialization parameters for comparison during reinitialization
+  private Boolean previousBypassVoiceProcessing;
+  private Integer previousAudioSampleRate;
+  private Integer previousAudioOutputSampleRate;
+  private ConstraintsMap previousAndroidAudioConfiguration;
+
   public static class LogSink implements Loggable {
     @Override
     public void onLogMessage(String message, Severity sev, String tag) {
@@ -183,6 +189,44 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     Log.d(TAG, errorMsg);
   }
 
+  /**
+   * Cleans up all peer connections, local tracks, and local streams.
+   * This method can be called both during dispose and reinitialization.
+   */
+  private void cleanupResources() {
+    try {
+      // Dispose all peer connections
+      for (final PeerConnectionObserver connection : mPeerConnectionObservers.values()) {
+        peerConnectionDispose(connection);
+      }
+      mPeerConnectionObservers.clear();
+
+      // Dispose all local tracks
+      for (final LocalTrack track : localTracks.values()) {
+        try {
+          track.dispose();
+        } catch (Exception e) {
+          Log.e(TAG, "cleanupResources: error disposing local track", e);
+        }
+      }
+      localTracks.clear();
+
+      // Dispose all local streams
+      for (final MediaStream mediaStream : localStreams.values()) {
+        try {
+          streamDispose(mediaStream);
+          mediaStream.dispose();
+        } catch (Exception e) {
+          Log.e(TAG, "cleanupResources: error disposing media stream", e);
+        }
+      }
+
+      localStreams.clear();
+    } catch (Exception e) {
+      Log.e(TAG, "cleanupResources: error disposing resources", e);
+    }
+  }
+
   void dispose() {
     if (AudioSwitchManager.instance != null) {
       AudioSwitchManager.instance.setAudioFocusChangeListener(null);
@@ -191,19 +235,8 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       audioFocusManager.setAudioFocusChangeListener(null);
       audioFocusManager = null;
     }
-    for (final MediaStream mediaStream : localStreams.values()) {
-      streamDispose(mediaStream);
-      mediaStream.dispose();
-    }
-    localStreams.clear();
-    for (final LocalTrack track : localTracks.values()) {
-      track.dispose();
-    }
-    localTracks.clear();
-    for (final PeerConnectionObserver connection : mPeerConnectionObservers.values()) {
-      peerConnectionDispose(connection);
-    }
-    mPeerConnectionObservers.clear();
+
+    cleanupResources();
   }
 
   /**
@@ -215,26 +248,48 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     for (LocalTrack track : localTracks.values()) {
       if (track instanceof LocalAudioTrack) {
         if (track.enabled()) {
-          return false; 
+          return false;
         }
       }
     }
-    return true; 
+    return true;
   }
 
-  private void initialize(boolean bypassVoiceProcessing, int networkIgnoreMask, boolean forceSWCodec, List<String> forceSWCodecList,
-  @Nullable ConstraintsMap androidAudioConfiguration, Severity logSeverity, @Nullable Integer audioSampleRate, @Nullable Integer audioOutputSampleRate) {
-    if (mFactory != null) {
+  private void initialize(boolean bypassVoiceProcessing, int networkIgnoreMask, boolean forceSWCodec,
+      List<String> forceSWCodecList,
+      @Nullable ConstraintsMap androidAudioConfiguration, Severity logSeverity, @Nullable Integer audioSampleRate,
+      @Nullable Integer audioOutputSampleRate, boolean reinitialize) {
+    boolean isReinitializing = (mFactory != null && reinitialize);
+
+    if (mFactory != null && !reinitialize) {
+      // Already initialized and reinitialize flag is false, return early
       return;
+    }
+
+    if (isReinitializing) {
+      // Clean up all existing resources before reinitializing
+      cleanupResources();
+
+      if (audioDeviceModule != null) {
+        audioDeviceModule = null;
+      }
+      if (recordSamplesReadyCallbackAdapter != null) {
+        recordSamplesReadyCallbackAdapter = null;
+      }
+      if (playbackSamplesReadyCallbackAdapter != null) {
+        playbackSamplesReadyCallbackAdapter = null;
+      }
+
+      mFactory = null;
     }
 
     this.initializedAndroidAudioConfiguration = androidAudioConfiguration;
 
     PeerConnectionFactory.initialize(
-            InitializationOptions.builder(context)
-                    .setEnableInternalTracer(true)
-                    .setInjectableLogger(logSink, logSeverity)
-                    .createInitializationOptions());
+        InitializationOptions.builder(context)
+            .setEnableInternalTracer(true)
+            .setInjectableLogger(logSink, logSeverity)
+            .createInitializationOptions());
 
     getUserMediaImpl = new GetUserMediaImpl(this, context);
 
@@ -247,20 +302,15 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     AudioAttributes audioAttributes = null;
     if (androidAudioConfiguration != null) {
       Integer usageType = AudioUtils.getAudioAttributesUsageTypeForString(
-              androidAudioConfiguration.getString("androidAudioAttributesUsageType"));
+          androidAudioConfiguration.getString("androidAudioAttributesUsageType"));
       Integer contentType = AudioUtils.getAudioAttributesContentTypeFromString(
-              androidAudioConfiguration.getString("androidAudioAttributesContentType"));
-
-      // Warn if one is provided without the other.
-      if (usageType == null ^ contentType == null) {
-          Log.w(TAG, "usageType and contentType must both be provided!");
-      }
+          androidAudioConfiguration.getString("androidAudioAttributesContentType"));
 
       if (usageType != null && contentType != null) {
-          audioAttributes = new AudioAttributes.Builder()
-                  .setUsage(usageType)
-                  .setContentType(contentType)
-                  .build();
+        audioAttributes = new AudioAttributes.Builder()
+            .setUsage(usageType)
+            .setContentType(contentType)
+            .build();
       }
 
       if (AudioSwitchManager.instance != null) {
@@ -271,7 +321,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     JavaAudioDeviceModule.Builder audioDeviceModuleBuilder = JavaAudioDeviceModule.builder(context);
     Boolean isDeviceSupportHWAec = AcousticEchoCanceler.isAvailable();
     Boolean isDeviceSupportHWNs = NoiseSuppressor.isAvailable();
-    
+
     if (audioAttributes != null) {
       audioDeviceModuleBuilder.setAudioAttributes(audioAttributes);
     }
@@ -279,21 +329,22 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     recordSamplesReadyCallbackAdapter = new RecordSamplesReadyCallbackAdapter();
     playbackSamplesReadyCallbackAdapter = new PlaybackSamplesReadyCallbackAdapter();
 
-    if(bypassVoiceProcessing) {
+    if (bypassVoiceProcessing) {
       audioDeviceModuleBuilder.setUseHardwareAcousticEchoCanceler(false)
-                        .setUseHardwareNoiseSuppressor(false)
-                        .setUseStereoInput(true)
-                        .setUseStereoOutput(true)
-                        .setAudioSource(MediaRecorder.AudioSource.MIC);
+          .setUseHardwareNoiseSuppressor(false)
+          .setUseStereoInput(true)
+          .setUseStereoOutput(true)
+          .setAudioSource(MediaRecorder.AudioSource.MIC);
     } else {
       audioDeviceModuleBuilder
-            .setUseHardwareAcousticEchoCanceler(isDeviceSupportHWAec)
-            .setUseHardwareNoiseSuppressor(isDeviceSupportHWNs)
-            .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION);
+          .setUseHardwareAcousticEchoCanceler(isDeviceSupportHWAec)
+          .setUseHardwareNoiseSuppressor(isDeviceSupportHWNs)
+          .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION);
     }
 
     // Configure audio sample rates if specified
-    // This allows high-quality audio playback instead of defaulting to WebRtcAudioManager's queried rate
+    // This allows high-quality audio playback instead of defaulting to
+    // WebRtcAudioManager's queried rate
     if (audioSampleRate != null) {
       Log.i(TAG, "Setting audio sample rate (both input and output) to: " + audioSampleRate + " Hz");
       audioDeviceModuleBuilder.setSampleRate(audioSampleRate);
@@ -304,8 +355,10 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       Log.i(TAG, "Setting audio output sample rate to: " + audioOutputSampleRate + " Hz");
       audioDeviceModuleBuilder.setOutputSampleRate(audioOutputSampleRate);
     } else if (bypassVoiceProcessing && audioSampleRate == null && audioOutputSampleRate == null) {
-      // When bypassVoiceProcessing is enabled, use the device's native optimal sample rate
-      // This prevents the default behavior which may use a low sample rate based on audio mode
+      // When bypassVoiceProcessing is enabled, use the device's native optimal sample
+      // rate
+      // This prevents the default behavior which may use a low sample rate based on
+      // audio mode
       AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
       if (audioManager != null) {
         String nativeSampleRateStr = audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE);
@@ -317,7 +370,8 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
             Log.w(TAG, "Failed to parse native sample rate, using default: " + e.getMessage());
           }
         }
-        Log.i(TAG, "bypassVoiceProcessing enabled with no explicit sample rate - using device's native optimal rate: " + nativeSampleRate + " Hz");
+        Log.i(TAG, "bypassVoiceProcessing enabled with no explicit sample rate - using device's native optimal rate: "
+            + nativeSampleRate + " Hz");
         audioDeviceModuleBuilder.setOutputSampleRate(nativeSampleRate);
       } else {
         Log.w(TAG, "AudioManager not available, defaulting to 48000 Hz output");
@@ -333,7 +387,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     recordSamplesReadyCallbackAdapter.addCallback(new JavaAudioDeviceModule.SamplesReadyCallback() {
       @Override
       public void onWebRtcAudioRecordSamplesReady(JavaAudioDeviceModule.AudioSamples audioSamples) {
-        for(LocalTrack track : localTracks.values()) {
+        for (LocalTrack track : localTracks.values()) {
           if (track instanceof LocalAudioTrack) {
             ((LocalAudioTrack) track).onWebRtcAudioRecordSamplesReady(audioSamples);
           }
@@ -345,7 +399,8 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     audioDeviceModuleBuilder.setAudioBufferCallback(
         (audioBuffer, audioFormat, channelCount, sampleRate, bytesRead, captureTimeNs) -> {
           boolean isMicrophoneMuted = isMicrophoneMuted();
-          if (!isMicrophoneMuted && bytesRead > 0 && getUserMediaImpl != null && getUserMediaImpl.isScreenAudioEnabled()) {
+          if (!isMicrophoneMuted && bytesRead > 0 && getUserMediaImpl != null
+              && getUserMediaImpl.isScreenAudioEnabled()) {
             // Get screen audio bytes and mix with microphone audio
             ByteBuffer screenAudioBuffer = getUserMediaImpl.getScreenAudioBytes(bytesRead);
             if (screenAudioBuffer != null && screenAudioBuffer.remaining() > 0) {
@@ -361,46 +416,56 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
 
     audioDeviceModule = audioDeviceModuleBuilder.createAudioDeviceModule();
 
-    if(!bypassVoiceProcessing) {
-       if(isDeviceSupportHWNs) {
-         audioDeviceModule.setNoiseSuppressorEnabled(true);
-       }
+    if (!bypassVoiceProcessing) {
+      if (isDeviceSupportHWNs) {
+        audioDeviceModule.setNoiseSuppressorEnabled(true);
+      }
     }
 
-    getUserMediaImpl.audioDeviceModule = (JavaAudioDeviceModule) audioDeviceModule;
+    // Update getUserMediaImpl with new audio device module instance
+    if (getUserMediaImpl != null) {
+      getUserMediaImpl.audioDeviceModule = (JavaAudioDeviceModule) audioDeviceModule;
+    }
 
     final Options options = new Options();
     options.networkIgnoreMask = networkIgnoreMask;
 
     final PeerConnectionFactory.Builder factoryBuilder = PeerConnectionFactory.builder()
-            .setOptions(options);
+        .setOptions(options);
 
     // Initialize EGL contexts required for HW acceleration.
     EglBase.Context eglContext = EglUtils.getRootEglBaseContext();
 
-    videoEncoderFactory = new CustomVideoEncoderFactory(eglContext, true, true);
-    videoDecoderFactory = new CustomVideoDecoderFactory(eglContext);
+    if (!isReinitializing) {
+      videoEncoderFactory = new CustomVideoEncoderFactory(eglContext, true, true);
+      videoDecoderFactory = new CustomVideoDecoderFactory(eglContext);
+    }
 
     factoryBuilder
-            .setVideoEncoderFactory(videoEncoderFactory)
-            .setVideoDecoderFactory(videoDecoderFactory);
+        .setVideoEncoderFactory(videoEncoderFactory)
+        .setVideoDecoderFactory(videoDecoderFactory);
 
     videoDecoderFactory.setForceSWCodec(forceSWCodec);
     videoDecoderFactory.setForceSWCodecList(forceSWCodecList);
-// Disabled software encoding for now, only using software decoding. See FLU-120
-//    videoEncoderFactory.setForceSWCodec(forceSWCodec);
-//    videoEncoderFactory.setForceSWCodecList(forceSWCodecList);
+    // Disabled software encoding for now, only using software decoding. See FLU-120
+    // videoEncoderFactory.setForceSWCodec(forceSWCodec);
+    // videoEncoderFactory.setForceSWCodecList(forceSWCodecList);
 
-
-    if(audioProcessingFactoryProvider == null) {
-        audioProcessingFactoryProvider = new AudioProcessingController();
+    if (audioProcessingFactoryProvider == null) {
+      audioProcessingFactoryProvider = new AudioProcessingController();
     }
 
     factoryBuilder.setAudioProcessingFactory(audioProcessingFactoryProvider.getFactory());
 
     mFactory = factoryBuilder
-            .setAudioDeviceModule(audioDeviceModule)
-            .createPeerConnectionFactory();
+        .setAudioDeviceModule(audioDeviceModule)
+        .createPeerConnectionFactory();
+
+    // Store current initialization parameters for future comparison
+    previousBypassVoiceProcessing = bypassVoiceProcessing;
+    previousAudioSampleRate = audioSampleRate;
+    previousAudioOutputSampleRate = audioOutputSampleRate;
+    previousAndroidAudioConfiguration = androidAudioConfiguration;
 
   }
 
@@ -490,7 +555,14 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
           audioOutputSampleRate = constraintsMap.getInt("audioOutputSampleRate");
         }
 
-        initialize(enableBypassVoiceProcessing, networkIgnoreMask, forceSWCodec, forceSWCodecList, androidAudioConfiguration, logSeverity, audioSampleRate, audioOutputSampleRate);
+        boolean reinitialize = false;
+        if (constraintsMap.hasKey("reinitialize")
+            && constraintsMap.getType("reinitialize") == ObjectType.Boolean) {
+          reinitialize = constraintsMap.getBoolean("reinitialize");
+        }
+
+        initialize(enableBypassVoiceProcessing, networkIgnoreMask, forceSWCodec, forceSWCodecList,
+            androidAudioConfiguration, logSeverity, audioSampleRate, audioOutputSampleRate, reinitialize);
         result.success(null);
         break;
       }

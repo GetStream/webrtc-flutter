@@ -92,6 +92,10 @@ public class FlutterWebRTCPlugin implements FlutterPlugin, ActivityAware, EventC
     @Override
     public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
         methodCallHandler.setActivity(binding.getActivity());
+        // Also set Activity on AudioSwitchManager for setVolumeControlStream support
+        if (AudioSwitchManager.instance != null) {
+            AudioSwitchManager.instance.setActivity(binding.getActivity());
+        }
         this.observer = new LifeCycleObserver();
         this.lifecycle = ((HiddenLifecycleReference) binding.getLifecycle()).getLifecycle();
         this.lifecycle.addObserver(this.observer);
@@ -100,16 +104,25 @@ public class FlutterWebRTCPlugin implements FlutterPlugin, ActivityAware, EventC
     @Override
     public void onDetachedFromActivityForConfigChanges() {
         methodCallHandler.setActivity(null);
+        if (AudioSwitchManager.instance != null) {
+            AudioSwitchManager.instance.setActivity(null);
+        }
     }
 
     @Override
     public void onReattachedToActivityForConfigChanges(@NonNull ActivityPluginBinding binding) {
         methodCallHandler.setActivity(binding.getActivity());
+        if (AudioSwitchManager.instance != null) {
+            AudioSwitchManager.instance.setActivity(binding.getActivity());
+        }
     }
 
     @Override
     public void onDetachedFromActivity() {
         methodCallHandler.setActivity(null);
+        if (AudioSwitchManager.instance != null) {
+            AudioSwitchManager.instance.setActivity(null);
+        }
         if (this.observer != null) {
             this.lifecycle.removeObserver(this.observer);
             if (application!=null) {

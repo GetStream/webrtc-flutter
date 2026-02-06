@@ -41,6 +41,11 @@ class WebRTC {
   /// Initialize the WebRTC plugin. If this is not manually called, will be
   /// initialized with default settings.
   ///
+  /// This method can be called multiple times to reinitialize the WebRTC plugin
+  /// with new parameters. When called after initial setup, it will automatically
+  /// dispose all existing peer connections, tracks, and streams, then recreate
+  /// the audio device module and peer connection factory with the new parameters.
+  ///
   /// Params:
   ///
   /// "networkIgnoreMask": a list of AdapterType objects converted to string with `.value`
@@ -62,10 +67,15 @@ class WebRTC {
   ///                          Takes precedence over audioSampleRate for output.
   ///                          If not specified, uses audioSampleRate or native default.
   static Future<void> initialize({Map<String, dynamic>? options}) async {
-    if (!initialized) {
+    final reinitialize = (options?.containsKey('reinitialize') ?? false)
+        ? options!['reinitialize']
+        : false;
+
+    if (!initialized || reinitialize) {
       await _channel.invokeMethod<void>('initialize', <String, dynamic>{
         'options': options ?? {},
       });
+
       initialized = true;
     }
   }
