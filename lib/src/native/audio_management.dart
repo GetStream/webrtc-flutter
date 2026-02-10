@@ -170,4 +170,53 @@ class NativeAudioManagement {
       throw 'Unable to set isVoiceProcessingBypassed: ${e.message}';
     }
   }
+
+  // Stereo Playout ADM APIs (iOS only)
+
+  /// Set whether stereo playout is preferred.
+  ///
+  /// When enabled, the native layer sets `prefersStereoPlayout` on the ADM,
+  /// bypasses voice processing, sets mute mode to input mixer, and monitors
+  /// audio route changes to refresh stereo playout state.
+  static Future<void> setStereoPlayoutPreferred(bool preferred) async {
+    if (kIsWeb || !WebRTC.platformIsIOS) return;
+
+    try {
+      await WebRTC.invokeMethod(
+        'setStereoPlayoutPreferred',
+        <String, dynamic>{'preferred': preferred},
+      );
+    } on PlatformException catch (e) {
+      throw 'Unable to set stereo playout preferred: ${e.message}';
+    }
+  }
+
+  /// Returns whether stereo playout is currently enabled on the ADM.
+  static Future<bool> isStereoPlayoutEnabled() async {
+    if (kIsWeb || !WebRTC.platformIsIOS) return false;
+
+    try {
+      final result = await WebRTC.invokeMethod(
+        'isStereoPlayoutEnabled',
+        <String, dynamic>{},
+      );
+      return result as bool;
+    } on PlatformException catch (e) {
+      throw 'Unable to get isStereoPlayoutEnabled: ${e.message}';
+    }
+  }
+
+  /// Refreshes the stereo playout state on the ADM.
+  static Future<void> refreshStereoPlayoutState() async {
+    if (kIsWeb || !WebRTC.platformIsIOS) return;
+
+    try {
+      await WebRTC.invokeMethod(
+        'refreshStereoPlayoutState',
+        <String, dynamic>{},
+      );
+    } on PlatformException catch (e) {
+      throw 'Unable to refresh stereo playout state: ${e.message}';
+    }
+  }
 }

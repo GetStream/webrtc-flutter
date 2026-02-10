@@ -231,4 +231,22 @@ class Helper {
           'triggeriOSAudioRouteSelectionUI is only supported for iOS');
     }
   }
+
+  /// Set whether stereo playout is preferred (iOS only).
+  ///
+  /// When enabled, the native layer configures the ADM for stereo playout,
+  /// bypasses voice processing, and monitors audio route changes.
+  static Future<void> setStereoPlayoutPreferred(bool preferred) =>
+      NativeAudioManagement.setStereoPlayoutPreferred(preferred);
+
+  /// Returns whether stereo playout is currently enabled (iOS only).
+  static Future<bool> isStereoPlayoutEnabled() =>
+      NativeAudioManagement.isStereoPlayoutEnabled();
+
+  /// Refreshes the stereo playout state on the ADM (iOS only).
+  ///
+  /// Re-evaluates whether stereo playout should be active based on the
+  /// current audio route and device capabilities.
+  static Future<void> refreshStereoPlayoutState() =>
+      NativeAudioManagement.refreshStereoPlayoutState();
 }

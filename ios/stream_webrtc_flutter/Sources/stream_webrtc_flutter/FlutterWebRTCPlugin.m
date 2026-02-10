@@ -119,6 +119,8 @@ void postEvent(FlutterEventSink _Nullable sink, id _Nullable event) {
   AudioManager* _audioManager;
 #if TARGET_OS_IPHONE
   FLutterRTCVideoPlatformViewFactory* _platformViewFactory;
+  BOOL _stereoPlayoutPreferred;
+  dispatch_block_t _stereoRefreshDebounceBlock;
 #endif
 
   RTC_OBJC_TYPE(RTCCallbackLogger) * loggerCallback;
@@ -255,6 +257,33 @@ static FlutterWebRTCPlugin* sharedSingleton;
                          routeChangeReason == AVAudioSessionRouteChangeReasonCategoryChange ||
                          routeChangeReason == AVAudioSessionRouteChangeReasonOverride)) {
     postEvent(self.eventSink, @{@"event" : @"onDeviceChange"});
+  }
+
+  // When stereo playout is preferred, debounce-refresh stereo playout state
+  // after route changes so stereo is re-evaluated for the new audio device.
+  if (_stereoPlayoutPreferred) {
+    // Cancel any previously scheduled debounce block
+    if (_stereoRefreshDebounceBlock != nil) {
+      dispatch_block_cancel(_stereoRefreshDebounceBlock);
+      _stereoRefreshDebounceBlock = nil;
+    }
+
+    __weak typeof(self) weakSelf = self;
+    _stereoRefreshDebounceBlock = dispatch_block_create(0, ^{
+      __strong typeof(weakSelf) strongSelf = weakSelf;
+      if (strongSelf == nil) return;
+      RTCAudioDeviceModule* adm = strongSelf->_peerConnectionFactory.audioDeviceModule;
+      if (adm != nil) {
+        NSLog(@"FlutterWebRTCPlugin: refreshing stereo playout state after route change");
+        [adm refreshStereoPlayoutState];
+      }
+      strongSelf->_stereoRefreshDebounceBlock = nil;
+    });
+
+    // Debounce for 2 seconds (matching Swift SDK behavior)
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(),
+                   _stereoRefreshDebounceBlock);
   }
 #endif
 }
@@ -1736,6 +1765,42 @@ static FlutterWebRTCPlugin* sharedSingleton;
     NSNumber* value = call.arguments[@"value"];
     adm.voiceProcessingBypassed = value.boolValue;
     result(nil);
+  } else if ([@"setStereoPlayoutPreferred" isEqualToString:call.method]) {
+    RTCAudioDeviceModule* adm = _peerConnectionFactory.audioDeviceModule;
+    if (adm == nil) {
+      result([FlutterError errorWithCode:@"setStereoPlayoutPreferred failed"
+                                 message:@"Error: audioDeviceModule is nil"
+                                 details:nil]);
+      return;
+    }
+    NSNumber* value = call.arguments[@"preferred"];
+    BOOL preferred = value.boolValue;
+    _stereoPlayoutPreferred = preferred;
+    adm.prefersStereoPlayout = preferred;
+    adm.voiceProcessingBypassed = preferred;
+    [adm setMuteMode:preferred ? RTCAudioEngineMuteModeInputMixer
+                               : RTCAudioEngineMuteModeVoiceProcessing];
+    result(nil);
+  } else if ([@"isStereoPlayoutEnabled" isEqualToString:call.method]) {
+    RTCAudioDeviceModule* adm = _peerConnectionFactory.audioDeviceModule;
+    if (adm == nil) {
+      result([FlutterError errorWithCode:@"isStereoPlayoutEnabled failed"
+                                 message:@"Error: audioDeviceModule is nil"
+                                 details:nil]);
+      return;
+    }
+    NSNumber* admResult = [NSNumber numberWithBool:adm.isStereoPlayoutEnabled];
+    result(admResult);
+  } else if ([@"refreshStereoPlayoutState" isEqualToString:call.method]) {
+    RTCAudioDeviceModule* adm = _peerConnectionFactory.audioDeviceModule;
+    if (adm == nil) {
+      result([FlutterError errorWithCode:@"refreshStereoPlayoutState failed"
+                                 message:@"Error: audioDeviceModule is nil"
+                                 details:nil]);
+      return;
+    }
+    [adm refreshStereoPlayoutState];
+    result(nil);
   } else {
     if ([self handleFrameCryptorMethodCall:call result:result]) {
       return;
@@ -2681,6 +2746,23 @@ static FlutterWebRTCPlugin* sharedSingleton;
   NSLog(@"audioDeviceModule did update devices");
   if (self.eventSink) {
     postEvent(self.eventSink, @{@"event" : @"onDeviceChange"});
+  }
+}
+
+- (void)audioDeviceModule:(RTCAudioDeviceModule*)audioDeviceModule
+    didUpdateAudioProcessingState:(RTCAudioProcessingState)state {
+  NSLog(@"audioDeviceModule did update audio processing state - stereoPlayoutEnabled: %d, "
+        @"voiceProcessingEnabled: %d, voiceProcessingBypassed: %d, voiceProcessingAGCEnabled: %d",
+        state.stereoPlayoutEnabled, state.voiceProcessingEnabled, state.voiceProcessingBypassed,
+        state.voiceProcessingAGCEnabled);
+  if (self.eventSink) {
+    postEvent(self.eventSink, @{
+      @"event" : @"onAudioProcessingStateChanged",
+      @"stereoPlayoutEnabled" : @(state.stereoPlayoutEnabled),
+      @"voiceProcessingEnabled" : @(state.voiceProcessingEnabled),
+      @"voiceProcessingBypassed" : @(state.voiceProcessingBypassed),
+      @"voiceProcessingAGCEnabled" : @(state.voiceProcessingAGCEnabled)
+    });
   }
 }
 
