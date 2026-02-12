@@ -127,8 +127,8 @@ class Helper {
 
   /// Ensure audio session
   /// for iOS only
-  static Future<void> ensureAudioSession() =>
-      NativeAudioManagement.ensureAudioSession();
+  static Future<void> ensureiOSAudioSession() =>
+      IosAudioManagement.ensureAudioSession();
 
   /// Enable speakerphone, but use bluetooth if audio output device available
   /// for iOS/Android only
@@ -209,44 +209,29 @@ class Helper {
     }
   }
 
-  static Future<bool> enableIOSMultitaskingCameraAccess(bool enable) async {
-    if (WebRTC.platformIsIOS) {
-      return await WebRTC.invokeMethod(
-        'enableIOSMultitaskingCameraAccess',
-        <String, dynamic>{'enable': enable},
-      );
-    } else {
-      throw Exception(
-          'enableIOSMultitaskingCameraAccess is only supported for iOS');
-    }
-  }
+  /// Enable or disable iOS multitasking camera access (iOS only).
+  static Future<bool> enableIOSMultitaskingCameraAccess(bool enable) =>
+      IosAudioManagement.enableMultitaskingCameraAccess(enable);
 
-  static Future<void> triggeriOSAudioRouteSelectionUI() async {
-    if (WebRTC.platformIsIOS) {
-      return await WebRTC.invokeMethod(
-        'triggeriOSAudioRouteSelectionUI',
-      );
-    } else {
-      throw Exception(
-          'triggeriOSAudioRouteSelectionUI is only supported for iOS');
-    }
-  }
+  /// Trigger the iOS audio route selection UI (iOS only).
+  static Future<void> triggeriOSAudioRouteSelectionUI() =>
+      IosAudioManagement.triggerAudioRouteSelectionUI();
 
   /// Set whether stereo playout is preferred (iOS only).
   ///
   /// When enabled, the native layer configures the ADM for stereo playout,
   /// bypasses voice processing, and monitors audio route changes.
-  static Future<void> setStereoPlayoutPreferred(bool preferred) =>
-      NativeAudioManagement.setStereoPlayoutPreferred(preferred);
+  static Future<void> setiOSStereoPlayoutPreferred(bool preferred) =>
+      IosAudioManagement.setStereoPlayoutPreferred(preferred);
 
   /// Returns whether stereo playout is currently enabled (iOS only).
-  static Future<bool> isStereoPlayoutEnabled() =>
-      NativeAudioManagement.isStereoPlayoutEnabled();
+  static Future<bool> isiOSStereoPlayoutEnabled() =>
+      IosAudioManagement.isStereoPlayoutEnabled();
 
   /// Refreshes the stereo playout state on the ADM (iOS only).
   ///
   /// Re-evaluates whether stereo playout should be active based on the
   /// current audio route and device capabilities.
-  static Future<void> refreshStereoPlayoutState() =>
-      NativeAudioManagement.refreshStereoPlayoutState();
+  static Future<void> refreshiOSStereoPlayoutState() =>
+      IosAudioManagement.refreshStereoPlayoutState();
 }

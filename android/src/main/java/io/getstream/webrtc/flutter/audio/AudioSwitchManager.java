@@ -452,13 +452,14 @@ public class AudioSwitchManager {
             return;
         }
 
-        Objects.requireNonNull(audioSwitch).setManageAudioFocus(manageAudioFocus);
-        Objects.requireNonNull(audioSwitch).setFocusMode(focusMode);
-        Objects.requireNonNull(audioSwitch).setAudioMode(audioMode);
-        Objects.requireNonNull(audioSwitch).setAudioStreamType(audioStreamType);
-        Objects.requireNonNull(audioSwitch).setAudioAttributeContentType(audioAttributeContentType);
-        Objects.requireNonNull(audioSwitch).setAudioAttributeUsageType(audioAttributeUsageType);
-        Objects.requireNonNull(audioSwitch).setForceHandleAudioRouting(forceHandleAudioRouting);
+        AudioSwitch localAudioSwitch = Objects.requireNonNull(audioSwitch);
+        localAudioSwitch.setManageAudioFocus(manageAudioFocus);
+        localAudioSwitch.setFocusMode(focusMode);
+        localAudioSwitch.setAudioMode(audioMode);
+        localAudioSwitch.setAudioStreamType(audioStreamType);
+        localAudioSwitch.setAudioAttributeContentType(audioAttributeContentType);
+        localAudioSwitch.setAudioAttributeUsageType(audioAttributeUsageType);
+        localAudioSwitch.setForceHandleAudioRouting(forceHandleAudioRouting);
     }
 
     private void ensureAudioConfigurationPersistsWith(Runnable action) {
