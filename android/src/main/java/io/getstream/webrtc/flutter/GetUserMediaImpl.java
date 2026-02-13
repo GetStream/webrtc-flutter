@@ -134,6 +134,8 @@ public class GetUserMediaImpl {
     private volatile boolean screenAudioEnabled = false;
     private OrientationAwareScreenCapturer currentScreenCapturer;
 
+    private int audioChannelCount = 1;
+
     public void screenRequestPermissions(ResultReceiver resultReceiver) {
         mediaProjectionData = null;
         final Activity activity = stateProvider.getActivity();
@@ -272,6 +274,10 @@ public class GetUserMediaImpl {
     GetUserMediaImpl(StateProvider stateProvider, Context applicationContext) {
         this.stateProvider = stateProvider;
         this.applicationContext = applicationContext;
+    }
+
+    void setAudioChannelCount(int channelCount) {
+        this.audioChannelCount = channelCount;
     }
 
     static private void resultError(String method, String error, Result result) {
@@ -690,7 +696,7 @@ public class GetUserMediaImpl {
         }
 
         if (screenAudioCapturer == null) {
-            screenAudioCapturer = new ScreenAudioCapturer(applicationContext);
+            screenAudioCapturer = new ScreenAudioCapturer(applicationContext, audioChannelCount);
         }
 
         boolean started = screenAudioCapturer.startCapture(mediaProjection);
