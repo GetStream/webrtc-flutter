@@ -292,7 +292,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
             .createInitializationOptions());
 
     getUserMediaImpl = new GetUserMediaImpl(this, context);
-    getUserMediaImpl.setAdmChannelCount(bypassVoiceProcessing ? 2 : 1);
+    getUserMediaImpl.setAudioChannelCount(bypassVoiceProcessing ? 2 : 1);
 
     cameraUtils = new CameraUtils(getUserMediaImpl, activity);
 
