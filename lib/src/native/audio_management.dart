@@ -21,10 +21,6 @@ class NativeAudioManagement {
     );
   }
 
-  static Future<void> ensureAudioSession() async {
-    await WebRTC.invokeMethod('ensureAudioSession');
-  }
-
   static Future<void> setSpeakerphoneOnButPreferBluetooth() async {
     await WebRTC.invokeMethod('enableSpeakerphoneButPreferBluetooth');
   }
@@ -117,19 +113,6 @@ class NativeAudioManagement {
     }
   }
 
-  static Future<void> stopLocalRecording() async {
-    if (!kIsWeb) {
-      try {
-        await WebRTC.invokeMethod(
-          'stopLocalRecording',
-          <String, dynamic>{},
-        );
-      } on PlatformException catch (e) {
-        throw 'Unable to stop local recording: ${e.message}';
-      }
-    }
-  }
-
   static Future<bool> isVoiceProcessingEnabled() async {
     if (kIsWeb) return false;
 
@@ -168,6 +151,19 @@ class NativeAudioManagement {
       );
     } on PlatformException catch (e) {
       throw 'Unable to set isVoiceProcessingBypassed: ${e.message}';
+    }
+  }
+
+  static Future<void> stopLocalRecording() async {
+    if (!kIsWeb) {
+      try {
+        await WebRTC.invokeMethod(
+          'stopLocalRecording',
+          <String, dynamic>{},
+        );
+      } on PlatformException catch (e) {
+        throw 'Unable to stop local recording: ${e.message}';
+      }
     }
   }
 }

@@ -33,14 +33,14 @@ public class ConstraintsMap {
     }
 
     public double getDouble(String name){
-        return (double) mMap.get(name);
+        return ((Number) mMap.get(name)).doubleValue();
     }
 
     public int getInt(String name) {
         if(getType(name) == ObjectType.String) {
             return Integer.parseInt(((String)mMap.get(name)));
         }
-        return (int) mMap.get(name);
+        return ((Number) mMap.get(name)).intValue();
     }
 
     public String getString(String name){
