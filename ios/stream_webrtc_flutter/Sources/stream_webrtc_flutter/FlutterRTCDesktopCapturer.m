@@ -9,9 +9,33 @@
 #import "include/stream_webrtc_flutter/VideoProcessingAdapter.h"
 
 #if TARGET_OS_OSX
+#import "include/stream_webrtc_flutter/AudioManager.h"
+#import "include/stream_webrtc_flutter/ScreenAudioCapturer.h"
+#import "include/stream_webrtc_flutter/ScreenAudioMixer.h"
+
 RTCDesktopMediaList* _screen = nil;
 RTCDesktopMediaList* _window = nil;
 NSArray<RTCDesktopSource*>* _captureSources;
+
+// Screen audio capture state (macOS 13.0+ only).
+static id _screenAudioCapturer = nil;
+static id _screenAudioMixer = nil;
+
+/// Stop and clean up any active screen audio capture session.
+static void StopScreenAudioCapture(void) {
+  if (@available(macOS 13.0, *)) {
+    ScreenAudioMixer* mixer = (ScreenAudioMixer*)_screenAudioMixer;
+    if (mixer) {
+      [[AudioManager sharedInstance].capturePostProcessingAdapter removeProcessing:mixer];
+      _screenAudioMixer = nil;
+    }
+    ScreenAudioCapturer* capturer = (ScreenAudioCapturer*)_screenAudioCapturer;
+    if (capturer) {
+      [capturer stopCapture];
+      _screenAudioCapturer = nil;
+    }
+  }
+}
 #endif
 
 @implementation FlutterWebRTCPlugin (DesktopCapturer)
@@ -76,7 +100,7 @@ NSArray<RTCDesktopSource*>* _captureSources;
 #if TARGET_OS_OSX
   /* example for constraints:
       {
-          'audio': false,
+          'audio': true,       // or false, or { ... }
           'video": {
               'deviceId':  {'exact': sourceId},
               'mandatory': {
@@ -133,10 +157,43 @@ NSArray<RTCDesktopSource*>* _captureSources;
   NSLog(@"start desktop capture: sourceId: %@, type: %@, fps: %lu", sourceId,
         source.sourceType == RTCDesktopSourceTypeScreen ? @"screen" : @"window", fps);
 
+  // Parse audio constraint and start system audio capture if requested.
+  BOOL captureAudio = NO;
+  id audioConstraints = constraints[@"audio"];
+  if ([audioConstraints isKindOfClass:[NSNumber class]]) {
+    captureAudio = [audioConstraints boolValue];
+  } else if ([audioConstraints isKindOfClass:[NSDictionary class]]) {
+    captureAudio = YES;
+  }
+
+  if (captureAudio) {
+    if (@available(macOS 13.0, *)) {
+      // Stop any existing screen audio capture before starting a new one.
+      StopScreenAudioCapture();
+
+      ScreenAudioCapturer* capturer = [[ScreenAudioCapturer alloc] init];
+      // Exclude current process audio to avoid echo from remote peer playback.
+      [capturer startCaptureWithExcludeCurrentProcess:YES];
+      _screenAudioCapturer = capturer;
+
+      ScreenAudioMixer* mixer = [[ScreenAudioMixer alloc] initWithCapturer:capturer];
+      [[AudioManager sharedInstance].capturePostProcessingAdapter addProcessing:mixer];
+      _screenAudioMixer = mixer;
+
+      NSLog(@"start screen audio capture for desktop sharing");
+    } else {
+      NSLog(@"Screen audio capture requires macOS 13.0+, skipping audio");
+    }
+  }
+
   self.videoCapturerStopHandlers[trackUUID] = ^(CompletionHandler handler) {
     NSLog(@"stop desktop capture: sourceId: %@, type: %@, trackID %@", sourceId,
           source.sourceType == RTCDesktopSourceTypeScreen ? @"screen" : @"window", trackUUID);
     [desktopCapturer stopCapture];
+
+    // Also stop screen audio capture when screen sharing ends.
+    StopScreenAudioCapture();
+
     handler();
   };
 #endif
