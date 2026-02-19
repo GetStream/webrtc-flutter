@@ -29,20 +29,21 @@ public class ScreenAudioCapturer {
     private static final String TAG = "ScreenAudioCapturer";
 
     // Audio configuration constants
-    private static final int INPUT_NUM_OF_CHANNELS = 1; // Mono
     private static final int INPUT_BITS_PER_SAMPLE = 16; // 16-bit PCM
     private static final int CALLBACK_BUFFER_SIZE_MS = 10;
     private static final int BUFFERS_PER_SECOND = 1000 / CALLBACK_BUFFER_SIZE_MS;
     private static final int SAMPLE_RATE = 48000; // Standard WebRTC sample rate
 
     private final Context context;
+    private final int numChannels;
     private volatile AudioRecord screenAudioRecord;
     private MediaProjection mediaProjection;
     private volatile ByteBuffer screenAudioBuffer;
     private volatile boolean isCapturing = false;
 
-    public ScreenAudioCapturer(Context context) {
+    public ScreenAudioCapturer(Context context, int numChannels) {
         this.context = context;
+        this.numChannels = numChannels;
     }
 
     /**
@@ -70,17 +71,21 @@ public class ScreenAudioCapturer {
         this.mediaProjection = mediaProjection;
 
         try {
-            // Calculate buffer size
-            int bytesPerFrame = INPUT_NUM_OF_CHANNELS * (INPUT_BITS_PER_SAMPLE / 8);
+            // Calculate buffer size using the configured channel count
+            int bytesPerFrame = numChannels * (INPUT_BITS_PER_SAMPLE / 8);
             int bufferCapacity = bytesPerFrame * (SAMPLE_RATE / BUFFERS_PER_SECOND);
 
             screenAudioBuffer = ByteBuffer.allocateDirect(bufferCapacity);
             screenAudioBuffer.order(ByteOrder.LITTLE_ENDIAN);
 
+            int channelMask = (numChannels == 2)
+                    ? AudioFormat.CHANNEL_IN_STEREO
+                    : AudioFormat.CHANNEL_IN_MONO;
+
             AudioFormat format = new AudioFormat.Builder()
                     .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                     .setSampleRate(SAMPLE_RATE)
-                    .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
+                    .setChannelMask(channelMask)
                     .build();
 
             AudioPlaybackCaptureConfiguration playbackConfig = new AudioPlaybackCaptureConfiguration.Builder(
@@ -104,7 +109,7 @@ public class ScreenAudioCapturer {
             screenAudioRecord.startRecording();
             isCapturing = true;
 
-            Log.d(TAG, "Screen audio capture started successfully");
+            Log.d(TAG, "Screen audio capture started successfully (channels=" + numChannels + ")");
             return true;
 
         } catch (Exception e) {
