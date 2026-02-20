@@ -806,7 +806,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
           FlutterRTCVideoRenderer renderer = renders.valueAt(i);
           if (renderer.checkMediaStream(streamId, "local")) {
             LocalTrack track = localTracks.get(trackId);
-            if(track != null) {
+            if (track != null && track.kind().equals("video")) {
               renderer.setVideoTrack((VideoTrack) track.track);
             }
           }
