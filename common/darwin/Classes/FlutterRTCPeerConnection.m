@@ -179,6 +179,11 @@
 - (void)peerConnectionClose:(RTCPeerConnection*)peerConnection {
   [peerConnection close];
 
+  for (NSString* trackId in peerConnection.remoteTracks) {
+    [self.pausedTrackVolumes removeObjectForKey:trackId];
+    [self.trackVolumeCache removeObjectForKey:trackId];
+  }
+
   // Clean up peerConnection's streams and tracks
   [peerConnection.remoteStreams removeAllObjects];
   [peerConnection.remoteTracks removeAllObjects];
@@ -412,6 +417,18 @@
   NSString* streamId = stream.streamId;
   peerConnection.remoteStreams[streamId] = stream;
 
+  if ([track isKindOfClass:[RTCAudioTrack class]]) {
+    RTCAudioTrack* audioTrack = (RTCAudioTrack*)track;
+    NSString* trackId = track.trackId;
+    if (self.trackVolumeCache[trackId] == nil) {
+      self.trackVolumeCache[trackId] = @(1.0);
+    }
+    if (self.isAudioPlayoutPaused) {
+      self.pausedTrackVolumes[trackId] = self.trackVolumeCache[trackId];
+      audioTrack.source.volume = 0.0;
+    }
+  }
+
   FlutterEventSink eventSink = peerConnection.eventSink;
   if (eventSink) {
     postEvent(eventSink, @{
@@ -434,6 +451,8 @@
            mediaStream:(RTCMediaStream*)stream
         didRemoveTrack:(RTCVideoTrack*)track {
   [peerConnection.remoteTracks removeObjectForKey:track.trackId];
+  [self.pausedTrackVolumes removeObjectForKey:track.trackId];
+  [self.trackVolumeCache removeObjectForKey:track.trackId];
   NSString* streamId = stream.streamId;
   FlutterEventSink eventSink = peerConnection.eventSink;
   if (eventSink) {
@@ -460,10 +479,18 @@
   BOOL hasAudio = NO;
   for (RTCAudioTrack* track in stream.audioTracks) {
     peerConnection.remoteTracks[track.trackId] = track;
+    NSString* trackId = track.trackId;
+    if (self.trackVolumeCache[trackId] == nil) {
+      self.trackVolumeCache[trackId] = @(1.0);
+    }
+    if (self.isAudioPlayoutPaused) {
+      self.pausedTrackVolumes[trackId] = self.trackVolumeCache[trackId];
+      track.source.volume = 0.0;
+    }
     [audioTracks addObject:@{
-      @"id" : track.trackId,
+      @"id" : trackId,
       @"kind" : track.kind,
-      @"label" : track.trackId,
+      @"label" : trackId,
       @"enabled" : @(track.isEnabled),
       @"remote" : @(YES),
       @"readyState" : @"live"
@@ -515,6 +542,8 @@
   }
   for (RTCAudioTrack* track in stream.audioTracks) {
     [peerConnection.remoteTracks removeObjectForKey:track.trackId];
+    [self.pausedTrackVolumes removeObjectForKey:track.trackId];
+    [self.trackVolumeCache removeObjectForKey:track.trackId];
   }
 
   FlutterEventSink eventSink = peerConnection.eventSink;
@@ -658,6 +687,16 @@
 
     if ([rtpReceiver.track.kind isEqualToString:@"audio"]) {
       [self ensureAudioSession];
+      NSString* trackId = rtpReceiver.track.trackId;
+      if (self.trackVolumeCache[trackId] == nil) {
+        self.trackVolumeCache[trackId] = @(1.0);
+      }
+      if (self.isAudioPlayoutPaused &&
+          [rtpReceiver.track isKindOfClass:[RTCAudioTrack class]]) {
+        RTCAudioTrack* audioTrack = (RTCAudioTrack*)rtpReceiver.track;
+        self.pausedTrackVolumes[trackId] = self.trackVolumeCache[trackId];
+        audioTrack.source.volume = 0.0;
+      }
     }
     postEvent(eventSink, event);
   }
@@ -666,6 +705,10 @@
 /** Called when the receiver and its track are removed. */
 - (void)peerConnection:(RTCPeerConnection*)peerConnection
      didRemoveReceiver:(RTCRtpReceiver*)rtpReceiver {
+  if (rtpReceiver.track != nil) {
+    [self.pausedTrackVolumes removeObjectForKey:rtpReceiver.track.trackId];
+    [self.trackVolumeCache removeObjectForKey:rtpReceiver.track.trackId];
+  }
 }
 
 /** Called when the selected ICE candidate pair is changed. */
