@@ -81,6 +81,12 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 
 @property(nonatomic, strong) AudioManager* _Nullable audioManager;
 
+@property(nonatomic, strong)
+    NSMutableDictionary<NSString*, NSNumber*>* _Nonnull trackVolumeCache;
+@property(nonatomic, strong)
+    NSMutableDictionary<NSString*, NSNumber*>* _Nonnull pausedTrackVolumes;
+@property(nonatomic) BOOL isAudioPlayoutPaused;
+
 - (void)mediaStreamTrackSetVideoEffects:(nonnull NSString*)trackId
                                   names:(nonnull NSArray<NSString*>*)names;
 - (RTCMediaStream* _Nullable)streamForId:(NSString* _Nonnull)streamId

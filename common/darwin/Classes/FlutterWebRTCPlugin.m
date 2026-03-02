@@ -213,6 +213,9 @@ static FlutterWebRTCPlugin* sharedSingleton;
   self.videoCapturerStopHandlers = [NSMutableDictionary new];
   self.videoCaptureState = [NSMutableDictionary new];
   self.recorders = [NSMutableDictionary new];
+  self.trackVolumeCache = [NSMutableDictionary new];
+  self.pausedTrackVolumes = [NSMutableDictionary new];
+  self.isAudioPlayoutPaused = NO;
 #if TARGET_OS_IPHONE
   self.focusMode = @"locked";
   self.exposureMode = @"locked";
@@ -831,6 +834,11 @@ static FlutterWebRTCPlugin* sharedSingleton;
       [peerConnection close];
       [self.peerConnections removeObjectForKey:peerConnectionId];
 
+      for (NSString* trackId in peerConnection.remoteTracks) {
+        [self.pausedTrackVolumes removeObjectForKey:trackId];
+        [self.trackVolumeCache removeObjectForKey:trackId];
+      }
+
       // Clean up peerConnection's streams and tracks
       [peerConnection.remoteStreams removeAllObjects];
       [peerConnection.remoteTracks removeAllObjects];
@@ -1101,7 +1109,13 @@ static FlutterWebRTCPlugin* sharedSingleton;
     if (track != nil && [track isKindOfClass:[RTCAudioTrack class]]) {
       RTCAudioTrack* audioTrack = (RTCAudioTrack*)track;
       RTCAudioSource* audioSource = audioTrack.source;
-      audioSource.volume = [volume doubleValue];
+      self.trackVolumeCache[trackId] = volume;
+      if (self.pausedTrackVolumes[trackId] != nil) {
+        self.pausedTrackVolumes[trackId] = volume;
+        audioSource.volume = 0.0;
+      } else {
+        audioSource.volume = [volume doubleValue];
+      }
     }
     result(nil);
   } else if ([@"trackClone" isEqualToString:call.method]) {
@@ -1648,52 +1662,50 @@ static FlutterWebRTCPlugin* sharedSingleton;
     }
 #endif
   } else if ([@"resumeAudioPlayout" isEqualToString:call.method]) {
-    RTCAudioDeviceModule* adm = _peerConnectionFactory.audioDeviceModule;
-    if (adm == nil) {
-      result([FlutterError errorWithCode:@"resumeAudioPlayout failed"
-                                 message:@"Error: audioDeviceModule is nil"
-                                 details:nil]);
+    self.isAudioPlayoutPaused = NO;
+
+    if (self.pausedTrackVolumes.count == 0) {
+      result(nil);
       return;
     }
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-      NSInteger admResult = [adm initPlayout];
-      if (admResult == 0) {
-        admResult = [adm startPlayout];
+
+    NSDictionary<NSString*, NSNumber*>* volumesToRestore =
+        [NSDictionary dictionaryWithDictionary:self.pausedTrackVolumes];
+    [self.pausedTrackVolumes removeAllObjects];
+
+    for (NSString* trackId in volumesToRestore) {
+      double targetVolume = [volumesToRestore[trackId] doubleValue];
+      RTCMediaStreamTrack* track = [self trackForId:trackId peerConnectionId:nil];
+      if (track != nil && [track isKindOfClass:[RTCAudioTrack class]]) {
+        RTCAudioTrack* audioTrack = (RTCAudioTrack*)track;
+        audioTrack.source.volume = targetVolume;
+        self.trackVolumeCache[trackId] = @(targetVolume);
       }
-      dispatch_async(dispatch_get_main_queue(), ^{
-        if (admResult == 0) {
-          result(nil);
-        } else {
-          result([FlutterError
-              errorWithCode:@"resumeAudioPlayout failed"
-                    message:[NSString stringWithFormat:@"Error: adm api failed with code: %ld",
-                                                       (long)admResult]
-                    details:nil]);
-        }
-      });
-    });
-  } else if ([@"pauseAudioPlayout" isEqualToString:call.method]) {
-    RTCAudioDeviceModule* adm = _peerConnectionFactory.audioDeviceModule;
-    if (adm == nil) {
-      result([FlutterError errorWithCode:@"pauseAudioPlayout failed"
-                                 message:@"Error: audioDeviceModule is nil"
-                                 details:nil]);
-      return;
     }
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-      NSInteger admResult = [adm stopPlayout];
-      dispatch_async(dispatch_get_main_queue(), ^{
-        if (admResult == 0) {
-          result(nil);
-        } else {
-          result([FlutterError
-              errorWithCode:@"pauseAudioPlayout failed"
-                    message:[NSString stringWithFormat:@"Error: adm api failed with code: %ld",
-                                                       (long)admResult]
-                    details:nil]);
+
+    result(nil);
+  } else if ([@"pauseAudioPlayout" isEqualToString:call.method]) {
+    self.isAudioPlayoutPaused = YES;
+
+    for (NSString* peerConnectionId in _peerConnections) {
+      RTCPeerConnection* peerConnection = _peerConnections[peerConnectionId];
+      for (NSString* trackId in peerConnection.remoteTracks) {
+        RTCMediaStreamTrack* track = peerConnection.remoteTracks[trackId];
+        if ([track isKindOfClass:[RTCAudioTrack class]]) {
+          RTCAudioTrack* audioTrack = (RTCAudioTrack*)track;
+          if (self.pausedTrackVolumes[trackId] == nil) {
+            NSNumber* previousVolume = self.trackVolumeCache[trackId];
+            if (previousVolume == nil) {
+              previousVolume = @(1.0);
+            }
+            self.pausedTrackVolumes[trackId] = previousVolume;
+          }
+          audioTrack.source.volume = 0.0;
         }
-      });
-    });
+      }
+    }
+
+    result(nil);
   } else if ([@"startLocalRecording" isEqualToString:call.method]) {
     RTCAudioDeviceModule* adm = _peerConnectionFactory.audioDeviceModule;
     // Run on background queue

@@ -1,6 +1,9 @@
 
 # Changelog
 
+[2.2.6] - 2026-02-24
+* [iOS] Fixed the implementation of pause/resumeAudioPlayout.
+
 [2.2.5] - 2026-02-13
 * [iOS] Added `Helper.setiOSStereoPlayoutPreferred()`, `Helper.isiOSStereoPlayoutEnabled()`, and `Helper.refreshiOSStereoPlayoutState()` to enable and manage stereo audio playout. When enabled, the native layer configures the ADM for stereo output, bypasses voice processing, and automatically re-evaluates stereo state on audio route changes.
 * Added support for reinitializing the WebRTC plugin via `WebRTC.initialize(options: {'reinitialize': true})` to allow reconfiguring audio and video parameters (e.g., `audioSampleRate`, `audioOutputSampleRate`) at runtime without requiring an app restart.
