@@ -3,7 +3,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'stream_webrtc_flutter'
-  s.version          = '2.2.6'
+  s.version          = '2.2.7'
   s.summary          = 'Flutter WebRTC plugin for macOS.'
   s.description      = <<-DESC
 A new flutter plugin project.
