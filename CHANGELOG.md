@@ -1,6 +1,9 @@
 
 # Changelog
 
+[2.2.7] - 2026-04-27
+* [iOS] Fixed missing result callback in video effects method.
+
 [2.2.6] - 2026-02-24
 * [iOS] Fixed the implementation of pause/resumeAudioPlayout.
 

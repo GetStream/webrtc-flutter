@@ -386,6 +386,7 @@ static FlutterWebRTCPlugin* sharedSingleton;
     NSArray* names = argsMap[@"names"];
 
     [self mediaStreamTrackSetVideoEffects:trackId names:names];
+    result(nil);
   } else if ([@"handleCallInterruptionCallbacks" isEqualToString:call.method]) {
 #if TARGET_OS_IPHONE
     [[NSNotificationCenter defaultCenter] addObserver:self
@@ -2687,7 +2688,8 @@ static FlutterWebRTCPlugin* sharedSingleton;
     return;
   }
 
-  NSMutableDictionary* eventData = [NSMutableDictionary dictionaryWithObject:eventName forKey:@"event"];
+  NSMutableDictionary* eventData = [NSMutableDictionary dictionaryWithObject:eventName
+                                                                      forKey:@"event"];
   if (data) {
     [eventData addEntriesFromDictionary:data];
   }
