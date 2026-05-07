@@ -38,13 +38,13 @@ class WebRTC {
 
   static bool initialized = false;
 
-  /// Initialize the WebRTC plugin. If this is not manually called, will be
-  /// initialized with default settings.
+  /// Initialize the WebRTC plugin.
   ///
-  /// This method can be called multiple times to reinitialize the WebRTC plugin
-  /// with new parameters. When called after initial setup, it will automatically
-  /// dispose all existing peer connections, tracks, and streams, then recreate
-  /// the audio device module and peer connection factory with the new parameters.
+  /// On native, this snapshots the build defaults that the implicit
+  /// peer-connection factory will use the next time it is created.
+  ///
+  /// Calling [initialize] again refreshes the snapshot. Already-built
+  /// factories keep their original configuration, the new configuration takes effect only on the next factory build.
   ///
   /// Params:
   ///
@@ -66,17 +66,16 @@ class WebRTC {
   /// "audioOutputSampleRate": (Android only) Sets only output sample rate in Hz (e.g., 48000).
   ///                          Takes precedence over audioSampleRate for output.
   ///                          If not specified, uses audioSampleRate or native default.
-  static Future<void> initialize({Map<String, dynamic>? options}) async {
-    final reinitialize = (options?.containsKey('reinitialize') ?? false)
-        ? options!['reinitialize']
-        : false;
-
-    if (!initialized || reinitialize) {
-      await _channel.invokeMethod<void>('initialize', <String, dynamic>{
-        'options': options ?? {},
-      });
-
-      initialized = true;
+  static Future<void> initialize({
+    Map<String, dynamic>? options,
+    bool refresh = false,
+  }) async {
+    if (initialized && !refresh) {
+      return;
     }
+    await _channel.invokeMethod<void>('initialize', <String, dynamic>{
+      'options': options ?? <String, dynamic>{},
+    });
+    initialized = true;
   }
 }

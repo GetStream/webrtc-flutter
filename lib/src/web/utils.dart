@@ -19,6 +19,9 @@ class WebRTC {
           [dynamic param]) async =>
       throw UnimplementedError();
 
-  static Future<void> initialize({Map<String, dynamic>? options}) async =>
+  static Future<void> initialize({
+    Map<String, dynamic>? options,
+    bool refresh = false,
+  }) async =>
       throw UnimplementedError('initialize is not supported on web');
 }

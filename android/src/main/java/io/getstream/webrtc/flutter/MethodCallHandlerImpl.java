@@ -9,11 +9,7 @@ import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
 import android.hardware.Camera.CameraInfo;
 import android.media.AudioManager;
-import android.media.MediaRecorder;
-import android.media.AudioAttributes;
 import android.media.AudioDeviceInfo;
-import android.media.audiofx.AcousticEchoCanceler;
-import android.media.audiofx.NoiseSuppressor;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -25,7 +21,6 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 
-import io.getstream.webrtc.flutter.audio.AudioBufferMixer;
 import io.getstream.webrtc.flutter.audio.AudioDeviceKind;
 import io.getstream.webrtc.flutter.audio.AudioProcessingFactoryProvider;
 import io.getstream.webrtc.flutter.audio.AudioProcessingController;
@@ -33,15 +28,12 @@ import io.getstream.webrtc.flutter.audio.AudioSwitchManager;
 import io.getstream.webrtc.flutter.audio.AudioFocusManager;
 import io.getstream.webrtc.flutter.audio.AudioUtils;
 import io.getstream.webrtc.flutter.audio.LocalAudioTrack;
-import io.getstream.webrtc.flutter.audio.PlaybackSamplesReadyCallbackAdapter;
-import io.getstream.webrtc.flutter.audio.RecordSamplesReadyCallbackAdapter;
 import io.getstream.webrtc.flutter.record.AudioChannel;
 import io.getstream.webrtc.flutter.record.FrameCapturer;
 import io.getstream.webrtc.flutter.utils.AnyThreadResult;
 import io.getstream.webrtc.flutter.utils.Callback;
 import io.getstream.webrtc.flutter.utils.ConstraintsArray;
 import io.getstream.webrtc.flutter.utils.ConstraintsMap;
-import io.getstream.webrtc.flutter.utils.EglUtils;
 import io.getstream.webrtc.flutter.utils.ObjectType;
 import io.getstream.webrtc.flutter.utils.PermissionUtils;
 import io.getstream.webrtc.flutter.utils.Utils;
@@ -54,7 +46,6 @@ import com.twilio.audioswitch.AudioDevice;
 import org.webrtc.AudioTrack;
 import org.webrtc.CryptoOptions;
 import org.webrtc.DtmfSender;
-import org.webrtc.EglBase;
 import org.webrtc.IceCandidate;
 import org.webrtc.Logging;
 import org.webrtc.Logging.Severity;
@@ -84,11 +75,7 @@ import org.webrtc.SdpObserver;
 import org.webrtc.SessionDescription;
 import org.webrtc.SessionDescription.Type;
 import org.webrtc.VideoTrack;
-import org.webrtc.audio.AudioDeviceModule;
 import org.webrtc.audio.JavaAudioDeviceModule;
-import org.webrtc.audio.WebRtcAudioUtils;
-import org.webrtc.video.CustomVideoDecoderFactory;
-import org.webrtc.video.CustomVideoEncoderFactory;
 
 import java.io.File;
 import java.nio.ByteBuffer;
@@ -118,24 +105,11 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   private final BinaryMessenger messenger;
   private final Context context;
   private final TextureRegistry textures;
-  private PeerConnectionFactory mFactory;
   private final ConcurrentHashMap<String, MediaStream> localStreams = new ConcurrentHashMap<>();
   private final ConcurrentHashMap<String, LocalTrack> localTracks = new ConcurrentHashMap<>();
   private final LongSparseArray<FlutterRTCVideoRenderer> renders = new LongSparseArray<>();
 
-  public RecordSamplesReadyCallbackAdapter recordSamplesReadyCallbackAdapter;
-
-  public PlaybackSamplesReadyCallbackAdapter playbackSamplesReadyCallbackAdapter;
-
-  /**
-   * The implementation of {@code getUserMedia} extracted into a separate file in order to reduce
-   * complexity and to (somewhat) separate concerns.
-   */
-  private GetUserMediaImpl getUserMediaImpl;
-
   private CameraUtils cameraUtils;
-
-  private JavaAudioDeviceModule audioDeviceModule;
 
   private AudioFocusManager audioFocusManager;
 
@@ -145,22 +119,11 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
 
   private Activity activity;
 
-  private CustomVideoEncoderFactory videoEncoderFactory;
-
-  private CustomVideoDecoderFactory videoDecoderFactory;
-
   public AudioProcessingFactoryProvider audioProcessingFactoryProvider;
 
-  private ConstraintsMap initializedAndroidAudioConfiguration;
   private final ConcurrentHashMap<String, Double> trackVolumeCache = new ConcurrentHashMap<>();
   private final ConcurrentHashMap<String, Double> pausedTrackVolumes = new ConcurrentHashMap<>();
   private volatile boolean isAudioPlayoutPaused = false;
-
-  // Previous initialization parameters for comparison during reinitialization
-  private Boolean previousBypassVoiceProcessing;
-  private Integer previousAudioSampleRate;
-  private Integer previousAudioOutputSampleRate;
-  private ConstraintsMap previousAndroidAudioConfiguration;
 
   public static class LogSink implements Loggable {
     @Override
@@ -190,43 +153,11 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   }
 
   /**
-   * Cleans up all peer connections, local tracks, and local streams.
-   * This method can be called both during dispose and reinitialization.
+   * Disposes peer connections, tracks, streams, and every
+   * registered {@link NativePeerConnectionFactory}.
+   * PCs must be released before their owning factory is disposed,
+   * otherwise libwebrtc native state crashes when the factory's ADM is already disposed.
    */
-  private void cleanupResources() {
-    try {
-      // Dispose all peer connections
-      for (final PeerConnectionObserver connection : mPeerConnectionObservers.values()) {
-        peerConnectionDispose(connection);
-      }
-      mPeerConnectionObservers.clear();
-
-      // Dispose all local tracks
-      for (final LocalTrack track : localTracks.values()) {
-        try {
-          track.dispose();
-        } catch (Exception e) {
-          Log.e(TAG, "cleanupResources: error disposing local track", e);
-        }
-      }
-      localTracks.clear();
-
-      // Dispose all local streams
-      for (final MediaStream mediaStream : localStreams.values()) {
-        try {
-          streamDispose(mediaStream);
-          mediaStream.dispose();
-        } catch (Exception e) {
-          Log.e(TAG, "cleanupResources: error disposing media stream", e);
-        }
-      }
-
-      localStreams.clear();
-    } catch (Exception e) {
-      Log.e(TAG, "cleanupResources: error disposing resources", e);
-    }
-  }
-
   void dispose() {
     if (AudioSwitchManager.instance != null) {
       AudioSwitchManager.instance.setAudioFocusChangeListener(null);
@@ -236,7 +167,248 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       audioFocusManager = null;
     }
 
-    cleanupResources();
+    try {
+      for (final PeerConnectionObserver connection : mPeerConnectionObservers.values()) {
+        peerConnectionDispose(connection);
+      }
+      mPeerConnectionObservers.clear();
+
+      for (final LocalTrack track : localTracks.values()) {
+        try {
+          track.dispose();
+        } catch (Exception e) {
+          Log.e(TAG, "dispose: error disposing local track", e);
+        }
+      }
+      localTracks.clear();
+
+      for (final MediaStream mediaStream : localStreams.values()) {
+        try {
+          streamDispose(mediaStream);
+          mediaStream.dispose();
+        } catch (Exception e) {
+          Log.e(TAG, "dispose: error disposing media stream", e);
+        }
+      }
+      localStreams.clear();
+    } catch (Exception e) {
+      Log.e(TAG, "dispose: error disposing resources", e);
+    }
+
+    for (NativePeerConnectionFactory nf : factories.values()) {
+      try {
+        nf.dispose();
+      } catch (Throwable t) {
+        Log.w(TAG, "[dispose] native factory dispose failed: " + t);
+      }
+    }
+
+    factories.clear();
+    pcFactoryId.clear();
+  }
+
+  /**
+   * Resolves a {@code factoryId} (possibly null) to a {@link NativePeerConnectionFactory}.
+   *
+   * @param factoryId The id returned from {@code createPeerConnectionFactory},
+   *                  or {@code null} to target the implicit factory.
+   */
+  @Nullable
+  private NativePeerConnectionFactory resolveFactory(@Nullable String factoryId) {
+    if (factoryId == null || factoryId.isEmpty()) {
+      return acquireImplicitFactory();
+    }
+
+    return factories.get(factoryId);
+  }
+
+  /**
+   * Resolves the {@link NativePeerConnectionFactory} that owns the capturer/audio source
+   * for {@code trackId}.
+   */
+  @NonNull
+  private NativePeerConnectionFactory resolveFactoryForTrack(@Nullable String trackId) {
+    if (trackId != null) {
+      for (NativePeerConnectionFactory mf : factories.values()) {
+        if (mf.getUserMediaImpl != null && mf.getUserMediaImpl.ownsTrack(trackId)) {
+          return mf;
+        }
+      }
+    }
+    return acquireImplicitFactory();
+  }
+
+  /**
+   * Resolves the {@link NativePeerConnectionFactory} that owns the {@code MediaRecorder}
+   * registered under {@code recorderId}. Falls back to the implicit factory.
+   */
+  @NonNull
+  private NativePeerConnectionFactory resolveFactoryForRecorder(int recorderId) {
+    for (NativePeerConnectionFactory mf : factories.values()) {
+      if (mf.getUserMediaImpl != null && mf.getUserMediaImpl.ownsRecorder(recorderId)) {
+        return mf;
+      }
+    }
+    return acquireImplicitFactory();
+  }
+
+  /**
+   * Pushes the preferred audio input device to every active
+   * {@link NativePeerConnectionFactory}'s {@link GetUserMediaImpl}.
+   */
+  private void broadcastPreferredInputDevice(@Nullable String deviceId) {
+    if (deviceId == null) {
+      return;
+    }
+    for (NativePeerConnectionFactory mf : factories.values()) {
+      if (mf.getUserMediaImpl != null) {
+        mf.getUserMediaImpl.setPreferredInputDevice(deviceId);
+      }
+    }
+  }
+
+  /**
+   * Builds a fresh per-call {@link NativePeerConnectionFactory} from the supplied options
+   * map and registers it under a fresh UUID.
+   */
+  @NonNull
+  private String createPeerConnectionFactoryHandler(@NonNull ConstraintsMap options) {
+    boolean bypassVoiceProcessing = false;
+    if (options.hasKey("bypassVoiceProcessing")
+        && options.getType("bypassVoiceProcessing") == ObjectType.Boolean) {
+      bypassVoiceProcessing = options.getBoolean("bypassVoiceProcessing");
+    }
+
+    int networkIgnoreMask = Options.ADAPTER_TYPE_UNKNOWN;
+    if (options.hasKey("networkIgnoreMask")
+        && options.getType("networkIgnoreMask") == ObjectType.Array) {
+      ConstraintsArray ignoredAdapters = options.getArray("networkIgnoreMask");
+      if (ignoredAdapters != null) {
+        for (Object adapter : ignoredAdapters.toArrayList()) {
+          switch (adapter.toString()) {
+            case "adapterTypeEthernet":
+              networkIgnoreMask += Options.ADAPTER_TYPE_ETHERNET;
+              break;
+            case "adapterTypeWifi":
+              networkIgnoreMask += Options.ADAPTER_TYPE_WIFI;
+              break;
+            case "adapterTypeCellular":
+              networkIgnoreMask += Options.ADAPTER_TYPE_CELLULAR;
+              break;
+            case "adapterTypeVpn":
+              networkIgnoreMask += Options.ADAPTER_TYPE_VPN;
+              break;
+            case "adapterTypeLoopback":
+              networkIgnoreMask += Options.ADAPTER_TYPE_LOOPBACK;
+              break;
+            case "adapterTypeAny":
+              networkIgnoreMask += Options.ADAPTER_TYPE_ANY;
+              break;
+          }
+        }
+      }
+    }
+
+    boolean forceSWCodec = false;
+    if (options.hasKey("forceSWCodec")
+        && options.getType("forceSWCodec") == ObjectType.Boolean) {
+      forceSWCodec = options.getBoolean("forceSWCodec");
+    }
+
+    List<String> forceSWCodecList = new ArrayList<>();
+    if (options.hasKey("forceSWCodecList")
+        && options.getType("forceSWCodecList") == ObjectType.Array) {
+      List<Object> array = options.getListArray("forceSWCodecList");
+      for (Object v : array) {
+        forceSWCodecList.add(v.toString());
+      }
+    } else {
+      // HW codecs disabled for VP9 / AV1.
+      forceSWCodecList.add("VP9");
+      forceSWCodecList.add("AV1");
+    }
+
+    ConstraintsMap androidAudioConfiguration = null;
+    if (options.hasKey("androidAudioConfiguration")
+        && options.getType("androidAudioConfiguration") == ObjectType.Map) {
+      androidAudioConfiguration = options.getMap("androidAudioConfiguration");
+    }
+
+    Integer audioSampleRate = null;
+    if (options.hasKey("audioSampleRate")
+        && options.getType("audioSampleRate") == ObjectType.Number) {
+      audioSampleRate = options.getInt("audioSampleRate");
+    }
+
+    Integer audioOutputSampleRate = null;
+    if (options.hasKey("audioOutputSampleRate")
+        && options.getType("audioOutputSampleRate") == ObjectType.Number) {
+      audioOutputSampleRate = options.getInt("audioOutputSampleRate");
+    }
+
+    // TODO: Audio switch manager is global and the latest configuration is applied to all factories. Check if can be handled better.
+    if (androidAudioConfiguration != null && AudioSwitchManager.instance != null) {
+      AudioSwitchManager.instance.setAudioConfiguration(
+          androidAudioConfiguration.toMap());
+    }
+
+    if (audioProcessingFactoryProvider == null) {
+      audioProcessingFactoryProvider = new AudioProcessingController();
+    }
+
+    final NativePeerConnectionFactory.BuildContext ctx = new NativePeerConnectionFactory.BuildContext();
+    ctx.context = context;
+    ctx.bypassVoiceProcessing = bypassVoiceProcessing;
+    ctx.networkIgnoreMask = networkIgnoreMask;
+    ctx.forceSWCodec = forceSWCodec;
+    ctx.forceSWCodecList = forceSWCodecList;
+    ctx.androidAudioConfiguration = androidAudioConfiguration;
+    ctx.audioSampleRate = audioSampleRate;
+    ctx.audioOutputSampleRate = audioOutputSampleRate;
+    ctx.audioProcessingFactoryProvider = audioProcessingFactoryProvider;
+    ctx.stateProvider = this;
+    ctx.isMicrophoneMutedSupplier = this::isMicrophoneMuted;
+    ctx.localTracksSupplier = () -> localTracks.values();
+
+    final String factoryId = java.util.UUID.randomUUID().toString();
+    final NativePeerConnectionFactory nf = NativePeerConnectionFactory.build(factoryId, ctx);
+    factories.put(factoryId, nf);
+    Log.i(TAG, "[createPeerConnectionFactory] built id: " + factoryId);
+    return factoryId;
+  }
+
+  /**
+   * Disposes the {@link NativePeerConnectionFactory} registered under {@code factoryId}.
+   * Defensively disposes any peer connections still owned by the factory.
+   */
+  private void disposePeerConnectionFactoryHandler(@NonNull String factoryId) {
+    if (IMPLICIT_FACTORY_ID.equals(factoryId)) {
+      Log.w(TAG, "[disposePeerConnectionFactory] refusing to dispose the implicit factory");
+      return;
+    }
+    final NativePeerConnectionFactory nf = factories.remove(factoryId);
+    if (nf == null) {
+      Log.w(TAG, "[disposePeerConnectionFactory] unknown factoryId: " + factoryId);
+      return;
+    }
+    Log.i(TAG, "[disposePeerConnectionFactory] disposing id: " + factoryId
+        + ", ownedPcs: " + nf.ownedPcIds.size());
+
+    // Defensively dispose any PCs the SDK forgot.
+    for (String pcId : new ArrayList<>(nf.ownedPcIds)) {
+      try {
+        peerConnectionDispose(pcId);
+      } catch (Throwable t) {
+        Log.w(TAG, "[disposePeerConnectionFactory] pc dispose failed: " + t);
+      }
+    }
+    nf.ownedPcIds.clear();
+
+    try {
+      nf.dispose();
+    } catch (Throwable t) {
+      Log.w(TAG, "[disposePeerConnectionFactory] factory dispose failed: " + t);
+    }
   }
 
   /**
@@ -255,219 +427,159 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     return true;
   }
 
+  /**
+   * Reserved factoryId for the implicit factory.
+   */
+  private static final String IMPLICIT_FACTORY_ID = "__implicit__";
+
+  /**
+   * {@link NativePeerConnectionFactory} registry, keyed by factoryId.
+   */
+  private final ConcurrentHashMap<String, NativePeerConnectionFactory> factories =
+      new ConcurrentHashMap<>();
+
+  /**
+   * Maps a peer connection id to the factoryId of the {@link NativePeerConnectionFactory}
+   * that built it.
+   */
+  private final ConcurrentHashMap<String, String> pcFactoryId =
+      new ConcurrentHashMap<>();
+
+  /**
+   * Snapshot of the arguments passed to the most-recent {@code initialize(...)}
+   * call. Used as the build defaults for the implicit factory, since the
+   * implicit factory is built lazily on first use rather than eagerly during
+   * {@code initialize}.
+   */
+  @Nullable
+  private InitializeSnapshot initializeSnapshot;
+
+  /**
+   * Immutable snapshot of {@code initialize(...)} arguments that affect
+   * {@link NativePeerConnectionFactory} construction. 
+   */
+  private static final class InitializeSnapshot {
+    final boolean bypassVoiceProcessing;
+    final int networkIgnoreMask;
+    final boolean forceSWCodec;
+    final List<String> forceSWCodecList;
+    @Nullable final ConstraintsMap androidAudioConfiguration;
+    @Nullable final Integer audioSampleRate;
+    @Nullable final Integer audioOutputSampleRate;
+
+    InitializeSnapshot(boolean bypassVoiceProcessing, int networkIgnoreMask,
+        boolean forceSWCodec, List<String> forceSWCodecList,
+        @Nullable ConstraintsMap androidAudioConfiguration,
+        @Nullable Integer audioSampleRate, @Nullable Integer audioOutputSampleRate) {
+      this.bypassVoiceProcessing = bypassVoiceProcessing;
+      this.networkIgnoreMask = networkIgnoreMask;
+      this.forceSWCodec = forceSWCodec;
+      this.forceSWCodecList = forceSWCodecList;
+      this.androidAudioConfiguration = androidAudioConfiguration;
+      this.audioSampleRate = audioSampleRate;
+      this.audioOutputSampleRate = audioOutputSampleRate;
+    }
+  }
+
+  /**
+   * Static one-shot bootstrap + per-process state setup. Snapshots the build
+   * defaults that the implicit factory will use.
+   * Calling {@code initialize} again refreshes the snapshot but does
+   * NOT rebuild already-built factories.
+   */
   private void initialize(boolean bypassVoiceProcessing, int networkIgnoreMask, boolean forceSWCodec,
       List<String> forceSWCodecList,
       @Nullable ConstraintsMap androidAudioConfiguration, Severity logSeverity, @Nullable Integer audioSampleRate,
-      @Nullable Integer audioOutputSampleRate, boolean reinitialize) {
-    boolean isReinitializing = (mFactory != null && reinitialize);
-
-    if (mFactory != null && !reinitialize) {
-      // Already initialized and reinitialize flag is false, return early
-      return;
-    }
-
-    if (isReinitializing) {
-      // Clean up all existing resources before reinitializing
-      cleanupResources();
-
-      if (audioDeviceModule != null) {
-        audioDeviceModule = null;
-      }
-      if (recordSamplesReadyCallbackAdapter != null) {
-        recordSamplesReadyCallbackAdapter = null;
-      }
-      if (playbackSamplesReadyCallbackAdapter != null) {
-        playbackSamplesReadyCallbackAdapter = null;
-      }
-
-      mFactory = null;
-    }
-
-    this.initializedAndroidAudioConfiguration = androidAudioConfiguration;
-
+      @Nullable Integer audioOutputSampleRate) {
+    // Static libwebrtc bootstrap.
     PeerConnectionFactory.initialize(
         InitializationOptions.builder(context)
             .setEnableInternalTracer(true)
             .setInjectableLogger(logSink, logSeverity)
             .createInitializationOptions());
 
-    getUserMediaImpl = new GetUserMediaImpl(this, context);
-    getUserMediaImpl.setAudioChannelCount(bypassVoiceProcessing ? 2 : 1);
-
-    cameraUtils = new CameraUtils(getUserMediaImpl, activity);
-
-    frameCryptor = new FlutterRTCFrameCryptor(this);
-
-    dataPacketCryptor = new FlutterDataPacketCryptor(frameCryptor);
-
-    AudioAttributes audioAttributes = null;
-    if (androidAudioConfiguration != null) {
-      Integer usageType = AudioUtils.getAudioAttributesUsageTypeForString(
-          androidAudioConfiguration.getString("androidAudioAttributesUsageType"));
-      Integer contentType = AudioUtils.getAudioAttributesContentTypeFromString(
-          androidAudioConfiguration.getString("androidAudioAttributesContentType"));
-
-      if (usageType != null && contentType != null) {
-        audioAttributes = new AudioAttributes.Builder()
-            .setUsage(usageType)
-            .setContentType(contentType)
-            .build();
-      }
-
-      if (AudioSwitchManager.instance != null) {
-        AudioSwitchManager.instance.setAudioConfiguration(androidAudioConfiguration.toMap());
-      }
+    if (androidAudioConfiguration != null && AudioSwitchManager.instance != null) {
+      AudioSwitchManager.instance.setAudioConfiguration(androidAudioConfiguration.toMap());
     }
-
-    JavaAudioDeviceModule.Builder audioDeviceModuleBuilder = JavaAudioDeviceModule.builder(context);
-    Boolean isDeviceSupportHWAec = AcousticEchoCanceler.isAvailable();
-    Boolean isDeviceSupportHWNs = NoiseSuppressor.isAvailable();
-
-    if (audioAttributes != null) {
-      audioDeviceModuleBuilder.setAudioAttributes(audioAttributes);
-    }
-
-    recordSamplesReadyCallbackAdapter = new RecordSamplesReadyCallbackAdapter();
-    playbackSamplesReadyCallbackAdapter = new PlaybackSamplesReadyCallbackAdapter();
-
-    if (bypassVoiceProcessing) {
-      audioDeviceModuleBuilder.setUseHardwareAcousticEchoCanceler(false)
-          .setUseHardwareNoiseSuppressor(false)
-          .setUseStereoInput(true)
-          .setUseStereoOutput(true)
-          .setAudioSource(MediaRecorder.AudioSource.MIC);
-    } else {
-      audioDeviceModuleBuilder
-          .setUseHardwareAcousticEchoCanceler(isDeviceSupportHWAec)
-          .setUseHardwareNoiseSuppressor(isDeviceSupportHWNs)
-          .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION);
-    }
-
-    // Configure audio sample rates if specified
-    // This allows high-quality audio playback instead of defaulting to
-    // WebRtcAudioManager's queried rate
-    if (audioSampleRate != null) {
-      Log.i(TAG, "Setting audio sample rate (both input and output) to: " + audioSampleRate + " Hz");
-      audioDeviceModuleBuilder.setSampleRate(audioSampleRate);
-    }
-
-    // audioOutputSampleRate takes precedence over audioSampleRate for output
-    if (audioOutputSampleRate != null) {
-      Log.i(TAG, "Setting audio output sample rate to: " + audioOutputSampleRate + " Hz");
-      audioDeviceModuleBuilder.setOutputSampleRate(audioOutputSampleRate);
-    } else if (bypassVoiceProcessing && audioSampleRate == null && audioOutputSampleRate == null) {
-      // When bypassVoiceProcessing is enabled, use the device's native optimal sample
-      // rate
-      // This prevents the default behavior which may use a low sample rate based on
-      // audio mode
-      AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-      if (audioManager != null) {
-        String nativeSampleRateStr = audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE);
-        int nativeSampleRate = 48000; // fallback default
-        if (nativeSampleRateStr != null) {
-          try {
-            nativeSampleRate = Integer.parseInt(nativeSampleRateStr);
-          } catch (NumberFormatException e) {
-            Log.w(TAG, "Failed to parse native sample rate, using default: " + e.getMessage());
-          }
-        }
-        Log.i(TAG, "bypassVoiceProcessing enabled with no explicit sample rate - using device's native optimal rate: "
-            + nativeSampleRate + " Hz");
-        audioDeviceModuleBuilder.setOutputSampleRate(nativeSampleRate);
-      } else {
-        Log.w(TAG, "AudioManager not available, defaulting to 48000 Hz output");
-        audioDeviceModuleBuilder.setOutputSampleRate(48000);
-      }
-    }
-
-    audioDeviceModuleBuilder.setSamplesReadyCallback(recordSamplesReadyCallbackAdapter);
-    audioDeviceModuleBuilder.setPlaybackSamplesReadyCallback(playbackSamplesReadyCallbackAdapter);
-
-    recordSamplesReadyCallbackAdapter.addCallback(getUserMediaImpl.inputSamplesInterceptor);
-
-    recordSamplesReadyCallbackAdapter.addCallback(new JavaAudioDeviceModule.SamplesReadyCallback() {
-      @Override
-      public void onWebRtcAudioRecordSamplesReady(JavaAudioDeviceModule.AudioSamples audioSamples) {
-        for (LocalTrack track : localTracks.values()) {
-          if (track instanceof LocalAudioTrack) {
-            ((LocalAudioTrack) track).onWebRtcAudioRecordSamplesReady(audioSamples);
-          }
-        }
-      }
-    });
-
-    // Set up audio buffer callback for screen audio mixing
-    audioDeviceModuleBuilder.setAudioBufferCallback(
-        (audioBuffer, audioFormat, channelCount, sampleRate, bytesRead, captureTimeNs) -> {
-          boolean isMicrophoneMuted = isMicrophoneMuted();
-          if (!isMicrophoneMuted && bytesRead > 0 && getUserMediaImpl != null
-              && getUserMediaImpl.isScreenAudioEnabled()) {
-            // Get screen audio bytes and mix with microphone audio
-            ByteBuffer screenAudioBuffer = getUserMediaImpl.getScreenAudioBytes(bytesRead);
-            if (screenAudioBuffer != null && screenAudioBuffer.remaining() > 0) {
-              AudioBufferMixer.mixScreenAudioWithMicrophone(
-                  audioBuffer,
-                  screenAudioBuffer,
-                  bytesRead);
-            }
-          }
-
-          return captureTimeNs;
-        });
-
-    audioDeviceModule = audioDeviceModuleBuilder.createAudioDeviceModule();
-
-    if (!bypassVoiceProcessing) {
-      if (isDeviceSupportHWNs) {
-        audioDeviceModule.setNoiseSuppressorEnabled(true);
-      }
-    }
-
-    // Update getUserMediaImpl with new audio device module instance
-    if (getUserMediaImpl != null) {
-      getUserMediaImpl.audioDeviceModule = (JavaAudioDeviceModule) audioDeviceModule;
-    }
-
-    final Options options = new Options();
-    options.networkIgnoreMask = networkIgnoreMask;
-
-    final PeerConnectionFactory.Builder factoryBuilder = PeerConnectionFactory.builder()
-        .setOptions(options);
-
-    // Initialize EGL contexts required for HW acceleration.
-    EglBase.Context eglContext = EglUtils.getRootEglBaseContext();
-
-    if (!isReinitializing) {
-      videoEncoderFactory = new CustomVideoEncoderFactory(eglContext, true, true);
-      videoDecoderFactory = new CustomVideoDecoderFactory(eglContext);
-    }
-
-    factoryBuilder
-        .setVideoEncoderFactory(videoEncoderFactory)
-        .setVideoDecoderFactory(videoDecoderFactory);
-
-    videoDecoderFactory.setForceSWCodec(forceSWCodec);
-    videoDecoderFactory.setForceSWCodecList(forceSWCodecList);
-    // Disabled software encoding for now, only using software decoding. See FLU-120
-    // videoEncoderFactory.setForceSWCodec(forceSWCodec);
-    // videoEncoderFactory.setForceSWCodecList(forceSWCodecList);
 
     if (audioProcessingFactoryProvider == null) {
       audioProcessingFactoryProvider = new AudioProcessingController();
     }
 
-    factoryBuilder.setAudioProcessingFactory(audioProcessingFactoryProvider.getFactory());
+    if (frameCryptor == null) {
+      frameCryptor = new FlutterRTCFrameCryptor(this);
+    }
+    if (dataPacketCryptor == null) {
+      dataPacketCryptor = new FlutterDataPacketCryptor(frameCryptor);
+    }
 
-    mFactory = factoryBuilder
-        .setAudioDeviceModule(audioDeviceModule)
-        .createPeerConnectionFactory();
+    if (cameraUtils == null) {
+      cameraUtils = new CameraUtils(
+          trackId -> resolveFactoryForTrack(trackId).getUserMediaImpl, activity);
+    }
 
-    // Store current initialization parameters for future comparison
-    previousBypassVoiceProcessing = bypassVoiceProcessing;
-    previousAudioSampleRate = audioSampleRate;
-    previousAudioOutputSampleRate = audioOutputSampleRate;
-    previousAndroidAudioConfiguration = androidAudioConfiguration;
+    initializeSnapshot = new InitializeSnapshot(bypassVoiceProcessing, networkIgnoreMask,
+        forceSWCodec, forceSWCodecList, androidAudioConfiguration,
+        audioSampleRate, audioOutputSampleRate);
+  }
 
+  /**
+   * Returns the implicit factory, building it lazily on first use. Callers
+   * that obtain a factory via this path are expected to register their PC
+   * under {@link #IMPLICIT_FACTORY_ID} so the lifecycle teardown in
+   * {@link #peerConnectionDispose} can dispose the factory the moment its
+   * last PC is released.
+   *
+   * <p>Throws {@link IllegalStateException} if {@link #initialize} has not
+   * been called yet — without a snapshot we have no defaults to build with.
+   */
+  @NonNull
+  private synchronized NativePeerConnectionFactory acquireImplicitFactory() {
+    NativePeerConnectionFactory nf = factories.get(IMPLICIT_FACTORY_ID);
+    if (nf != null && !nf.isDisposed()) {
+      return nf;
+    }
+
+    if (initializeSnapshot == null) {
+      throw new IllegalStateException(
+          "WebRTC.initialize must be called before creating peer connections");
+    }
+
+    final NativePeerConnectionFactory.BuildContext buildCtx = new NativePeerConnectionFactory.BuildContext();
+    buildCtx.context = context;
+    buildCtx.bypassVoiceProcessing = initializeSnapshot.bypassVoiceProcessing;
+    buildCtx.networkIgnoreMask = initializeSnapshot.networkIgnoreMask;
+    buildCtx.forceSWCodec = initializeSnapshot.forceSWCodec;
+    buildCtx.forceSWCodecList = initializeSnapshot.forceSWCodecList;
+    buildCtx.androidAudioConfiguration = initializeSnapshot.androidAudioConfiguration;
+    buildCtx.audioSampleRate = initializeSnapshot.audioSampleRate;
+    buildCtx.audioOutputSampleRate = initializeSnapshot.audioOutputSampleRate;
+    buildCtx.audioProcessingFactoryProvider = audioProcessingFactoryProvider;
+    buildCtx.stateProvider = this;
+    buildCtx.isMicrophoneMutedSupplier = this::isMicrophoneMuted;
+    buildCtx.localTracksSupplier = () -> localTracks.values();
+
+    nf = NativePeerConnectionFactory.build(IMPLICIT_FACTORY_ID, buildCtx);
+    factories.put(IMPLICIT_FACTORY_ID, nf);
+    Log.i(TAG, "[acquireImplicitFactory] built implicit factory");
+    return nf;
+  }
+
+  /**
+   * Disposes the implicit factory if it has no remaining owned PCs.
+   */
+  private synchronized void releaseImplicitFactoryIfIdle() {
+    final NativePeerConnectionFactory nf = factories.get(IMPLICIT_FACTORY_ID);
+    if (nf == null || !nf.ownedPcIds.isEmpty()) {
+      return;
+    }
+    factories.remove(IMPLICIT_FACTORY_ID);
+    try {
+      nf.dispose();
+      Log.i(TAG, "[releaseImplicitFactoryIfIdle] disposed implicit factory");
+    } catch (Throwable t) {
+      Log.w(TAG, "[releaseImplicitFactoryIfIdle] dispose failed: " + t);
+    }
   }
 
   @Override
@@ -556,22 +668,16 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
           audioOutputSampleRate = constraintsMap.getInt("audioOutputSampleRate");
         }
 
-        boolean reinitialize = false;
-        if (constraintsMap.hasKey("reinitialize")
-            && constraintsMap.getType("reinitialize") == ObjectType.Boolean) {
-          reinitialize = constraintsMap.getBoolean("reinitialize");
-        }
-
         initialize(enableBypassVoiceProcessing, networkIgnoreMask, forceSWCodec, forceSWCodecList,
-            androidAudioConfiguration, logSeverity, audioSampleRate, audioOutputSampleRate, reinitialize);
+            androidAudioConfiguration, logSeverity, audioSampleRate, audioOutputSampleRate);
         result.success(null);
         break;
       }
       case "setVideoEffects": {
         String trackId = call.argument("trackId");
         List<String> names = call.argument("names");
-        
-        getUserMediaImpl.setVideoEffect(trackId, names);
+
+        resolveFactoryForTrack(trackId).getUserMediaImpl.setVideoEffect(trackId, names);
         result.success(null);
         break;
       }
@@ -622,22 +728,53 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       case "createPeerConnection": {
         Map<String, Object> constraints = call.argument("constraints");
         Map<String, Object> configuration = call.argument("configuration");
-        String peerConnectionId = peerConnectionInit(new ConstraintsMap(configuration),
-                new ConstraintsMap((constraints)));
+        String factoryId = call.argument("factoryId");  // optional
+        try {
+          String peerConnectionId = peerConnectionInit(
+              new ConstraintsMap(configuration),
+              new ConstraintsMap((constraints)),
+              factoryId);
+          ConstraintsMap res = new ConstraintsMap();
+          res.putString("peerConnectionId", peerConnectionId);
+          result.success(res.toMap());
+        } catch (IllegalArgumentException e) {
+          resultError("createPeerConnection", e.getMessage(), result);
+        }
+        break;
+      }
+      case "createPeerConnectionFactory": {
+        Map<String, Object> options = call.argument("options");
+        ConstraintsMap optionsMap =
+            new ConstraintsMap(options != null ? options : new HashMap<>());
+        String factoryId = createPeerConnectionFactoryHandler(optionsMap);
         ConstraintsMap res = new ConstraintsMap();
-        res.putString("peerConnectionId", peerConnectionId);
+        res.putString("factoryId", factoryId);
         result.success(res.toMap());
+        break;
+      }
+      case "disposePeerConnectionFactory": {
+        String factoryId = call.argument("factoryId");
+        if (factoryId == null) {
+          resultError("disposePeerConnectionFactory",
+              "factoryId argument is required", result);
+          break;
+        }
+        disposePeerConnectionFactoryHandler(factoryId);
+        result.success(null);
         break;
       }
       case "getUserMedia": {
         Map<String, Object> constraints = call.argument("constraints");
+        String factoryId = call.argument("factoryId");  // optional
         ConstraintsMap constraintsMap = new ConstraintsMap(constraints);
-        getUserMedia(constraintsMap, result);
+        getUserMedia(constraintsMap, factoryId, result);
         break;
       }
-      case "createLocalMediaStream":
-        createLocalMediaStream(result);
+      case "createLocalMediaStream": {
+        String factoryId = call.argument("factoryId");
+        createLocalMediaStream(factoryId, result);
         break;
+      }
       case "getSources":
         getSources(result);
         break;
@@ -829,9 +966,8 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       case "trackClone": {
         String trackId = call.argument("trackId");
         String peerConnectionId = call.argument("peerConnectionId");
-        
 
-        ConstraintsMap map = getUserMediaImpl.cloneTrack(trackId);
+        ConstraintsMap map = resolveFactoryForTrack(trackId).getUserMediaImpl.cloneTrack(trackId);
 
         result.success(map.toMap());
         break;
@@ -960,7 +1096,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       }
       case "mediaStreamTrackSwitchCamera": {
         String trackId = call.argument("trackId");
-        getUserMediaImpl.switchCamera(trackId, result);
+        resolveFactoryForTrack(trackId).getUserMediaImpl.switchCamera(trackId, result);
         break;
       }
       case "setVolume": {
@@ -1003,7 +1139,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       case "selectAudioInput":
         if (Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP_MR1) {
           String deviceId = call.argument("deviceId");
-          getUserMediaImpl.setPreferredInputDevice(deviceId);
+          broadcastPreferredInputDevice(deviceId);
           result.success(null);
         } else {
           result.notImplemented();
@@ -1025,13 +1161,25 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         result.success(null);
         break;
       case "requestCapturePermission": {
-        getUserMediaImpl.requestCapturePermission(result);
+        // The mediaProjectionData captured by requestCapturePermission lives
+        // on the GetUserMediaImpl instance, so the subsequent getDisplayMedia
+        // must target the same factory. Accept an optional factoryId so the
+        // SDK can pin both calls to the per-call factory.
+        String factoryId = call.argument("factoryId");
+        NativePeerConnectionFactory mf = resolveFactory(factoryId);
+        if (mf == null) {
+          resultError("requestCapturePermission",
+              "unknown factoryId " + factoryId, result);
+          break;
+        }
+        mf.getUserMediaImpl.requestCapturePermission(result);
         break;
       }
       case "getDisplayMedia": {
         Map<String, Object> constraints = call.argument("constraints");
+        String factoryId = call.argument("factoryId");
         ConstraintsMap constraintsMap = new ConstraintsMap(constraints);
-        getDisplayMedia(constraintsMap, result);
+        getDisplayMedia(constraintsMap, factoryId, result);
         break;
       }
       case "startRecordToFile":
@@ -1055,7 +1203,10 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
           }
           Integer recorderId = call.argument("recorderId");
           if (videoTrack != null || audioChannel != null) {
-            getUserMediaImpl.startRecordingToFile(path, recorderId, videoTrack, audioChannel);
+            final NativePeerConnectionFactory nf = videoTrack != null
+                ? resolveFactoryForTrack(videoTrack.id())
+                : acquireImplicitFactory();
+            nf.getUserMediaImpl.startRecordingToFile(path, recorderId, videoTrack, audioChannel);
             result.success(null);
           } else {
             resultError("startRecordToFile", "No tracks", result);
@@ -1067,7 +1218,8 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       case "stopRecordToFile":
         Integer recorderId = call.argument("recorderId");
         String albumName = call.argument("albumName");
-        getUserMediaImpl.stopRecording(recorderId, albumName, () -> result.success(null));
+        resolveFactoryForRecorder(recorderId).getUserMediaImpl
+            .stopRecording(recorderId, albumName, () -> result.success(null));
         break;
       case "captureFrame": {
         String path = call.argument("path");
@@ -1232,7 +1384,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       case "setPreferredInputDevice": {
         if (Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP_MR1) {
           String deviceId = call.argument("deviceId");
-          getUserMediaImpl.setPreferredInputDevice(deviceId);
+          broadcastPreferredInputDevice(deviceId);
           result.success(null);
         } else {
           result.notImplemented();
@@ -1241,21 +1393,35 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       }
       case "getRtpSenderCapabilities": {
         String kind = call.argument("kind");
+        String factoryId = call.argument("factoryId");
+        NativePeerConnectionFactory mf = resolveFactory(factoryId);
+        if (mf == null) {
+          resultError("getRtpSenderCapabilities",
+              "unknown factoryId " + factoryId, result);
+          break;
+        }
         MediaStreamTrack.MediaType mediaType = MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO;
         if (kind.equals("video")) {
           mediaType = MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO;
         }
-        RtpCapabilities capabilities = mFactory.getRtpSenderCapabilities(mediaType);
+        RtpCapabilities capabilities = mf.factory.getRtpSenderCapabilities(mediaType);
         result.success(capabilitiestoMap(capabilities).toMap());
         break;
       }
       case "getRtpReceiverCapabilities": {
         String kind = call.argument("kind");
+        String factoryId = call.argument("factoryId");
+        NativePeerConnectionFactory mf = resolveFactory(factoryId);
+        if (mf == null) {
+          resultError("getRtpReceiverCapabilities",
+              "unknown factoryId " + factoryId, result);
+          break;
+        }
         MediaStreamTrack.MediaType mediaType = MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO;
         if (kind.equals("video")) {
           mediaType = MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO;
         }
-        RtpCapabilities capabilities = mFactory.getRtpReceiverCapabilities(mediaType);
+        RtpCapabilities capabilities = mf.factory.getRtpReceiverCapabilities(mediaType);
         result.success(capabilitiestoMap(capabilities).toMap());
         break;
       }
@@ -1333,8 +1499,15 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         break;
       }
       case "startLocalRecording": {
+        final String factoryId = call.argument("factoryId");
+        final NativePeerConnectionFactory mf = resolveFactory(factoryId);
+        if (mf == null) {
+          resultError("startLocalRecording", "unknown factoryId " + factoryId, result);
+          break;
+        }
+        final JavaAudioDeviceModule adm = mf.adm;
         executor.execute(() -> {
-          audioDeviceModule.prewarmRecording();
+          adm.prewarmRecording();
           mainHandler.post(() -> {
             result.success(null);
           });
@@ -1342,8 +1515,15 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         break;
       }
       case "stopLocalRecording": {
+        final String factoryId = call.argument("factoryId");
+        final NativePeerConnectionFactory mf = resolveFactory(factoryId);
+        if (mf == null) {
+          resultError("stopLocalRecording", "unknown factoryId " + factoryId, result);
+          break;
+        }
+        final JavaAudioDeviceModule adm = mf.adm;
         executor.execute(() -> {
-          audioDeviceModule.requestStopRecording();
+          adm.requestStopRecording();
           mainHandler.post(() -> {
             result.success(null);
           });
@@ -1738,16 +1918,41 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   }
 
   public String peerConnectionInit(ConstraintsMap configuration, ConstraintsMap constraints) {
+    return peerConnectionInit(configuration, constraints, null);
+  }
+
+  /**
+   * Builds a fresh peer connection against {@code factoryId}'s {@link
+   * NativePeerConnectionFactory}, or against the implicit factory when {@code factoryId}
+   * is null. 
+   *
+   * <p>Every PC is registered in {@link #pcFactoryId} and {@link NativePeerConnectionFactory#ownedPcIds}.
+   * The implicit factory uses these registrations as its refcount.
+   */
+  public String peerConnectionInit(ConstraintsMap configuration,
+      ConstraintsMap constraints, @Nullable String factoryId) {
+    final NativePeerConnectionFactory nf = resolveFactory(factoryId);
+    if (nf == null) {
+      throw new IllegalArgumentException(
+          "createPeerConnection: unknown factoryId " + factoryId);
+    }
+
     String peerConnectionId = getNextStreamUUID();
     RTCConfiguration conf = parseRTCConfiguration(configuration);
     PeerConnectionObserver observer = new PeerConnectionObserver(conf, this, messenger, peerConnectionId);
     PeerConnection peerConnection
-            = mFactory.createPeerConnection(
+            = nf.factory.createPeerConnection(
             conf,
             parseMediaConstraints(constraints),
             observer);
     observer.setPeerConnection(peerConnection);
     mPeerConnectionObservers.put(peerConnectionId, observer);
+    
+    final String resolvedFactoryId =
+        (factoryId == null || factoryId.isEmpty()) ? IMPLICIT_FACTORY_ID : factoryId;
+    pcFactoryId.put(peerConnectionId, resolvedFactoryId);
+    nf.ownedPcIds.add(peerConnectionId);
+    
     return peerConnectionId;
   }
 
@@ -1806,7 +2011,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
 
   @Override
   public PeerConnectionFactory getPeerConnectionFactory() {
-    return mFactory;
+    return acquireImplicitFactory().factory;
   }
 
   @Override
@@ -1883,8 +2088,20 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
 
 
   public void getUserMedia(ConstraintsMap constraints, Result result) {
+    getUserMedia(constraints, null, result);
+  }
+
+  public void getUserMedia(ConstraintsMap constraints, @Nullable String factoryId,
+      Result result) {
+    final NativePeerConnectionFactory nf = resolveFactory(factoryId);
+    if (nf == null) {
+      resultError("getUserMedia",
+          "unknown factoryId " + factoryId, result);
+      return;
+    }
+
     String streamId = getNextStreamUUID();
-    MediaStream mediaStream = mFactory.createLocalMediaStream(streamId);
+    MediaStream mediaStream = nf.factory.createLocalMediaStream(streamId);
 
     if (mediaStream == null) {
       // XXX The following does not follow the getUserMedia() algorithm
@@ -1895,12 +2112,24 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       return;
     }
 
-    getUserMediaImpl.getUserMedia(constraints, result, mediaStream);
+    nf.getUserMediaImpl.getUserMedia(constraints, result, mediaStream);
   }
 
   public void getDisplayMedia(ConstraintsMap constraints, Result result) {
+    getDisplayMedia(constraints, null, result);
+  }
+
+  public void getDisplayMedia(ConstraintsMap constraints, @Nullable String factoryId,
+      Result result) {
+    final NativePeerConnectionFactory nf = resolveFactory(factoryId);
+    if (nf == null) {
+      resultError("getDisplayMedia",
+          "unknown factoryId " + factoryId, result);
+      return;
+    }
+
     String streamId = getNextStreamUUID();
-    MediaStream mediaStream = mFactory.createLocalMediaStream(streamId);
+    MediaStream mediaStream = nf.factory.createLocalMediaStream(streamId);
 
     if (mediaStream == null) {
       // XXX The following does not follow the getUserMedia() algorithm
@@ -1911,7 +2140,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       return;
     }
 
-    getUserMediaImpl.getDisplayMedia(constraints, result, mediaStream);
+    nf.getUserMediaImpl.getDisplayMedia(constraints, result, mediaStream);
   }
 
   public void getSources(Result result) {
@@ -1967,9 +2196,16 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     result.success(map.toMap());
   }
 
-  private void createLocalMediaStream(Result result) {
+  private void createLocalMediaStream(@Nullable String factoryId, Result result) {
+    final NativePeerConnectionFactory nf = resolveFactory(factoryId);
+    if (nf == null) {
+      resultError("createLocalMediaStream",
+          "unknown factoryId " + factoryId, result);
+      return;
+    }
+    
     String streamId = getNextStreamUUID();
-    MediaStream mediaStream = mFactory.createLocalMediaStream(streamId);
+    MediaStream mediaStream = nf.factory.createLocalMediaStream(streamId);
     localStreams.put(streamId, mediaStream);
 
     if (mediaStream == null) {
@@ -1987,11 +2223,15 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       Log.d(TAG, "trackDispose() track is null");
       return;
     }
+
     removeTrackForRendererById(trackId);
     track.setEnabled(false);
+    
     if (track instanceof LocalVideoTrack) {
-      getUserMediaImpl.removeVideoCapturer(trackId);
+      resolveFactoryForTrack(trackId).getUserMediaImpl.removeVideoCapturer(trackId);
     }
+
+    //TODO: Should this be commented out?
     // localTracks.remove(trackId);
   }
 
@@ -2089,7 +2329,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       stream.removeTrack((AudioTrack) track.track);
     } else if (track.kind().equals("video")) {
       stream.removeTrack((VideoTrack) track.track);
-      getUserMediaImpl.removeVideoCapturer(_trackId);
+      resolveFactoryForTrack(_trackId).getUserMediaImpl.removeVideoCapturer(_trackId);
     }
   }
 
@@ -2357,6 +2597,21 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     } else {
       Log.d(TAG, "peerConnectionDispose() peerConnectionObserver is null");
     }
+
+    // Drop the PC from per-call factory bookkeeping. 
+    final String factoryId = pcFactoryId.remove(id);
+    if (factoryId != null) {
+      final NativePeerConnectionFactory nf = factories.get(factoryId);
+      if (nf != null) {
+        nf.ownedPcIds.remove(id);
+      }
+      if (IMPLICIT_FACTORY_ID.equals(factoryId)) {
+        // Tear down the implicit factory the moment its last PC is gone.
+        // Explicit factories are owned by the SDK and disposed via disposePeerConnectionFactory.
+        releaseImplicitFactoryIfIdle();
+      }
+    }
+
     if (mPeerConnectionObservers.size() == 0) {
       AudioSwitchManager.instance.stop();
     }
@@ -2387,7 +2642,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     List<VideoTrack> videoTracks = stream.videoTracks;
     for (VideoTrack track : videoTracks) {
       localTracks.remove(track.id());
-      getUserMediaImpl.removeVideoCapturer(track.id());
+      resolveFactoryForTrack(track.id()).getUserMediaImpl.removeVideoCapturer(track.id());
       stream.removeTrack(track);
     }
     List<AudioTrack> audioTracks = stream.audioTracks;
@@ -2674,10 +2929,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   }
 
   public void reStartCamera() {
-    if (null == getUserMediaImpl) {
-      return;
-    }
-    getUserMediaImpl.reStartCamera(new GetUserMediaImpl.IsCameraEnabled() {
+    final GetUserMediaImpl.IsCameraEnabled isEnabled = new GetUserMediaImpl.IsCameraEnabled() {
       @Override
       public boolean isEnabled(String id) {
         if (!localTracks.containsKey(id)) {
@@ -2685,7 +2937,15 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         }
         return localTracks.get(id).enabled();
       }
-    });
+    };
+
+    // Restart cameras across every factory so none are left in a
+    // suspended state after returning from background.
+    for (NativePeerConnectionFactory mf : factories.values()) {
+      if (mf.getUserMediaImpl != null) {
+        mf.getUserMediaImpl.reStartCamera(isEnabled);
+      }
+    }
   }
 
   @RequiresApi(api = Build.VERSION_CODES.M)

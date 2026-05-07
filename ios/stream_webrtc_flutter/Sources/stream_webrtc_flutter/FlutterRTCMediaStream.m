@@ -7,6 +7,7 @@
 #import "include/stream_webrtc_flutter/FlutterRTCPeerConnection.h"
 #import "include/stream_webrtc_flutter/LocalAudioTrack.h"
 #import "include/stream_webrtc_flutter/LocalVideoTrack.h"
+#import "include/stream_webrtc_flutter/NativePeerConnectionFactory.h"
 #import "include/stream_webrtc_flutter/VideoProcessingAdapter.h"
 
 @implementation RTCMediaStreamTrack (Flutter)
@@ -120,7 +121,8 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 - (void)getUserAudio:(NSDictionary*)constraints
      successCallback:(NavigatorUserMediaSuccessCallback)successCallback
        errorCallback:(NavigatorUserMediaErrorCallback)errorCallback
-         mediaStream:(RTCMediaStream*)mediaStream {
+         mediaStream:(RTCMediaStream*)mediaStream
+           factoryId:(NSString*)factoryId {
   id audioConstraints = constraints[@"audio"];
   NSString* audioDeviceId = @"";
   RTCMediaConstraints* rtcConstraints;
@@ -157,10 +159,14 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 #endif
 
   NSString* trackId = [[NSUUID UUID] UUIDString];
-  RTCAudioSource* audioSource =
-      [self.peerConnectionFactory audioSourceWithConstraints:rtcConstraints];
-  RTCAudioTrack* audioTrack = [self.peerConnectionFactory audioTrackWithSource:audioSource
-                                                                       trackId:trackId];
+  NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+  if (nf == nil || nf.factory == nil) {
+    errorCallback(@"OverconstrainedError",
+                  [NSString stringWithFormat:@"unknown factoryId %@", factoryId]);
+    return;
+  }
+  RTCAudioSource* audioSource = [nf.factory audioSourceWithConstraints:rtcConstraints];
+  RTCAudioTrack* audioTrack = [nf.factory audioTrackWithSource:audioSource trackId:trackId];
   LocalAudioTrack* localAudioTrack = [[LocalAudioTrack alloc] initWithTrack:audioTrack];
 
   audioTrack.settings = @{
@@ -177,22 +183,37 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 
   [self.localTracks setObject:localAudioTrack forKey:trackId];
 
+  if (nf.factoryId != nil) {
+    self.trackFactoryId[trackId] = nf.factoryId;
+  }
+
   [self ensureAudioSession];
 
   successCallback(mediaStream);
 }
 
 // TODO: Use RCTConvert for constraints ...
-- (void)getUserMedia:(NSDictionary*)constraints result:(FlutterResult)result {
+- (void)getUserMedia:(NSDictionary*)constraints
+           factoryId:(NSString*)factoryId
+              result:(FlutterResult)result {
   // Initialize RTCMediaStream with a unique label in order to allow multiple
   // RTCMediaStream instances initialized by multiple getUserMedia calls to be
   // added to 1 RTCPeerConnection instance. As suggested by
   // https://www.w3.org/TR/mediacapture-streams/#mediastream to be a good
   // practice, use a UUID (conforming to RFC4122).
   NSString* mediaStreamId = [[NSUUID UUID] UUIDString];
-  RTCMediaStream* mediaStream = [self.peerConnectionFactory mediaStreamWithStreamId:mediaStreamId];
+  NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+  if (nf == nil || nf.factory == nil) {
+    result([FlutterError
+        errorWithCode:@"getUserMedia"
+              message:[NSString stringWithFormat:@"unknown factoryId %@", factoryId]
+              details:nil]);
+    return;
+  }
+  RTCMediaStream* mediaStream = [nf.factory mediaStreamWithStreamId:mediaStreamId];
 
   [self getUserMedia:constraints
+      factoryId:factoryId
       successCallback:^(RTCMediaStream* mediaStream) {
         NSString* mediaStreamId = mediaStream.streamId;
 
@@ -262,6 +283,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
  * part of the execution of the {@code getUserMedia()} algorithm.
  */
 - (void)getUserMedia:(NSDictionary*)constraints
+           factoryId:(NSString*)factoryId
      successCallback:(NavigatorUserMediaSuccessCallback)successCallback
        errorCallback:(NavigatorUserMediaErrorCallback)errorCallback
          mediaStream:(RTCMediaStream*)mediaStream {
@@ -277,7 +299,8 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                           constraints:constraints
                       successCallback:successCallback
                         errorCallback:errorCallback
-                          mediaStream:mediaStream];
+                          mediaStream:mediaStream
+                            factoryId:factoryId];
       return;
     }
   }
@@ -298,7 +321,8 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                             constraints:constraints
                         successCallback:successCallback
                           errorCallback:errorCallback
-                            mediaStream:mediaStream];
+                            mediaStream:mediaStream
+                              factoryId:factoryId];
         return;
       }
 #endif
@@ -342,16 +366,28 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
   RTCMediaStreamTrack* originalTrack = [self trackForId:trackId peerConnectionId:nil];
   LocalVideoTrack* originalLocalTrack = self.localTracks[trackId];
 
+  // Resolve the same factory the original track was made with so the clone
+  // shares the underlying source's factory affinity.
+  NSString* sourceFactoryId = self.trackFactoryId[trackId];
+  NativePeerConnectionFactory* nf = [self resolveFactoryForId:sourceFactoryId];
+  if (nf == nil || nf.factory == nil) {
+    NSLog(@"[cloneTrack] no factory for trackId %@, falling back to implicit", trackId);
+    nf = [self acquireImplicitFactory];
+  }
+
   if (originalTrack != nil && [originalTrack.kind isEqualToString:@"audio"]) {
     RTCAudioTrack* originalAudioTrack = (RTCAudioTrack*)originalTrack;
     RTCAudioSource* originalAudioSource = originalAudioTrack.source;
 
-    RTCAudioTrack* audioTrack = [self.peerConnectionFactory audioTrackWithSource:originalAudioSource
-                                                                         trackId:newTrackId];
+    RTCAudioTrack* audioTrack = [nf.factory audioTrackWithSource:originalAudioSource
+                                                         trackId:newTrackId];
     LocalAudioTrack* localAudioTrack = [[LocalAudioTrack alloc] initWithTrack:audioTrack];
 
     audioTrack.settings = originalAudioTrack.settings;
     [self.localTracks setObject:localAudioTrack forKey:newTrackId];
+    if (nf.factoryId != nil) {
+      self.trackFactoryId[newTrackId] = nf.factoryId;
+    }
 
     for (NSString* streamId in self.localStreams) {
       RTCMediaStream* stream = [self.localStreams objectForKey:streamId];
@@ -367,14 +403,16 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     RTCVideoTrack* originalVideoTrack = (RTCVideoTrack*)originalTrack;
     RTCVideoSource* videoSource = originalVideoTrack.source;
 
-    RTCVideoTrack* videoTrack = [self.peerConnectionFactory videoTrackWithSource:videoSource
-                                                                         trackId:newTrackId];
+    RTCVideoTrack* videoTrack = [nf.factory videoTrackWithSource:videoSource trackId:newTrackId];
     LocalVideoTrack* localVideoTrack =
         [[LocalVideoTrack alloc] initWithTrack:videoTrack
                                videoProcessing:originalLocalTrack.processing];
 
     videoTrack.settings = originalVideoTrack.settings;
     [self.localTracks setObject:localVideoTrack forKey:newTrackId];
+    if (nf.factoryId != nil) {
+      self.trackFactoryId[newTrackId] = nf.factoryId;
+    }
 
     for (NSString* streamId in self.localStreams) {
       RTCMediaStream* stream = [self.localStreams objectForKey:streamId];
@@ -411,7 +449,8 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 - (void)getUserVideo:(NSDictionary*)constraints
      successCallback:(NavigatorUserMediaSuccessCallback)successCallback
        errorCallback:(NavigatorUserMediaErrorCallback)errorCallback
-         mediaStream:(RTCMediaStream*)mediaStream {
+         mediaStream:(RTCMediaStream*)mediaStream
+           factoryId:(NSString*)factoryId {
   id videoConstraints = constraints[@"video"];
   AVCaptureDevice* videoDevice;
   NSString* videoDeviceId = nil;
@@ -540,7 +579,13 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
   }
 
   if (videoDevice) {
-    RTCVideoSource* videoSource = [self.peerConnectionFactory videoSource];
+    NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+    if (nf == nil || nf.factory == nil) {
+      errorCallback(@"OverconstrainedError",
+                    [NSString stringWithFormat:@"unknown factoryId %@", factoryId]);
+      return;
+    }
+    RTCVideoSource* videoSource = [nf.factory videoSource];
 #if TARGET_OS_OSX
     if (self.videoCapturer) {
       [self.videoCapturer stopCapture];
@@ -584,10 +629,13 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                              }];
 
     NSString* trackUUID = [[NSUUID UUID] UUIDString];
-    RTCVideoTrack* videoTrack = [self.peerConnectionFactory videoTrackWithSource:videoSource
-                                                                         trackId:trackUUID];
+    RTCVideoTrack* videoTrack = [nf.factory videoTrackWithSource:videoSource trackId:trackUUID];
     LocalVideoTrack* localVideoTrack =
         [[LocalVideoTrack alloc] initWithTrack:videoTrack videoProcessing:videoProcessingAdapter];
+
+    if (nf.factoryId != nil) {
+      self.trackFactoryId[trackUUID] = nf.factoryId;
+    }
 
     __weak RTCCameraVideoCapturer* capturer = self.videoCapturer;
 
@@ -673,7 +721,8 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                       constraints:(NSDictionary*)constraints
                   successCallback:(NavigatorUserMediaSuccessCallback)successCallback
                     errorCallback:(NavigatorUserMediaErrorCallback)errorCallback
-                      mediaStream:(RTCMediaStream*)mediaStream {
+                      mediaStream:(RTCMediaStream*)mediaStream
+                        factoryId:(NSString*)factoryId {
   // According to step 6.2.1 of the getUserMedia() algorithm, if there is no
   // source, fail "with a new DOMException object whose name attribute has the
   // value NotFoundError."
@@ -700,6 +749,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                                    NavigatorUserMediaSuccessCallback scb =
                                        ^(RTCMediaStream* mediaStream) {
                                          [self getUserMedia:constraints
+                                                   factoryId:factoryId
                                              successCallback:successCallback
                                                errorCallback:errorCallback
                                                  mediaStream:mediaStream];
@@ -709,12 +759,14 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                                      [self getUserAudio:constraints
                                          successCallback:scb
                                            errorCallback:errorCallback
-                                             mediaStream:mediaStream];
+                                             mediaStream:mediaStream
+                                               factoryId:factoryId];
                                    } else if (mediaType == AVMediaTypeVideo) {
                                      [self getUserVideo:constraints
                                          successCallback:scb
                                            errorCallback:errorCallback
-                                             mediaStream:mediaStream];
+                                             mediaStream:mediaStream
+                                               factoryId:factoryId];
                                    }
                                  } else {
                                    // According to step 10 Permission Failure of the getUserMedia()
@@ -730,6 +782,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     // Fallback on earlier versions
     NavigatorUserMediaSuccessCallback scb = ^(RTCMediaStream* mediaStream) {
       [self getUserMedia:constraints
+                factoryId:factoryId
           successCallback:successCallback
             errorCallback:errorCallback
               mediaStream:mediaStream];
@@ -738,20 +791,30 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
       [self getUserAudio:constraints
           successCallback:scb
             errorCallback:errorCallback
-              mediaStream:mediaStream];
+              mediaStream:mediaStream
+                factoryId:factoryId];
     } else if (mediaType == AVMediaTypeVideo) {
       [self getUserVideo:constraints
           successCallback:scb
             errorCallback:errorCallback
-              mediaStream:mediaStream];
+              mediaStream:mediaStream
+                factoryId:factoryId];
     }
   }
 #endif
 }
 
-- (void)createLocalMediaStream:(FlutterResult)result {
+- (void)createLocalMediaStream:(NSString*)factoryId result:(FlutterResult)result {
   NSString* mediaStreamId = [[NSUUID UUID] UUIDString];
-  RTCMediaStream* mediaStream = [self.peerConnectionFactory mediaStreamWithStreamId:mediaStreamId];
+  NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+  if (nf == nil || nf.factory == nil) {
+    result([FlutterError
+        errorWithCode:@"createLocalMediaStream"
+              message:[NSString stringWithFormat:@"unknown factoryId %@", factoryId]
+              details:nil]);
+    return;
+  }
+  RTCMediaStream* mediaStream = [nf.factory mediaStreamWithStreamId:mediaStreamId];
 
   self.localStreams[mediaStreamId] = mediaStream;
   result(@{@"streamId" : [mediaStream streamId]});

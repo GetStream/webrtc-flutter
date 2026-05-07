@@ -1,13 +1,14 @@
+#import "FlutterRTCMediaStream.h"
 #import <objc/runtime.h>
+#import "AVKit/AVKit.h"
 #import "AudioUtils.h"
 #import "CameraUtils.h"
 #import "FlutterRTCFrameCapturer.h"
-#import "FlutterRTCMediaStream.h"
 #import "FlutterRTCPeerConnection.h"
-#import "VideoProcessingAdapter.h"
-#import "LocalVideoTrack.h"
 #import "LocalAudioTrack.h"
-#import "AVKit/AVKit.h"
+#import "LocalVideoTrack.h"
+#import "NativePeerConnectionFactory.h"
+#import "VideoProcessingAdapter.h"
 
 @implementation RTCMediaStreamTrack (Flutter)
 
@@ -49,13 +50,12 @@ typedef void (^NavigatorUserMediaErrorCallback)(NSString* errorType, NSString* e
 typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 
 - (NSDictionary*)defaultVideoConstraints {
-    return @{@"minWidth" : @"1280", @"minHeight" : @"720", @"minFrameRate" : @"30"};
+  return @{@"minWidth" : @"1280", @"minHeight" : @"720", @"minFrameRate" : @"30"};
 }
 
 - (NSDictionary*)defaultAudioConstraints {
-    return @{};
+  return @{};
 }
-
 
 - (RTCMediaConstraints*)defaultMediaStreamConstraints {
   RTCMediaConstraints* constraints =
@@ -64,40 +64,41 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
   return constraints;
 }
 
-
-- (NSArray<AVCaptureDevice*> *) captureDevices {
-    if (@available(iOS 13.0, macOS 10.15, macCatalyst 14.0, tvOS 17.0, *)) {
-        NSArray<AVCaptureDeviceType> *deviceTypes = @[
+- (NSArray<AVCaptureDevice*>*)captureDevices {
+  if (@available(iOS 13.0, macOS 10.15, macCatalyst 14.0, tvOS 17.0, *)) {
+    NSArray<AVCaptureDeviceType>* deviceTypes = @[
 #if TARGET_OS_IPHONE
-            AVCaptureDeviceTypeBuiltInTripleCamera,
-            AVCaptureDeviceTypeBuiltInDualCamera,
-            AVCaptureDeviceTypeBuiltInDualWideCamera,
-            AVCaptureDeviceTypeBuiltInWideAngleCamera,
-            AVCaptureDeviceTypeBuiltInTelephotoCamera,
-            AVCaptureDeviceTypeBuiltInUltraWideCamera,
+      AVCaptureDeviceTypeBuiltInTripleCamera,
+      AVCaptureDeviceTypeBuiltInDualCamera,
+      AVCaptureDeviceTypeBuiltInDualWideCamera,
+      AVCaptureDeviceTypeBuiltInWideAngleCamera,
+      AVCaptureDeviceTypeBuiltInTelephotoCamera,
+      AVCaptureDeviceTypeBuiltInUltraWideCamera,
 #else
-            AVCaptureDeviceTypeBuiltInWideAngleCamera,
+      AVCaptureDeviceTypeBuiltInWideAngleCamera,
 #endif
-        ];
-        
+    ];
+
 #if !defined(TARGET_OS_IPHONE)
-        if (@available(macOS 13.0, *)) {
-            deviceTypes = [deviceTypes arrayByAddingObject:AVCaptureDeviceTypeDeskViewCamera];
-        }
+    if (@available(macOS 13.0, *)) {
+      deviceTypes = [deviceTypes arrayByAddingObject:AVCaptureDeviceTypeDeskViewCamera];
+    }
 #endif
 
-        if (@available(iOS 17.0, macOS 14.0, tvOS 17.0, *)) {
-            deviceTypes = [deviceTypes arrayByAddingObjectsFromArray: @[
-                AVCaptureDeviceTypeContinuityCamera,
-                AVCaptureDeviceTypeExternal,
-            ]];
-        }
-
-        return [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:deviceTypes
-                                                                      mediaType:AVMediaTypeVideo
-                                                                       position:AVCaptureDevicePositionUnspecified].devices;
+    if (@available(iOS 17.0, macOS 14.0, tvOS 17.0, *)) {
+      deviceTypes = [deviceTypes arrayByAddingObjectsFromArray:@[
+        AVCaptureDeviceTypeContinuityCamera,
+        AVCaptureDeviceTypeExternal,
+      ]];
     }
-    return @[];
+
+    return [AVCaptureDeviceDiscoverySession
+               discoverySessionWithDeviceTypes:deviceTypes
+                                     mediaType:AVMediaTypeVideo
+                                      position:AVCaptureDevicePositionUnspecified]
+        .devices;
+  }
+  return @[];
 }
 
 /**
@@ -120,10 +121,11 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 - (void)getUserAudio:(NSDictionary*)constraints
      successCallback:(NavigatorUserMediaSuccessCallback)successCallback
        errorCallback:(NavigatorUserMediaErrorCallback)errorCallback
-         mediaStream:(RTCMediaStream*)mediaStream {
+         mediaStream:(RTCMediaStream*)mediaStream
+           factoryId:(NSString*)factoryId {
   id audioConstraints = constraints[@"audio"];
   NSString* audioDeviceId = @"";
-  RTCMediaConstraints *rtcConstraints;
+  RTCMediaConstraints* rtcConstraints;
   if ([audioConstraints isKindOfClass:[NSDictionary class]]) {
     // constraints.audio.deviceId
     NSString* deviceId = audioConstraints[@"deviceId"];
@@ -135,8 +137,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     rtcConstraints = [self parseMediaConstraints:audioConstraints];
     // constraints.audio.optional.sourceId
     id optionalConstraints = audioConstraints[@"optional"];
-    if (optionalConstraints && [optionalConstraints isKindOfClass:[NSArray class]] &&
-        !deviceId) {
+    if (optionalConstraints && [optionalConstraints isKindOfClass:[NSArray class]] && !deviceId) {
       NSArray* options = optionalConstraints;
       for (id item in options) {
         if ([item isKindOfClass:[NSDictionary class]]) {
@@ -148,7 +149,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
       }
     }
   } else {
-      rtcConstraints = [self parseMediaConstraints:[self defaultAudioConstraints]];
+    rtcConstraints = [self parseMediaConstraints:[self defaultAudioConstraints]];
   }
 
 #if !defined(TARGET_OS_IPHONE)
@@ -158,9 +159,15 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 #endif
 
   NSString* trackId = [[NSUUID UUID] UUIDString];
-  RTCAudioSource *audioSource = [self.peerConnectionFactory audioSourceWithConstraints:rtcConstraints];
-  RTCAudioTrack* audioTrack = [self.peerConnectionFactory audioTrackWithSource:audioSource trackId:trackId];
-  LocalAudioTrack *localAudioTrack = [[LocalAudioTrack alloc] initWithTrack:audioTrack];
+  NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+  if (nf == nil || nf.factory == nil) {
+    errorCallback(@"OverconstrainedError",
+                  [NSString stringWithFormat:@"unknown factoryId %@", factoryId]);
+    return;
+  }
+  RTCAudioSource* audioSource = [nf.factory audioSourceWithConstraints:rtcConstraints];
+  RTCAudioTrack* audioTrack = [nf.factory audioTrackWithSource:audioSource trackId:trackId];
+  LocalAudioTrack* localAudioTrack = [[LocalAudioTrack alloc] initWithTrack:audioTrack];
 
   audioTrack.settings = @{
     @"deviceId" : audioDeviceId,
@@ -175,6 +182,11 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
   [mediaStream addAudioTrack:audioTrack];
 
   [self.localTracks setObject:localAudioTrack forKey:trackId];
+  // Track the factory that backs this audio track so cloneTrack and
+  // other track-scoped operations route to the same factory.
+  if (nf.factoryId != nil) {
+    self.trackFactoryId[trackId] = nf.factoryId;
+  }
 
   [self ensureAudioSession];
 
@@ -182,16 +194,27 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 }
 
 // TODO: Use RCTConvert for constraints ...
-- (void)getUserMedia:(NSDictionary*)constraints result:(FlutterResult)result {
+- (void)getUserMedia:(NSDictionary*)constraints
+           factoryId:(NSString*)factoryId
+              result:(FlutterResult)result {
   // Initialize RTCMediaStream with a unique label in order to allow multiple
   // RTCMediaStream instances initialized by multiple getUserMedia calls to be
   // added to 1 RTCPeerConnection instance. As suggested by
   // https://www.w3.org/TR/mediacapture-streams/#mediastream to be a good
   // practice, use a UUID (conforming to RFC4122).
   NSString* mediaStreamId = [[NSUUID UUID] UUIDString];
-  RTCMediaStream* mediaStream = [self.peerConnectionFactory mediaStreamWithStreamId:mediaStreamId];
+  NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+  if (nf == nil || nf.factory == nil) {
+    result([FlutterError
+        errorWithCode:@"getUserMedia"
+              message:[NSString stringWithFormat:@"unknown factoryId %@", factoryId]
+              details:nil]);
+    return;
+  }
+  RTCMediaStream* mediaStream = [nf.factory mediaStreamWithStreamId:mediaStreamId];
 
   [self getUserMedia:constraints
+      factoryId:factoryId
       successCallback:^(RTCMediaStream* mediaStream) {
         NSString* mediaStreamId = mediaStream.streamId;
 
@@ -261,6 +284,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
  * part of the execution of the {@code getUserMedia()} algorithm.
  */
 - (void)getUserMedia:(NSDictionary*)constraints
+           factoryId:(NSString*)factoryId
      successCallback:(NavigatorUserMediaSuccessCallback)successCallback
        errorCallback:(NavigatorUserMediaErrorCallback)errorCallback
          mediaStream:(RTCMediaStream*)mediaStream {
@@ -276,7 +300,8 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                           constraints:constraints
                       successCallback:successCallback
                         errorCallback:errorCallback
-                          mediaStream:mediaStream];
+                          mediaStream:mediaStream
+                            factoryId:factoryId];
       return;
     }
   }
@@ -297,7 +322,8 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                             constraints:constraints
                         successCallback:successCallback
                           errorCallback:errorCallback
-                            mediaStream:mediaStream];
+                            mediaStream:mediaStream
+                              factoryId:factoryId];
         return;
       }
 #endif
@@ -336,54 +362,70 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 }
 
 - (RTCMediaStreamTrack*)cloneTrack:(nonnull NSString*)trackId {
-    NSString* newTrackId = [[NSUUID UUID] UUIDString];
+  NSString* newTrackId = [[NSUUID UUID] UUIDString];
 
-    RTCMediaStreamTrack *originalTrack = [self trackForId:trackId peerConnectionId: nil];
-    LocalVideoTrack* originalLocalTrack = self.localTracks[trackId];
+  RTCMediaStreamTrack* originalTrack = [self trackForId:trackId peerConnectionId:nil];
+  LocalVideoTrack* originalLocalTrack = self.localTracks[trackId];
 
-    if (originalTrack != nil && [originalTrack.kind isEqualToString:@"audio"]) {
-      RTCAudioTrack* originalAudioTrack = (RTCAudioTrack *)originalTrack;
-      RTCAudioSource* originalAudioSource = originalAudioTrack.source;
+  // Resolve the same factory the original track was made with so the clone
+  // shares the underlying source's factory affinity.
+  NSString* sourceFactoryId = self.trackFactoryId[trackId];
+  NativePeerConnectionFactory* nf = [self resolveFactoryForId:sourceFactoryId];
+  if (nf == nil || nf.factory == nil) {
+    NSLog(@"[cloneTrack] no factory for trackId %@, falling back to implicit", trackId);
+    nf = [self acquireImplicitFactory];
+  }
 
-      RTCAudioTrack* audioTrack = [self.peerConnectionFactory audioTrackWithSource:originalAudioSource trackId:newTrackId];
-      LocalAudioTrack *localAudioTrack = [[LocalAudioTrack alloc] initWithTrack:audioTrack];
+  if (originalTrack != nil && [originalTrack.kind isEqualToString:@"audio"]) {
+    RTCAudioTrack* originalAudioTrack = (RTCAudioTrack*)originalTrack;
+    RTCAudioSource* originalAudioSource = originalAudioTrack.source;
 
-      audioTrack.settings = originalAudioTrack.settings;
-      [self.localTracks setObject:localAudioTrack forKey:newTrackId];
+    RTCAudioTrack* audioTrack = [nf.factory audioTrackWithSource:originalAudioSource
+                                                         trackId:newTrackId];
+    LocalAudioTrack* localAudioTrack = [[LocalAudioTrack alloc] initWithTrack:audioTrack];
 
-      for (NSString* streamId in self.localStreams) {
-        RTCMediaStream* stream = [self.localStreams objectForKey:streamId];
-        for (RTCAudioTrack* track in stream.audioTracks) {
-          if ([trackId isEqualToString:track.trackId]) {
-            [stream addAudioTrack:audioTrack];
-          }
-        }
-      }
-
-      return audioTrack;
-    } else if (originalTrack != nil && [originalTrack.kind isEqualToString:@"video"]) {
-      RTCVideoTrack *originalVideoTrack = (RTCVideoTrack *)originalTrack;
-      RTCVideoSource *videoSource = originalVideoTrack.source;
-
-      RTCVideoTrack* videoTrack = [self.peerConnectionFactory videoTrackWithSource:videoSource
-                                                                  trackId:newTrackId];
-      LocalVideoTrack *localVideoTrack = [[LocalVideoTrack alloc] initWithTrack:videoTrack 
-                                                                  videoProcessing:originalLocalTrack.processing];
-
-      videoTrack.settings = originalVideoTrack.settings;
-      [self.localTracks setObject:localVideoTrack forKey:newTrackId];
-
-      for (NSString* streamId in self.localStreams) {
-        RTCMediaStream* stream = [self.localStreams objectForKey:streamId];
-        for (RTCVideoTrack* track in stream.videoTracks) {
-          if ([trackId isEqualToString:track.trackId]) {
-              [stream addVideoTrack:videoTrack];
-            }
-        }
-      }
-
-      return videoTrack;
+    audioTrack.settings = originalAudioTrack.settings;
+    [self.localTracks setObject:localAudioTrack forKey:newTrackId];
+    if (nf.factoryId != nil) {
+      self.trackFactoryId[newTrackId] = nf.factoryId;
     }
+
+    for (NSString* streamId in self.localStreams) {
+      RTCMediaStream* stream = [self.localStreams objectForKey:streamId];
+      for (RTCAudioTrack* track in stream.audioTracks) {
+        if ([trackId isEqualToString:track.trackId]) {
+          [stream addAudioTrack:audioTrack];
+        }
+      }
+    }
+
+    return audioTrack;
+  } else if (originalTrack != nil && [originalTrack.kind isEqualToString:@"video"]) {
+    RTCVideoTrack* originalVideoTrack = (RTCVideoTrack*)originalTrack;
+    RTCVideoSource* videoSource = originalVideoTrack.source;
+
+    RTCVideoTrack* videoTrack = [nf.factory videoTrackWithSource:videoSource trackId:newTrackId];
+    LocalVideoTrack* localVideoTrack =
+        [[LocalVideoTrack alloc] initWithTrack:videoTrack
+                               videoProcessing:originalLocalTrack.processing];
+
+    videoTrack.settings = originalVideoTrack.settings;
+    [self.localTracks setObject:localVideoTrack forKey:newTrackId];
+    if (nf.factoryId != nil) {
+      self.trackFactoryId[newTrackId] = nf.factoryId;
+    }
+
+    for (NSString* streamId in self.localStreams) {
+      RTCMediaStream* stream = [self.localStreams objectForKey:streamId];
+      for (RTCVideoTrack* track in stream.videoTracks) {
+        if ([trackId isEqualToString:track.trackId]) {
+          [stream addVideoTrack:videoTrack];
+        }
+      }
+    }
+
+    return videoTrack;
+  }
 
   return originalTrack;
 }
@@ -408,7 +450,8 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 - (void)getUserVideo:(NSDictionary*)constraints
      successCallback:(NavigatorUserMediaSuccessCallback)successCallback
        errorCallback:(NavigatorUserMediaErrorCallback)errorCallback
-         mediaStream:(RTCMediaStream*)mediaStream {
+         mediaStream:(RTCMediaStream*)mediaStream
+           factoryId:(NSString*)factoryId {
   id videoConstraints = constraints[@"video"];
   AVCaptureDevice* videoDevice;
   NSString* videoDeviceId = nil;
@@ -421,12 +464,12 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     NSString* deviceId = videoConstraints[@"deviceId"];
 
     if (deviceId) {
-        for (AVCaptureDevice *device in captureDevices) {
-            if( [deviceId isEqualToString:device.uniqueID]) {
-                videoDevice = device;
-                videoDeviceId = deviceId;
-            }
+      for (AVCaptureDevice* device in captureDevices) {
+        if ([deviceId isEqualToString:device.uniqueID]) {
+          videoDevice = device;
+          videoDeviceId = deviceId;
         }
+      }
     }
 
     // constraints.video.optional
@@ -438,12 +481,12 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
         if ([item isKindOfClass:[NSDictionary class]]) {
           NSString* sourceId = ((NSDictionary*)item)[@"sourceId"];
           if (sourceId) {
-              for (AVCaptureDevice *device in captureDevices) {
-                  if( [sourceId isEqualToString:device.uniqueID]) {
-                      videoDevice = device;
-                      videoDeviceId = sourceId;
-                  }
+            for (AVCaptureDevice* device in captureDevices) {
+              if ([sourceId isEqualToString:device.uniqueID]) {
+                videoDevice = device;
+                videoDeviceId = sourceId;
               }
+            }
             if (videoDevice) {
               break;
             }
@@ -475,7 +518,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
   }
 
   if ([videoConstraints isKindOfClass:[NSNumber class]]) {
-    videoConstraints = @{@"mandatory": [self defaultVideoConstraints]};
+    videoConstraints = @{@"mandatory" : [self defaultVideoConstraints]};
   }
 
   NSInteger targetWidth = 0;
@@ -537,26 +580,35 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
   }
 
   if (videoDevice) {
-    RTCVideoSource* videoSource = [self.peerConnectionFactory videoSource];
+    NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+    if (nf == nil || nf.factory == nil) {
+      errorCallback(@"OverconstrainedError",
+                    [NSString stringWithFormat:@"unknown factoryId %@", factoryId]);
+      return;
+    }
+    RTCVideoSource* videoSource = [nf.factory videoSource];
 #if TARGET_OS_OSX
     if (self.videoCapturer) {
       [self.videoCapturer stopCapture];
     }
 #endif
-      
-    VideoProcessingAdapter *videoProcessingAdapter = [[VideoProcessingAdapter alloc] initWithRTCVideoSource:videoSource];
+
+    VideoProcessingAdapter* videoProcessingAdapter =
+        [[VideoProcessingAdapter alloc] initWithRTCVideoSource:videoSource];
     self.videoCapturer = [[RTCCameraVideoCapturer alloc] initWithDelegate:videoProcessingAdapter];
-      
+
     AVCaptureDeviceFormat* selectedFormat = [self selectFormatForDevice:videoDevice
                                                             targetWidth:targetWidth
                                                            targetHeight:targetHeight];
 
-    CMVideoDimensions selectedDimension = CMVideoFormatDescriptionGetDimensions(selectedFormat.formatDescription);
-    NSInteger selectedWidth = (NSInteger) selectedDimension.width;
-    NSInteger selectedHeight = (NSInteger) selectedDimension.height;
+    CMVideoDimensions selectedDimension =
+        CMVideoFormatDescriptionGetDimensions(selectedFormat.formatDescription);
+    NSInteger selectedWidth = (NSInteger)selectedDimension.width;
+    NSInteger selectedHeight = (NSInteger)selectedDimension.height;
     NSInteger selectedFps = [self selectFpsForFormat:selectedFormat targetFps:targetFps];
-    
-    NSLog(@"target format %ldx%ld, targetFps: %ld, selected format: %ldx%ld, selected fps %ld", targetWidth, targetHeight, targetFps, selectedWidth, selectedHeight, selectedFps);
+
+    NSLog(@"target format %ldx%ld, targetFps: %ld, selected format: %ldx%ld, selected fps %ld",
+          targetWidth, targetHeight, targetFps, selectedWidth, selectedHeight, selectedFps);
 
     if ([videoDevice lockForConfiguration:NULL]) {
       @try {
@@ -578,12 +630,17 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                              }];
 
     NSString* trackUUID = [[NSUUID UUID] UUIDString];
-    RTCVideoTrack* videoTrack = [self.peerConnectionFactory videoTrackWithSource:videoSource
-                                                                        trackId:trackUUID];
-    LocalVideoTrack *localVideoTrack = [[LocalVideoTrack alloc] initWithTrack:videoTrack videoProcessing:videoProcessingAdapter];
-      
+    RTCVideoTrack* videoTrack = [nf.factory videoTrackWithSource:videoSource trackId:trackUUID];
+    LocalVideoTrack* localVideoTrack =
+        [[LocalVideoTrack alloc] initWithTrack:videoTrack videoProcessing:videoProcessingAdapter];
+    // Track the factory that backs this video track so cloneTrack and
+    // similar track-scoped operations route to the same factory.
+    if (nf.factoryId != nil) {
+      self.trackFactoryId[trackUUID] = nf.factoryId;
+    }
+
     __weak RTCCameraVideoCapturer* capturer = self.videoCapturer;
-    
+
     // Store camera state per track
     NSMutableDictionary* captureState = [NSMutableDictionary new];
     captureState[@"usingFrontCamera"] = @(position == AVCaptureDevicePositionFront);
@@ -591,13 +648,13 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     captureState[@"targetHeight"] = @(targetHeight);
     captureState[@"targetFps"] = @(selectedFps);
     self.videoCaptureState[videoTrack.trackId] = captureState;
-    
+
     // Update global state for backward compatibility
     self._usingFrontCamera = (position == AVCaptureDevicePositionFront);
     self._lastTargetFps = selectedFps;
     self._lastTargetWidth = targetWidth;
     self._lastTargetHeight = targetHeight;
-    
+
     self.videoCapturerStopHandlers[videoTrack.trackId] = ^(CompletionHandler handler) {
       NSLog(@"Stop video capturer, trackID %@", videoTrack.trackId);
       [capturer stopCaptureWithCompletionHandler:handler];
@@ -666,7 +723,8 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                       constraints:(NSDictionary*)constraints
                   successCallback:(NavigatorUserMediaSuccessCallback)successCallback
                     errorCallback:(NavigatorUserMediaErrorCallback)errorCallback
-                      mediaStream:(RTCMediaStream*)mediaStream {
+                      mediaStream:(RTCMediaStream*)mediaStream
+                        factoryId:(NSString*)factoryId {
   // According to step 6.2.1 of the getUserMedia() algorithm, if there is no
   // source, fail "with a new DOMException object whose name attribute has the
   // value NotFoundError."
@@ -693,6 +751,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                                    NavigatorUserMediaSuccessCallback scb =
                                        ^(RTCMediaStream* mediaStream) {
                                          [self getUserMedia:constraints
+                                                   factoryId:factoryId
                                              successCallback:successCallback
                                                errorCallback:errorCallback
                                                  mediaStream:mediaStream];
@@ -702,12 +761,14 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                                      [self getUserAudio:constraints
                                          successCallback:scb
                                            errorCallback:errorCallback
-                                             mediaStream:mediaStream];
+                                             mediaStream:mediaStream
+                                               factoryId:factoryId];
                                    } else if (mediaType == AVMediaTypeVideo) {
                                      [self getUserVideo:constraints
                                          successCallback:scb
                                            errorCallback:errorCallback
-                                             mediaStream:mediaStream];
+                                             mediaStream:mediaStream
+                                               factoryId:factoryId];
                                    }
                                  } else {
                                    // According to step 10 Permission Failure of the getUserMedia()
@@ -723,6 +784,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     // Fallback on earlier versions
     NavigatorUserMediaSuccessCallback scb = ^(RTCMediaStream* mediaStream) {
       [self getUserMedia:constraints
+                factoryId:factoryId
           successCallback:successCallback
             errorCallback:errorCallback
               mediaStream:mediaStream];
@@ -731,20 +793,30 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
       [self getUserAudio:constraints
           successCallback:scb
             errorCallback:errorCallback
-              mediaStream:mediaStream];
+              mediaStream:mediaStream
+                factoryId:factoryId];
     } else if (mediaType == AVMediaTypeVideo) {
       [self getUserVideo:constraints
           successCallback:scb
             errorCallback:errorCallback
-              mediaStream:mediaStream];
+              mediaStream:mediaStream
+                factoryId:factoryId];
     }
   }
 #endif
 }
 
-- (void)createLocalMediaStream:(FlutterResult)result {
+- (void)createLocalMediaStream:(NSString*)factoryId result:(FlutterResult)result {
   NSString* mediaStreamId = [[NSUUID UUID] UUIDString];
-  RTCMediaStream* mediaStream = [self.peerConnectionFactory mediaStreamWithStreamId:mediaStreamId];
+  NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+  if (nf == nil || nf.factory == nil) {
+    result([FlutterError
+        errorWithCode:@"createLocalMediaStream"
+              message:[NSString stringWithFormat:@"unknown factoryId %@", factoryId]
+              details:nil]);
+    return;
+  }
+  RTCMediaStream* mediaStream = [nf.factory mediaStreamWithStreamId:mediaStreamId];
 
   self.localStreams[mediaStreamId] = mediaStream;
   result(@{@"streamId" : [mediaStream streamId]});
@@ -752,7 +824,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 
 - (void)getSources:(FlutterResult)result {
   NSMutableArray* sources = [NSMutableArray array];
-  NSArray* videoDevices =  [self captureDevices];
+  NSArray* videoDevices = [self captureDevices];
   for (AVCaptureDevice* device in videoDevices) {
     [sources addObject:@{
       @"facing" : device.positionString,
@@ -892,55 +964,56 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 
 - (void)triggeriOSAudioRouteSelectionUI:(FlutterResult)result {
 #if TARGET_OS_IPHONE
-    if (@available(iOS 11.0, *)) {
-        AVRoutePickerView *routePicker = [[AVRoutePickerView alloc] init];
-        routePicker.frame = CGRectMake(0, 0, 44, 44);
-        
-        // Add the route picker to a temporary window to ensure it's in the view hierarchy
-        UIWindow *window = [[UIApplication sharedApplication] keyWindow];
-        if (!window) {
-            // Fallback for iOS 13+ where keyWindow is deprecated
-            for (UIWindowScene *windowScene in [UIApplication sharedApplication].connectedScenes) {
-                if (windowScene.activationState == UISceneActivationStateForegroundActive) {
-                    window = windowScene.windows.firstObject;
-                    break;
-                }
-            }
+  if (@available(iOS 11.0, *)) {
+    AVRoutePickerView* routePicker = [[AVRoutePickerView alloc] init];
+    routePicker.frame = CGRectMake(0, 0, 44, 44);
+
+    // Add the route picker to a temporary window to ensure it's in the view hierarchy
+    UIWindow* window = [[UIApplication sharedApplication] keyWindow];
+    if (!window) {
+      // Fallback for iOS 13+ where keyWindow is deprecated
+      for (UIWindowScene* windowScene in [UIApplication sharedApplication].connectedScenes) {
+        if (windowScene.activationState == UISceneActivationStateForegroundActive) {
+          window = windowScene.windows.firstObject;
+          break;
         }
-        
-        if (window) {
-            [window addSubview:routePicker];
-            
-            // Trigger the route picker programmatically
-            for (UIView *view in routePicker.subviews) {
-                if ([view isKindOfClass:[UIButton class]]) {
-                    UIButton *button = (UIButton *)view;
-                    [button sendActionsForControlEvents:UIControlEventTouchUpInside];
-                    break; // Only trigger the first button found
-                }
-            }
-            
-            // Remove the route picker after a short delay
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                [routePicker removeFromSuperview];
-            });
-            
-            result(nil);
-        } else {
-            result([FlutterError errorWithCode:@"NoWindowError"
-                                       message:@"Could not find a window to present the route picker"
-                                       details:nil]);
-        }
-    } else {
-        result([FlutterError errorWithCode:@"UnsupportedVersionError"
-                                   message:@"AVRoutePickerView is only available on iOS 11.0 or later"
-                                   details:nil]);
+      }
     }
-#else
-    // macOS doesn't support iOS audio route selection UI
-    result([FlutterError errorWithCode:@"UnsupportedPlatformError"
-                               message:@"triggeriOSAudioRouteSelectionUI is only supported on iOS"
+
+    if (window) {
+      [window addSubview:routePicker];
+
+      // Trigger the route picker programmatically
+      for (UIView* view in routePicker.subviews) {
+        if ([view isKindOfClass:[UIButton class]]) {
+          UIButton* button = (UIButton*)view;
+          [button sendActionsForControlEvents:UIControlEventTouchUpInside];
+          break;  // Only trigger the first button found
+        }
+      }
+
+      // Remove the route picker after a short delay
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
+                     dispatch_get_main_queue(), ^{
+                       [routePicker removeFromSuperview];
+                     });
+
+      result(nil);
+    } else {
+      result([FlutterError errorWithCode:@"NoWindowError"
+                                 message:@"Could not find a window to present the route picker"
+                                 details:nil]);
+    }
+  } else {
+    result([FlutterError errorWithCode:@"UnsupportedVersionError"
+                               message:@"AVRoutePickerView is only available on iOS 11.0 or later"
                                details:nil]);
+  }
+#else
+  // macOS doesn't support iOS audio route selection UI
+  result([FlutterError errorWithCode:@"UnsupportedPlatformError"
+                             message:@"triggeriOSAudioRouteSelectionUI is only supported on iOS"
+                             details:nil]);
 #endif
 }
 
@@ -1008,8 +1081,8 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 }
 
 - (void)mediaStreamTrackSetZoom:(RTCMediaStreamTrack*)track
-                           zoomLevel:(double)zoomLevel
-                          result:(FlutterResult)result {
+                      zoomLevel:(double)zoomLevel
+                         result:(FlutterResult)result {
 #if TARGET_OS_OSX
   NSLog(@"Not supported on macOS. Can't set zoom");
   return;
@@ -1032,7 +1105,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     NSLog(@"Failed to acquire configuration lock. %@", error.localizedDescription);
     return;
   }
-  
+
   CGFloat desiredZoomFactor = (CGFloat)zoomLevel;
   device.videoZoomFactor = MAX(1.0, MIN(desiredZoomFactor, device.activeFormat.videoMaxZoomFactor));
   [device unlockForConfiguration];
@@ -1066,7 +1139,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
       return device;
     }
   }
-  if(captureDevices.count > 0) {
+  if (captureDevices.count > 0) {
     return captureDevices[0];
   }
   return nil;
@@ -1084,12 +1157,13 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     FourCharCode pixelFormat = CMFormatDescriptionGetMediaSubType(format.formatDescription);
 #if TARGET_OS_IPHONE
     if (@available(iOS 13.0, *)) {
-      if(format.isMultiCamSupported != AVCaptureMultiCamSession.multiCamSupported) {
+      if (format.isMultiCamSupported != AVCaptureMultiCamSession.multiCamSupported) {
         continue;
       }
     }
 #endif
-    //NSLog(@"AVCaptureDeviceFormats,fps %d, dimension: %dx%d", format.videoSupportedFrameRateRanges, dimension.width, dimension.height);
+    // NSLog(@"AVCaptureDeviceFormats,fps %d, dimension: %dx%d",
+    // format.videoSupportedFrameRateRanges, dimension.width, dimension.height);
     long diff = labs(targetWidth - dimension.width) + labs(targetHeight - dimension.height);
     if (diff < currentDiff) {
       selectedFormat = format;

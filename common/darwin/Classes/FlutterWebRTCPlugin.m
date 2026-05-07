@@ -38,17 +38,11 @@
 #import "LocalTrack.h"
 #import "LocalVideoTrack.h"
 
+#import "NativePeerConnectionFactory.h"
+#import "VideoFactoriesPrivate.h"
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wprotocol"
-
-@interface VideoEncoderFactory : RTCDefaultVideoEncoderFactory
-@end
-
-@interface VideoDecoderFactory : RTCDefaultVideoDecoderFactory
-@end
-
-@interface VideoEncoderFactorySimulcast : RTCVideoEncoderFactorySimulcast
-@end
 
 NSArray<RTC_OBJC_TYPE(RTCVideoCodecInfo) *>* motifyH264ProfileLevelId(
     NSArray<RTC_OBJC_TYPE(RTCVideoCodecInfo) *>* codecs) {
@@ -112,6 +106,26 @@ void postEvent(FlutterEventSink _Nullable sink, id _Nullable event) {
   });
 }
 
+/**
+ * Reserved factoryId for the implicit factory.
+ */
+static NSString* const kImplicitFactoryId = @"__implicit__";
+
+/**
+ * Immutable snapshot of the arguments passed to the most-recent
+ * [WebRTC.initialize] call. Used as build defaults for the implicit
+ * factory, since the implicit factory is built lazily on first use
+ * rather than eagerly during initialize.
+ */
+@interface RTCInitializeSnapshot : NSObject
+@property(nonatomic, assign) BOOL bypassVoiceProcessing;
+@property(nonatomic, copy) NSArray<NSString*>* networkIgnoreMask;
+@property(nonatomic, copy, nullable) NSDictionary* appleAudioConfiguration;
+@end
+
+@implementation RTCInitializeSnapshot
+@end
+
 @implementation FlutterWebRTCPlugin {
 #pragma clang diagnostic pop
   FlutterMethodChannel* _methodChannel;
@@ -131,6 +145,9 @@ void postEvent(FlutterEventSink _Nullable sink, id _Nullable event) {
 #endif
 
   RTC_OBJC_TYPE(RTCCallbackLogger) * loggerCallback;
+
+  /** Snapshot of the most-recent [WebRTC.initialize] options. */
+  RTCInitializeSnapshot* _initializeSnapshot;
 }
 
 static FlutterWebRTCPlugin* sharedSingleton;
@@ -215,6 +232,9 @@ static FlutterWebRTCPlugin* sharedSingleton;
   self.recorders = [NSMutableDictionary new];
   self.trackVolumeCache = [NSMutableDictionary new];
   self.pausedTrackVolumes = [NSMutableDictionary new];
+  _factories = [NSMutableDictionary new];
+  _pcFactoryId = [NSMutableDictionary new];
+  _trackFactoryId = [NSMutableDictionary new];
   self.isAudioPlayoutPaused = NO;
 #if TARGET_OS_IPHONE
   self.focusMode = @"locked";
@@ -225,9 +245,6 @@ static FlutterWebRTCPlugin* sharedSingleton;
                                                name:AVAudioSessionRouteChangeNotification
                                              object:session];
 #endif
-
-  // Observe audio device module events.
-  _peerConnectionFactory.audioDeviceModule.observer = self;
 
   return self;
 }
@@ -314,47 +331,17 @@ static FlutterWebRTCPlugin* sharedSingleton;
 
 - (void)initialize:(NSArray*)networkIgnoreMask
     bypassVoiceProcessing:(BOOL)bypassVoiceProcessing
+         appleAudioConfig:(NSDictionary*)appleAudioConfig
                  severity:(RTCLoggingSeverity)severity {
   // RTCSetMinDebugLogLevel(severity);
   [self initLoggerCallback:severity];
 
-  if (!_peerConnectionFactory) {
-    VideoDecoderFactory* decoderFactory = [[VideoDecoderFactory alloc] init];
-    VideoEncoderFactory* encoderFactory = [[VideoEncoderFactory alloc] init];
-
-    VideoEncoderFactorySimulcast* simulcastFactory =
-        [[VideoEncoderFactorySimulcast alloc] initWithPrimary:encoderFactory
-                                                     fallback:encoderFactory];
-
-    _peerConnectionFactory = [[RTCPeerConnectionFactory alloc]
-        initWithAudioDeviceModuleType:RTCAudioDeviceModuleTypeAudioEngine
-                bypassVoiceProcessing:bypassVoiceProcessing
-                       encoderFactory:simulcastFactory
-                       decoderFactory:decoderFactory
-                audioProcessingModule:_audioManager.audioProcessingModule];
-
-    RTCPeerConnectionFactoryOptions* options = [[RTCPeerConnectionFactoryOptions alloc] init];
-    for (NSString* adapter in networkIgnoreMask) {
-      if ([@"adapterTypeEthernet" isEqualToString:adapter]) {
-        options.ignoreEthernetNetworkAdapter = YES;
-      } else if ([@"adapterTypeWifi" isEqualToString:adapter]) {
-        options.ignoreWiFiNetworkAdapter = YES;
-      } else if ([@"adapterTypeCellular" isEqualToString:adapter]) {
-        options.ignoreCellularNetworkAdapter = YES;
-      } else if ([@"adapterTypeVpn" isEqualToString:adapter]) {
-        options.ignoreVPNNetworkAdapter = YES;
-      } else if ([@"adapterTypeLoopback" isEqualToString:adapter]) {
-        options.ignoreLoopbackNetworkAdapter = YES;
-      } else if ([@"adapterTypeAny" isEqualToString:adapter]) {
-        options.ignoreEthernetNetworkAdapter = YES;
-        options.ignoreWiFiNetworkAdapter = YES;
-        options.ignoreCellularNetworkAdapter = YES;
-        options.ignoreVPNNetworkAdapter = YES;
-        options.ignoreLoopbackNetworkAdapter = YES;
-      }
-    }
-
-    [_peerConnectionFactory setOptions:options];
+  RTCInitializeSnapshot* snapshot = [RTCInitializeSnapshot new];
+  snapshot.bypassVoiceProcessing = bypassVoiceProcessing;
+  snapshot.networkIgnoreMask = networkIgnoreMask ?: @[];
+  snapshot.appleAudioConfiguration = appleAudioConfig;
+  @synchronized(self) {
+    _initializeSnapshot = snapshot;
   }
 }
 
@@ -375,11 +362,87 @@ static FlutterWebRTCPlugin* sharedSingleton;
       NSString* severityStr = ((NSString*)options[@"logSeverity"]);
       severity = [self str2LogSeverity:severityStr];
     }
+    NSDictionary* appleAudioConfig = nil;
+    if ([options[@"appleAudioConfiguration"] isKindOfClass:[NSDictionary class]]) {
+      appleAudioConfig = options[@"appleAudioConfiguration"];
+    }
 
     [self initialize:networkIgnoreMask
         bypassVoiceProcessing:enableBypassVoiceProcessing
+             appleAudioConfig:appleAudioConfig
                      severity:severity];
     result(@"");
+  } else if ([@"createPeerConnectionFactory" isEqualToString:call.method]) {
+    NSDictionary* argsMap = call.arguments;
+    NSDictionary* createOptions = argsMap[@"options"] ?: @{};
+    BOOL bypass = NO;
+    if (createOptions[@"bypassVoiceProcessing"] != nil) {
+      bypass = ((NSNumber*)createOptions[@"bypassVoiceProcessing"]).boolValue;
+    }
+    NSArray* mask = createOptions[@"networkIgnoreMask"] ?: @[];
+    NSDictionary* audioConfig = nil;
+    if ([createOptions[@"appleAudioConfiguration"] isKindOfClass:[NSDictionary class]]) {
+      audioConfig = createOptions[@"appleAudioConfiguration"];
+    }
+    NSString* factoryId = [[NSUUID UUID] UUIDString];
+    NativePeerConnectionFactory* nf =
+        [[NativePeerConnectionFactory alloc] initWithFactoryId:factoryId
+                                         bypassVoiceProcessing:bypass
+                                             networkIgnoreMask:mask
+                                         audioProcessingModule:_audioManager.audioProcessingModule
+                                       appleAudioConfiguration:audioConfig
+                                                   admObserver:self];
+    @synchronized(self) {
+      _factories[factoryId] = nf;
+    }
+    NSLog(@"[createPeerConnectionFactory] built id: %@", factoryId);
+    result(@{@"factoryId" : factoryId});
+  } else if ([@"disposePeerConnectionFactory" isEqualToString:call.method]) {
+    NSDictionary* argsMap = call.arguments;
+    NSString* factoryId = argsMap[@"factoryId"];
+    if (factoryId == nil || factoryId.length == 0) {
+      result([FlutterError errorWithCode:@"disposePeerConnectionFactory"
+                                 message:@"factoryId argument is required"
+                                 details:nil]);
+      return;
+    }
+    if ([factoryId isEqualToString:kImplicitFactoryId]) {
+      // The implicit factory's lifecycle is owned by the refcount in
+      // releaseImplicitFactoryIfIdle; refuse external disposal.
+      NSLog(@"[disposePeerConnectionFactory] refusing to dispose the implicit factory");
+      result(nil);
+      return;
+    }
+    NativePeerConnectionFactory* nf;
+    @synchronized(self) {
+      nf = _factories[factoryId];
+      [_factories removeObjectForKey:factoryId];
+    }
+    if (nf == nil) {
+      NSLog(@"[disposePeerConnectionFactory] unknown factoryId: %@", factoryId);
+      result(nil);
+      return;
+    }
+    NSLog(@"[disposePeerConnectionFactory] disposing id: %@, ownedPcs: %lu", factoryId,
+          (unsigned long)nf.ownedPcIds.count);
+    // Defensively drain any PCs the SDK forgot. Snapshot the set
+    // because peerConnectionDispose mutates pcFactoryId / ownedPcIds.
+    NSArray<NSString*>* pcIdsSnapshot = [nf.ownedPcIds.allObjects copy];
+    for (NSString* pcId in pcIdsSnapshot) {
+      RTCPeerConnection* peerConnection = self.peerConnections[pcId];
+      if (peerConnection != nil) {
+        [peerConnection close];
+        [self.peerConnections removeObjectForKey:pcId];
+      }
+      [self.pcFactoryId removeObjectForKey:pcId];
+    }
+    [nf.ownedPcIds removeAllObjects];
+    @try {
+      [nf dispose];
+    } @catch (NSException* e) {
+      NSLog(@"[disposePeerConnectionFactory] dispose failed: %@", e);
+    }
+    result(nil);
   } else if ([@"setVideoEffects" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* trackId = argsMap[@"trackId"];
@@ -399,11 +462,21 @@ static FlutterWebRTCPlugin* sharedSingleton;
     NSDictionary* argsMap = call.arguments;
     NSDictionary* configuration = argsMap[@"configuration"];
     NSDictionary* constraints = argsMap[@"constraints"];
+    NSString* factoryIdArg = argsMap[@"factoryId"];
 
-    RTCPeerConnection* peerConnection = [self.peerConnectionFactory
-        peerConnectionWithConfiguration:[self RTCConfiguration:configuration]
-                            constraints:[self parseMediaConstraints:constraints]
-                               delegate:self];
+    NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryIdArg];
+    if (nf == nil) {
+      result([FlutterError
+          errorWithCode:@"createPeerConnection"
+                message:[NSString stringWithFormat:@"unknown factoryId %@", factoryIdArg]
+                details:nil]);
+      return;
+    }
+
+    RTCPeerConnection* peerConnection =
+        [nf.factory peerConnectionWithConfiguration:[self RTCConfiguration:configuration]
+                                        constraints:[self parseMediaConstraints:constraints]
+                                           delegate:self];
 
     peerConnection.remoteStreams = [NSMutableDictionary new];
     peerConnection.remoteTracks = [NSMutableDictionary new];
@@ -420,17 +493,28 @@ static FlutterWebRTCPlugin* sharedSingleton;
     [peerConnection.eventChannel setStreamHandler:peerConnection];
 
     self.peerConnections[peerConnectionId] = peerConnection;
+    // Always register the PC under either its explicit factoryId or the
+    // implicit factory id; the implicit factory's refcount is the size
+    // of its ownedPcIds, so this registration is what keeps it alive
+    // until the last call ends.
+    NSString* resolvedFactoryId =
+        (factoryIdArg != nil && factoryIdArg.length > 0) ? factoryIdArg : kImplicitFactoryId;
+    self.pcFactoryId[peerConnectionId] = resolvedFactoryId;
+    [nf.ownedPcIds addObject:peerConnectionId];
     result(@{@"peerConnectionId" : peerConnectionId});
   } else if ([@"getUserMedia" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSDictionary* constraints = argsMap[@"constraints"];
-    [self getUserMedia:constraints result:result];
+    NSString* factoryId = argsMap[@"factoryId"];
+    [self getUserMedia:constraints factoryId:factoryId result:result];
   } else if ([@"getDisplayMedia" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSDictionary* constraints = argsMap[@"constraints"];
-    [self getDisplayMedia:constraints result:result];
+    NSString* factoryId = argsMap[@"factoryId"];
+    [self getDisplayMedia:constraints factoryId:factoryId result:result];
   } else if ([@"createLocalMediaStream" isEqualToString:call.method]) {
-    [self createLocalMediaStream:result];
+    NSString* factoryId = call.arguments[@"factoryId"];
+    [self createLocalMediaStream:factoryId result:result];
   } else if ([@"getSources" isEqualToString:call.method]) {
     [self getSources:result];
   } else if ([@"selectAudioInput" isEqualToString:call.method]) {
@@ -805,6 +889,7 @@ static FlutterWebRTCPlugin* sharedSingleton;
       }
     }
     // [_localTracks removeObjectForKey:trackId];
+    [self.trackFactoryId removeObjectForKey:trackId];
     if (audioTrack) {
       [self ensureAudioSession];
     }
@@ -829,6 +914,7 @@ static FlutterWebRTCPlugin* sharedSingleton;
              [@"peerConnectionDispose" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* peerConnectionId = argsMap[@"peerConnectionId"];
+    BOOL isDispose = [@"peerConnectionDispose" isEqualToString:call.method];
 
     RTCPeerConnection* peerConnection = self.peerConnections[peerConnectionId];
     if (peerConnection) {
@@ -852,6 +938,29 @@ static FlutterWebRTCPlugin* sharedSingleton;
         // RTCPeerConnection and the latter will close the former.
       }
       [dataChannels removeAllObjects];
+    }
+    // Drop the PC from the per-call factory bookkeeping. Do this for
+    // both peerConnectionClose and peerConnectionDispose since either
+    // means the PC is no longer in use; the implicit factory's
+    // refcount drops accordingly. Do this BEFORE deactivating the
+    // audio session so the implicit factory teardown happens first.
+    NSString* factoryIdForPc = self.pcFactoryId[peerConnectionId];
+    if (factoryIdForPc != nil) {
+      [self.pcFactoryId removeObjectForKey:peerConnectionId];
+      NativePeerConnectionFactory* mf;
+      @synchronized(self) {
+        mf = self.factories[factoryIdForPc];
+      }
+      if (mf != nil) {
+        [mf.ownedPcIds removeObject:peerConnectionId];
+      }
+      if ([factoryIdForPc isEqualToString:kImplicitFactoryId] && isDispose) {
+        // Tear the implicit factory down the moment its last PC is
+        // gone, so the per-call ADM (and AudioEngine) doesn't outlive
+        // the call. Explicit factories are owned by the SDK and
+        // disposed via disposePeerConnectionFactory.
+        [self releaseImplicitFactoryIfIdle];
+      }
     }
     [self deactiveRtcAudioSession];
     result(nil);
@@ -1708,7 +1817,16 @@ static FlutterWebRTCPlugin* sharedSingleton;
 
     result(nil);
   } else if ([@"startLocalRecording" isEqualToString:call.method]) {
-    RTCAudioDeviceModule* adm = _peerConnectionFactory.audioDeviceModule;
+    NSString* factoryId = call.arguments[@"factoryId"];
+    NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+    if (nf == nil) {
+      result([FlutterError
+          errorWithCode:@"startLocalRecording"
+                message:[NSString stringWithFormat:@"unknown factoryId %@", factoryId]
+                details:nil]);
+      return;
+    }
+    RTCAudioDeviceModule* adm = nf.audioDeviceModule;
     // Run on background queue
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
       NSInteger admResult = [adm initAndStartRecording];
@@ -1727,7 +1845,16 @@ static FlutterWebRTCPlugin* sharedSingleton;
       });
     });
   } else if ([@"stopLocalRecording" isEqualToString:call.method]) {
-    RTCAudioDeviceModule* adm = _peerConnectionFactory.audioDeviceModule;
+    NSString* factoryId = call.arguments[@"factoryId"];
+    NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+    if (nf == nil) {
+      result([FlutterError
+          errorWithCode:@"stopLocalRecording"
+                message:[NSString stringWithFormat:@"unknown factoryId %@", factoryId]
+                details:nil]);
+      return;
+    }
+    RTCAudioDeviceModule* adm = nf.audioDeviceModule;
     // Run on background queue
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
       NSInteger admResult = [adm stopRecording];
@@ -1746,17 +1873,33 @@ static FlutterWebRTCPlugin* sharedSingleton;
       });
     });
   } else if ([@"isVoiceProcessingEnabled" isEqualToString:call.method]) {
-    RTCAudioDeviceModule* adm = _peerConnectionFactory.audioDeviceModule;
-    NSNumber* admResult = [NSNumber numberWithBool:adm.isVoiceProcessingEnabled];
-    result(admResult);
+    NSString* factoryId = call.arguments[@"factoryId"];
+    NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+    if (nf == nil) {
+      result(@(NO));
+      return;
+    }
+    result(@(nf.audioDeviceModule.isVoiceProcessingEnabled));
   } else if ([@"isVoiceProcessingBypassed" isEqualToString:call.method]) {
-    RTCAudioDeviceModule* adm = _peerConnectionFactory.audioDeviceModule;
-    NSNumber* admResult = [NSNumber numberWithBool:adm.isVoiceProcessingBypassed];
-    result(admResult);
+    NSString* factoryId = call.arguments[@"factoryId"];
+    NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+    if (nf == nil) {
+      result(@(NO));
+      return;
+    }
+    result(@(nf.audioDeviceModule.isVoiceProcessingBypassed));
   } else if ([@"setIsVoiceProcessingBypassed" isEqualToString:call.method]) {
-    RTCAudioDeviceModule* adm = _peerConnectionFactory.audioDeviceModule;
+    NSString* factoryId = call.arguments[@"factoryId"];
+    NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+    if (nf == nil) {
+      result([FlutterError
+          errorWithCode:@"setIsVoiceProcessingBypassed"
+                message:[NSString stringWithFormat:@"unknown factoryId %@", factoryId]
+                details:nil]);
+      return;
+    }
     NSNumber* value = call.arguments[@"value"];
-    adm.voiceProcessingBypassed = value.boolValue;
+    nf.audioDeviceModule.voiceProcessingBypassed = value.boolValue;
     result(nil);
   } else {
     if ([self handleFrameCryptorMethodCall:call result:result]) {
@@ -1779,7 +1922,24 @@ static FlutterWebRTCPlugin* sharedSingleton;
     [peerConnection close];
   }
   [_peerConnections removeAllObjects];
-  _peerConnectionFactory = nil;
+
+  // Drain every registered factory (explicit per-call factories the SDK
+  // forgot to dispose, plus the implicit factory if still around). The
+  // PCs above were already closed; NativePeerConnectionFactory.dispose now just
+  // releases the underlying RTCPeerConnectionFactory + ADM.
+  @synchronized(self) {
+    for (NSString* fid in _factories.allKeys) {
+      NativePeerConnectionFactory* nf = _factories[fid];
+      @try {
+        [nf dispose];
+      } @catch (NSException* e) {
+        NSLog(@"[dealloc] native factory dispose failed: %@", e);
+      }
+    }
+    [_factories removeAllObjects];
+  }
+  [_pcFactoryId removeAllObjects];
+  [_trackFactoryId removeAllObjects];
 }
 
 - (BOOL)hasLocalAudioTrack {
@@ -1790,6 +1950,66 @@ static FlutterWebRTCPlugin* sharedSingleton;
     }
   }
   return NO;
+}
+
+#pragma mark - Per-call factory resolution
+
+- (NativePeerConnectionFactory*)resolveFactoryForId:(NSString*)factoryId {
+  if (factoryId == nil || factoryId.length == 0) {
+    return [self acquireImplicitFactory];
+  }
+  @synchronized(self) {
+    return _factories[factoryId];
+  }
+}
+
+- (NativePeerConnectionFactory*)acquireImplicitFactory {
+  @synchronized(self) {
+    NativePeerConnectionFactory* nf = _factories[kImplicitFactoryId];
+    if (nf != nil && !nf.isDisposed) {
+      return nf;
+    }
+    if (_initializeSnapshot == nil) {
+      @throw [NSException
+          exceptionWithName:NSInternalInconsistencyException
+                     reason:@"WebRTC.initialize must be called before creating peer connections"
+                   userInfo:nil];
+    }
+    nf = [[NativePeerConnectionFactory alloc]
+              initWithFactoryId:kImplicitFactoryId
+          bypassVoiceProcessing:_initializeSnapshot.bypassVoiceProcessing
+              networkIgnoreMask:(_initializeSnapshot.networkIgnoreMask ?: @[])audioProcessingModule
+                               :_audioManager.audioProcessingModule
+        appleAudioConfiguration:_initializeSnapshot.appleAudioConfiguration
+                    admObserver:self];
+    _factories[kImplicitFactoryId] = nf;
+    NSLog(@"[FlutterWebRTCPlugin] built implicit factory");
+    return nf;
+  }
+}
+
+- (void)releaseImplicitFactoryIfIdle {
+  @synchronized(self) {
+    NativePeerConnectionFactory* nf = _factories[kImplicitFactoryId];
+    if (nf == nil || nf.ownedPcIds.count > 0) {
+      return;
+    }
+    [_factories removeObjectForKey:kImplicitFactoryId];
+    @try {
+      [nf dispose];
+      NSLog(@"[FlutterWebRTCPlugin] disposed implicit factory");
+    } @catch (NSException* e) {
+      NSLog(@"[FlutterWebRTCPlugin] implicit factory dispose failed: %@", e);
+    }
+  }
+}
+
+/**
+ * Override the auto-generated peerConnectionFactory getter so code that doesn't have a factoryId
+ * can still access the implicit factory's underlying RTCPeerConnectionFactory.
+ */
+- (RTCPeerConnectionFactory*)peerConnectionFactory {
+  return [self acquireImplicitFactory].factory;
 }
 
 - (void)ensureAudioSession {
@@ -2699,11 +2919,80 @@ static FlutterWebRTCPlugin* sharedSingleton;
 
 #pragma mark - RTCAudioDeviceModuleDelegate methods
 
+// All RTCAudioDeviceModuleDelegate methods are @required (no @optional).
 - (void)audioDeviceModuleDidUpdateDevices:(RTCAudioDeviceModule*)audioDeviceModule {
   NSLog(@"audioDeviceModule did update devices");
   if (self.eventSink) {
     postEvent(self.eventSink, @{@"event" : @"onDeviceChange"});
   }
+}
+
+- (void)audioDeviceModule:(RTCAudioDeviceModule*)audioDeviceModule
+    didReceiveSpeechActivityEvent:(RTCSpeechActivityEvent)speechActivityEvent {
+  // No-op stub.
+}
+
+- (NSInteger)audioDeviceModule:(RTCAudioDeviceModule*)audioDeviceModule
+               didCreateEngine:(AVAudioEngine*)engine {
+  return 0;
+}
+
+- (NSInteger)audioDeviceModule:(RTCAudioDeviceModule*)audioDeviceModule
+              willEnableEngine:(AVAudioEngine*)engine
+              isPlayoutEnabled:(BOOL)isPlayoutEnabled
+            isRecordingEnabled:(BOOL)isRecordingEnabled {
+  return 0;
+}
+
+- (NSInteger)audioDeviceModule:(RTCAudioDeviceModule*)audioDeviceModule
+               willStartEngine:(AVAudioEngine*)engine
+              isPlayoutEnabled:(BOOL)isPlayoutEnabled
+            isRecordingEnabled:(BOOL)isRecordingEnabled {
+  return 0;
+}
+
+- (NSInteger)audioDeviceModule:(RTCAudioDeviceModule*)audioDeviceModule
+                 didStopEngine:(AVAudioEngine*)engine
+              isPlayoutEnabled:(BOOL)isPlayoutEnabled
+            isRecordingEnabled:(BOOL)isRecordingEnabled {
+  return 0;
+}
+
+- (NSInteger)audioDeviceModule:(RTCAudioDeviceModule*)audioDeviceModule
+              didDisableEngine:(AVAudioEngine*)engine
+              isPlayoutEnabled:(BOOL)isPlayoutEnabled
+            isRecordingEnabled:(BOOL)isRecordingEnabled {
+  return 0;
+}
+
+- (NSInteger)audioDeviceModule:(RTCAudioDeviceModule*)audioDeviceModule
+             willReleaseEngine:(AVAudioEngine*)engine {
+  return 0;
+}
+
+- (NSInteger)audioDeviceModule:(RTCAudioDeviceModule*)audioDeviceModule
+                        engine:(AVAudioEngine*)engine
+      configureInputFromSource:(AVAudioNode*)source
+                 toDestination:(AVAudioNode*)destination
+                    withFormat:(AVAudioFormat*)format
+                       context:(NSDictionary*)context {
+  return 0;
+}
+
+- (NSInteger)audioDeviceModule:(RTCAudioDeviceModule*)audioDeviceModule
+                        engine:(AVAudioEngine*)engine
+     configureOutputFromSource:(AVAudioNode*)source
+                 toDestination:(AVAudioNode*)destination
+                    withFormat:(AVAudioFormat*)format
+                       context:(NSDictionary*)context {
+  return 0;
+}
+
+- (void)audioDeviceModule:(RTCAudioDeviceModule*)audioDeviceModule
+    didUpdateAudioProcessingState:(RTCAudioProcessingState)state {
+  // The iOS tree extends this with a postEvent for onAudioProcessingStateChanged
+  // so the SDK can observe stereo / voice-processing state changes; macOS
+  // doesn't expose that pathway today, so we leave the stub empty here.
 }
 
 @end
