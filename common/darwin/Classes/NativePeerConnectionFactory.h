@@ -35,6 +35,16 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @property(nonatomic, strong, readonly) NSMutableSet<NSString*>* ownedPcIds;
 
+/**
+ * Track ids created via this factory.
+ */
+@property(nonatomic, strong, readonly) NSMutableSet<NSString*>* ownedTrackIds;
+
+/**
+ * Stream ids created via this factory.
+ */
+@property(nonatomic, strong, readonly) NSMutableSet<NSString*>* ownedStreamIds;
+
 @property(nonatomic, assign, readonly) BOOL isDisposed;
 
 - (instancetype)initWithFactoryId:(NSString*)factoryId

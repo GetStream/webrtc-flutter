@@ -37,11 +37,6 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
                                            >
 
 /**
- * Accessor for the implicit factory's underlying RTCPeerConnectionFactory.
- */
-@property(nonatomic, strong, readonly, nullable) RTCPeerConnectionFactory* peerConnectionFactory;
-
-/**
  * Per-call factory registry, keyed by factoryId.
  */
 @property(nonatomic, strong, readonly, nonnull)
@@ -142,19 +137,16 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 #pragma mark - Per-call factory resolution
 
 /**
- * Resolves a factoryId (possibly nil) to a NativePeerConnectionFactory.
+ * Resolves a factoryId to a NativePeerConnectionFactory.
  */
 - (NativePeerConnectionFactory* _Nullable)resolveFactoryForId:(NSString* _Nullable)factoryId;
 
 /**
- * Lazily builds (if needed) and returns the implicit factory.
+ * Resolves the NativePeerConnectionFactory that owns the local stream
+ * registered under {@code streamId}. Returns nil when no registered
+ * factory owns the stream.
  */
-- (NativePeerConnectionFactory* _Nonnull)acquireImplicitFactory;
-
-/**
- * Disposes the implicit factory if it has zero owned PCs.
- */
-- (void)releaseImplicitFactoryIfIdle;
+- (NativePeerConnectionFactory* _Nullable)resolveFactoryForStreamId:(NSString* _Nullable)streamId;
 
 + (FlutterWebRTCPlugin* _Nullable)sharedSingleton;
 

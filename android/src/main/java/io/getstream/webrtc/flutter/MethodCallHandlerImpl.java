@@ -113,9 +113,9 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
 
   private AudioFocusManager audioFocusManager;
 
-  private FlutterRTCFrameCryptor frameCryptor;
-
-  private FlutterDataPacketCryptor dataPacketCryptor;
+  // Frame cryptor + data packet cryptor deactivated until per-call factory wiring lands.
+  // private FlutterRTCFrameCryptor frameCryptor;
+  // private FlutterDataPacketCryptor dataPacketCryptor;
 
   private Activity activity;
 
@@ -208,48 +208,63 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   }
 
   /**
-   * Resolves a {@code factoryId} (possibly null) to a {@link NativePeerConnectionFactory}.
-   *
-   * @param factoryId The id returned from {@code createPeerConnectionFactory},
-   *                  or {@code null} to target the implicit factory.
+   * Resolves a {@code factoryId} to a {@link NativePeerConnectionFactory}.
    */
   @Nullable
   private NativePeerConnectionFactory resolveFactory(@Nullable String factoryId) {
     if (factoryId == null || factoryId.isEmpty()) {
-      return acquireImplicitFactory();
+      return null;
     }
-
     return factories.get(factoryId);
   }
 
   /**
    * Resolves the {@link NativePeerConnectionFactory} that owns the capturer/audio source
    * for {@code trackId}.
+   *
+   * Returns {@code null} when no registered factory owns the track.
    */
-  @NonNull
+  @Nullable
   private NativePeerConnectionFactory resolveFactoryForTrack(@Nullable String trackId) {
-    if (trackId != null) {
-      for (NativePeerConnectionFactory mf : factories.values()) {
-        if (mf.getUserMediaImpl != null && mf.getUserMediaImpl.ownsTrack(trackId)) {
-          return mf;
-        }
+    if (trackId == null) return null;
+    for (NativePeerConnectionFactory nf : factories.values()) {
+      if (nf.ownedTrackIds.contains(trackId)) return nf;
+      if (nf.getUserMediaImpl != null && nf.getUserMediaImpl.ownsTrack(trackId)) {
+        return nf;
       }
     }
-    return acquireImplicitFactory();
+    return null;
+  }
+
+  /**
+   * Resolves the {@link NativePeerConnectionFactory} that owns the local
+   * {@link MediaStream} registered under {@code streamId}.
+   *
+   * Returns {@code null} when no registered factory owns the stream.
+   */
+  @Nullable
+  private NativePeerConnectionFactory resolveFactoryForStream(@Nullable String streamId) {
+    if (streamId == null) return null;
+    for (NativePeerConnectionFactory nf : factories.values()) {
+      if (nf.ownedStreamIds.contains(streamId)) return nf;
+    }
+    return null;
   }
 
   /**
    * Resolves the {@link NativePeerConnectionFactory} that owns the {@code MediaRecorder}
-   * registered under {@code recorderId}. Falls back to the implicit factory.
+   * registered under {@code recorderId}.
+   *
+   * Returns {@code null} when no registered factory owns the recorder.
    */
-  @NonNull
+  @Nullable
   private NativePeerConnectionFactory resolveFactoryForRecorder(int recorderId) {
-    for (NativePeerConnectionFactory mf : factories.values()) {
-      if (mf.getUserMediaImpl != null && mf.getUserMediaImpl.ownsRecorder(recorderId)) {
-        return mf;
+    for (NativePeerConnectionFactory nf : factories.values()) {
+      if (nf.getUserMediaImpl != null && nf.getUserMediaImpl.ownsRecorder(recorderId)) {
+        return nf;
       }
     }
-    return acquireImplicitFactory();
+    return null;
   }
 
   /**
@@ -260,9 +275,9 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     if (deviceId == null) {
       return;
     }
-    for (NativePeerConnectionFactory mf : factories.values()) {
-      if (mf.getUserMediaImpl != null) {
-        mf.getUserMediaImpl.setPreferredInputDevice(deviceId);
+    for (NativePeerConnectionFactory nf : factories.values()) {
+      if (nf.getUserMediaImpl != null) {
+        nf.getUserMediaImpl.setPreferredInputDevice(deviceId);
       }
     }
   }
@@ -382,19 +397,51 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
    * Defensively disposes any peer connections still owned by the factory.
    */
   private void disposePeerConnectionFactoryHandler(@NonNull String factoryId) {
-    if (IMPLICIT_FACTORY_ID.equals(factoryId)) {
-      Log.w(TAG, "[disposePeerConnectionFactory] refusing to dispose the implicit factory");
-      return;
-    }
     final NativePeerConnectionFactory nf = factories.remove(factoryId);
     if (nf == null) {
       Log.w(TAG, "[disposePeerConnectionFactory] unknown factoryId: " + factoryId);
       return;
     }
-    Log.i(TAG, "[disposePeerConnectionFactory] disposing id: " + factoryId
-        + ", ownedPcs: " + nf.ownedPcIds.size());
 
-    // Defensively dispose any PCs the SDK forgot.
+    Log.i(TAG, "[disposePeerConnectionFactory] disposing id: " + factoryId
+        + ", ownedPcs: " + nf.ownedPcIds.size()
+        + ", ownedTracks: " + nf.ownedTrackIds.size()
+        + ", ownedStreams: " + nf.ownedStreamIds.size());
+
+    // Build the full set of trackIds that will become invalid the moment
+    // the factory's peer goes away.
+    final java.util.Set<String> dyingTrackIds =
+        new java.util.HashSet<>(nf.ownedTrackIds);
+
+    for (String pcId : nf.ownedPcIds) {
+      final PeerConnectionObserver pco = mPeerConnectionObservers.get(pcId);
+      if (pco == null) continue;
+
+      dyingTrackIds.addAll(pco.remoteTracks.keySet());
+      for (MediaStream s : pco.remoteStreams.values()) {
+        for (VideoTrack t : s.videoTracks) {
+          try { dyingTrackIds.add(t.id()); } catch (Throwable ignored) {}
+        }
+        for (AudioTrack t : s.audioTracks) {
+          try { dyingTrackIds.add(t.id()); } catch (Throwable ignored) {}
+        }
+      }
+    }
+
+    // 1. Detach every renderer still bound to a dying track.
+    if (!dyingTrackIds.isEmpty()) {
+      for (int i = 0; i < renders.size(); i++) {
+        final FlutterRTCVideoRenderer renderer = renders.valueAt(i);
+        if (renderer == null) continue;
+        try {
+          renderer.detachIfRenderingAny(dyingTrackIds);
+        } catch (Throwable t) {
+          Log.w(TAG, "[disposePeerConnectionFactory] renderer detach failed: " + t);
+        }
+      }
+    }
+
+    // 2. Defensively dispose any PCs the SDK forgot.
     for (String pcId : new ArrayList<>(nf.ownedPcIds)) {
       try {
         peerConnectionDispose(pcId);
@@ -404,6 +451,36 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     }
     nf.ownedPcIds.clear();
 
+    // 3. Evict every track wrapper this factory created.
+    final GetUserMediaImpl gumImplForDispose = nf.getUserMediaImpl;
+    for (String trackId : new ArrayList<>(nf.ownedTrackIds)) {
+      LocalTrack lt = localTracks.remove(trackId);
+      if (lt != null) {
+        try {
+          lt.setEnabled(false);
+        } catch (Throwable t) {
+          // Native peer may already be gone; ignore.
+        }
+      }
+      if (gumImplForDispose != null) {
+        try {
+          // No-op for trackIds without a capturer (audio tracks etc.).
+          gumImplForDispose.removeVideoCapturer(trackId);
+        } catch (Throwable t) {
+          Log.w(TAG, "[disposePeerConnectionFactory] removeVideoCapturer failed for "
+              + trackId + ": " + t);
+        }
+      }
+    }
+    nf.ownedTrackIds.clear();
+
+    // 4. Evict every stream wrapper this factory created.
+    for (String streamId : new ArrayList<>(nf.ownedStreamIds)) {
+      localStreams.remove(streamId);
+    }
+    nf.ownedStreamIds.clear();
+
+    // 5. Tear down the native factory itself.
     try {
       nf.dispose();
     } catch (Throwable t) {
@@ -426,11 +503,6 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     }
     return true;
   }
-
-  /**
-   * Reserved factoryId for the implicit factory.
-   */
-  private static final String IMPLICIT_FACTORY_ID = "__implicit__";
 
   /**
    * {@link NativePeerConnectionFactory} registry, keyed by factoryId.
@@ -506,80 +578,26 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       audioProcessingFactoryProvider = new AudioProcessingController();
     }
 
-    if (frameCryptor == null) {
-      frameCryptor = new FlutterRTCFrameCryptor(this);
-    }
-    if (dataPacketCryptor == null) {
-      dataPacketCryptor = new FlutterDataPacketCryptor(frameCryptor);
-    }
+    // FlutterRTCFrameCryptor + FlutterDataPacketCryptor are deactivated
+    // until per-factory wiring lands.
+    // if (frameCryptor == null) {
+    //   frameCryptor = new FlutterRTCFrameCryptor(this);
+    // }
+    // if (dataPacketCryptor == null) {
+    //   dataPacketCryptor = new FlutterDataPacketCryptor(frameCryptor);
+    // }
 
     if (cameraUtils == null) {
       cameraUtils = new CameraUtils(
-          trackId -> resolveFactoryForTrack(trackId).getUserMediaImpl, activity);
+          trackId -> {
+            final NativePeerConnectionFactory nf = resolveFactoryForTrack(trackId);
+            return nf != null ? nf.getUserMediaImpl : null;
+          }, activity);
     }
 
     initializeSnapshot = new InitializeSnapshot(bypassVoiceProcessing, networkIgnoreMask,
         forceSWCodec, forceSWCodecList, androidAudioConfiguration,
         audioSampleRate, audioOutputSampleRate);
-  }
-
-  /**
-   * Returns the implicit factory, building it lazily on first use. Callers
-   * that obtain a factory via this path are expected to register their PC
-   * under {@link #IMPLICIT_FACTORY_ID} so the lifecycle teardown in
-   * {@link #peerConnectionDispose} can dispose the factory the moment its
-   * last PC is released.
-   *
-   * <p>Throws {@link IllegalStateException} if {@link #initialize} has not
-   * been called yet — without a snapshot we have no defaults to build with.
-   */
-  @NonNull
-  private synchronized NativePeerConnectionFactory acquireImplicitFactory() {
-    NativePeerConnectionFactory nf = factories.get(IMPLICIT_FACTORY_ID);
-    if (nf != null && !nf.isDisposed()) {
-      return nf;
-    }
-
-    if (initializeSnapshot == null) {
-      throw new IllegalStateException(
-          "WebRTC.initialize must be called before creating peer connections");
-    }
-
-    final NativePeerConnectionFactory.BuildContext buildCtx = new NativePeerConnectionFactory.BuildContext();
-    buildCtx.context = context;
-    buildCtx.bypassVoiceProcessing = initializeSnapshot.bypassVoiceProcessing;
-    buildCtx.networkIgnoreMask = initializeSnapshot.networkIgnoreMask;
-    buildCtx.forceSWCodec = initializeSnapshot.forceSWCodec;
-    buildCtx.forceSWCodecList = initializeSnapshot.forceSWCodecList;
-    buildCtx.androidAudioConfiguration = initializeSnapshot.androidAudioConfiguration;
-    buildCtx.audioSampleRate = initializeSnapshot.audioSampleRate;
-    buildCtx.audioOutputSampleRate = initializeSnapshot.audioOutputSampleRate;
-    buildCtx.audioProcessingFactoryProvider = audioProcessingFactoryProvider;
-    buildCtx.stateProvider = this;
-    buildCtx.isMicrophoneMutedSupplier = this::isMicrophoneMuted;
-    buildCtx.localTracksSupplier = () -> localTracks.values();
-
-    nf = NativePeerConnectionFactory.build(IMPLICIT_FACTORY_ID, buildCtx);
-    factories.put(IMPLICIT_FACTORY_ID, nf);
-    Log.i(TAG, "[acquireImplicitFactory] built implicit factory");
-    return nf;
-  }
-
-  /**
-   * Disposes the implicit factory if it has no remaining owned PCs.
-   */
-  private synchronized void releaseImplicitFactoryIfIdle() {
-    final NativePeerConnectionFactory nf = factories.get(IMPLICIT_FACTORY_ID);
-    if (nf == null || !nf.ownedPcIds.isEmpty()) {
-      return;
-    }
-    factories.remove(IMPLICIT_FACTORY_ID);
-    try {
-      nf.dispose();
-      Log.i(TAG, "[releaseImplicitFactoryIfIdle] disposed implicit factory");
-    } catch (Throwable t) {
-      Log.w(TAG, "[releaseImplicitFactoryIfIdle] dispose failed: " + t);
-    }
   }
 
   @Override
@@ -677,7 +695,12 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         String trackId = call.argument("trackId");
         List<String> names = call.argument("names");
 
-        resolveFactoryForTrack(trackId).getUserMediaImpl.setVideoEffect(trackId, names);
+        final NativePeerConnectionFactory nf = resolveFactoryForTrack(trackId);
+        if (nf == null) {
+          resultError("setVideoEffects", "No factory owns trackId: " + trackId, result);
+          break;
+        }
+        nf.getUserMediaImpl.setVideoEffect(trackId, names);
         result.success(null);
         break;
       }
@@ -793,11 +816,16 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       case "mediaStreamGetTracks": {
         String streamId = call.argument("streamId");
         MediaStream stream = getStreamForId(streamId, "");
+        final NativePeerConnectionFactory streamFactory =
+            resolveFactoryForStream(streamId);
         Map<String, Object> resultMap = new HashMap<>();
         List<Object> audioTracks = new ArrayList<>();
         List<Object> videoTracks = new ArrayList<>();
         for (AudioTrack track : stream.audioTracks) {
           localTracks.put(track.id(), new LocalAudioTrack(track));
+          if (streamFactory != null) {
+            streamFactory.ownedTrackIds.add(track.id());
+          }
           Map<String, Object> trackMap = new HashMap<>();
           trackMap.put("enabled", track.enabled());
           trackMap.put("id", track.id());
@@ -809,6 +837,9 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         }
         for (VideoTrack track : stream.videoTracks) {
           localTracks.put(track.id(), new LocalVideoTrack(track));
+          if (streamFactory != null) {
+            streamFactory.ownedTrackIds.add(track.id());
+          }
           Map<String, Object> trackMap = new HashMap<>();
           trackMap.put("enabled", track.enabled());
           trackMap.put("id", track.id());
@@ -967,7 +998,12 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         String trackId = call.argument("trackId");
         String peerConnectionId = call.argument("peerConnectionId");
 
-        ConstraintsMap map = resolveFactoryForTrack(trackId).getUserMediaImpl.cloneTrack(trackId);
+        final NativePeerConnectionFactory nf = resolveFactoryForTrack(trackId);
+        if (nf == null) {
+          resultError("trackClone", "No factory owns trackId: " + trackId, result);
+          break;
+        }
+        ConstraintsMap map = nf.getUserMediaImpl.cloneTrack(trackId);
 
         result.success(map.toMap());
         break;
@@ -1096,7 +1132,13 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       }
       case "mediaStreamTrackSwitchCamera": {
         String trackId = call.argument("trackId");
-        resolveFactoryForTrack(trackId).getUserMediaImpl.switchCamera(trackId, result);
+        final NativePeerConnectionFactory nf = resolveFactoryForTrack(trackId);
+        if (nf == null) {
+          resultError("mediaStreamTrackSwitchCamera",
+              "No factory owns trackId: " + trackId, result);
+          break;
+        }
+        nf.getUserMediaImpl.switchCamera(trackId, result);
         break;
       }
       case "setVolume": {
@@ -1166,13 +1208,13 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         // must target the same factory. Accept an optional factoryId so the
         // SDK can pin both calls to the per-call factory.
         String factoryId = call.argument("factoryId");
-        NativePeerConnectionFactory mf = resolveFactory(factoryId);
-        if (mf == null) {
+        NativePeerConnectionFactory nf = resolveFactory(factoryId);
+        if (nf == null) {
           resultError("requestCapturePermission",
               "unknown factoryId " + factoryId, result);
           break;
         }
-        mf.getUserMediaImpl.requestCapturePermission(result);
+        nf.getUserMediaImpl.requestCapturePermission(result);
         break;
       }
       case "getDisplayMedia": {
@@ -1203,9 +1245,18 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
           }
           Integer recorderId = call.argument("recorderId");
           if (videoTrack != null || audioChannel != null) {
+            // For audio-only recording with no video track, the recorder
+            // can't be tied to a specific call. 
             final NativePeerConnectionFactory nf = videoTrack != null
                 ? resolveFactoryForTrack(videoTrack.id())
-                : acquireImplicitFactory();
+                : null;
+            if (nf == null) {
+              resultError("startRecordToFile",
+                  "No factory owns the requested track (or audio-only recording "
+                      + "is not supported without a videoTrack).",
+                  result);
+              break;
+            }
             nf.getUserMediaImpl.startRecordingToFile(path, recorderId, videoTrack, audioChannel);
             result.success(null);
           } else {
@@ -1218,7 +1269,14 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       case "stopRecordToFile":
         Integer recorderId = call.argument("recorderId");
         String albumName = call.argument("albumName");
-        resolveFactoryForRecorder(recorderId).getUserMediaImpl
+        final NativePeerConnectionFactory _recFactory =
+            resolveFactoryForRecorder(recorderId);
+        if (_recFactory == null) {
+          resultError("stopRecordToFile",
+              "No factory owns recorderId: " + recorderId, result);
+          break;
+        }
+        _recFactory.getUserMediaImpl
             .stopRecording(recorderId, albumName, () -> result.success(null));
         break;
       case "captureFrame": {
@@ -1394,8 +1452,8 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       case "getRtpSenderCapabilities": {
         String kind = call.argument("kind");
         String factoryId = call.argument("factoryId");
-        NativePeerConnectionFactory mf = resolveFactory(factoryId);
-        if (mf == null) {
+        NativePeerConnectionFactory nf = resolveFactory(factoryId);
+        if (nf == null) {
           resultError("getRtpSenderCapabilities",
               "unknown factoryId " + factoryId, result);
           break;
@@ -1404,15 +1462,15 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         if (kind.equals("video")) {
           mediaType = MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO;
         }
-        RtpCapabilities capabilities = mf.factory.getRtpSenderCapabilities(mediaType);
+        RtpCapabilities capabilities = nf.factory.getRtpSenderCapabilities(mediaType);
         result.success(capabilitiestoMap(capabilities).toMap());
         break;
       }
       case "getRtpReceiverCapabilities": {
         String kind = call.argument("kind");
         String factoryId = call.argument("factoryId");
-        NativePeerConnectionFactory mf = resolveFactory(factoryId);
-        if (mf == null) {
+        NativePeerConnectionFactory nf = resolveFactory(factoryId);
+        if (nf == null) {
           resultError("getRtpReceiverCapabilities",
               "unknown factoryId " + factoryId, result);
           break;
@@ -1421,7 +1479,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         if (kind.equals("video")) {
           mediaType = MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO;
         }
-        RtpCapabilities capabilities = mf.factory.getRtpReceiverCapabilities(mediaType);
+        RtpCapabilities capabilities = nf.factory.getRtpReceiverCapabilities(mediaType);
         result.success(capabilitiestoMap(capabilities).toMap());
         break;
       }
@@ -1500,12 +1558,12 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       }
       case "startLocalRecording": {
         final String factoryId = call.argument("factoryId");
-        final NativePeerConnectionFactory mf = resolveFactory(factoryId);
-        if (mf == null) {
+        final NativePeerConnectionFactory nf = resolveFactory(factoryId);
+        if (nf == null) {
           resultError("startLocalRecording", "unknown factoryId " + factoryId, result);
           break;
         }
-        final JavaAudioDeviceModule adm = mf.adm;
+        final JavaAudioDeviceModule adm = nf.adm;
         executor.execute(() -> {
           adm.prewarmRecording();
           mainHandler.post(() -> {
@@ -1516,12 +1574,12 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       }
       case "stopLocalRecording": {
         final String factoryId = call.argument("factoryId");
-        final NativePeerConnectionFactory mf = resolveFactory(factoryId);
-        if (mf == null) {
+        final NativePeerConnectionFactory nf = resolveFactory(factoryId);
+        if (nf == null) {
           resultError("stopLocalRecording", "unknown factoryId " + factoryId, result);
           break;
         }
-        final JavaAudioDeviceModule adm = mf.adm;
+        final JavaAudioDeviceModule adm = nf.adm;
         executor.execute(() -> {
           adm.requestStopRecording();
           mainHandler.post(() -> {
@@ -1536,11 +1594,12 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         break;
       }
       default:
-        if(frameCryptor.handleMethodCall(call, result)) {
-          break;
-        } else if(dataPacketCryptor.handleMethodCall(call, result)) {
-          break;
-        }
+        // Frame cryptor + data packet cryptor deactivated until per-call factory wiring lands.
+        // if(frameCryptor.handleMethodCall(call, result)) {
+        //   break;
+        // } else if(dataPacketCryptor.handleMethodCall(call, result)) {
+        //   break;
+        // }
         result.notImplemented();
         break;
     }
@@ -1947,12 +2006,10 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
             observer);
     observer.setPeerConnection(peerConnection);
     mPeerConnectionObservers.put(peerConnectionId, observer);
-    
-    final String resolvedFactoryId =
-        (factoryId == null || factoryId.isEmpty()) ? IMPLICIT_FACTORY_ID : factoryId;
-    pcFactoryId.put(peerConnectionId, resolvedFactoryId);
+
+    pcFactoryId.put(peerConnectionId, factoryId);
     nf.ownedPcIds.add(peerConnectionId);
-    
+
     return peerConnectionId;
   }
 
@@ -1965,6 +2022,10 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   @Override
   public boolean putLocalTrack(String trackId, LocalTrack track) {
     localTracks.put(trackId, track);
+    final NativePeerConnectionFactory nf = resolveFactoryForTrack(trackId);
+    if (nf != null) {
+      nf.ownedTrackIds.add(trackId);
+    }
     return true;
   }
 
@@ -2007,11 +2068,6 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     } while (getTrackForId(uuid, null) != null);
 
     return uuid;
-  }
-
-  @Override
-  public PeerConnectionFactory getPeerConnectionFactory() {
-    return acquireImplicitFactory().factory;
   }
 
   @Override
@@ -2112,6 +2168,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       return;
     }
 
+    nf.ownedStreamIds.add(streamId);
     nf.getUserMediaImpl.getUserMedia(constraints, result, mediaStream);
   }
 
@@ -2140,6 +2197,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       return;
     }
 
+    nf.ownedStreamIds.add(streamId);
     nf.getUserMediaImpl.getDisplayMedia(constraints, result, mediaStream);
   }
 
@@ -2207,6 +2265,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     String streamId = getNextStreamUUID();
     MediaStream mediaStream = nf.factory.createLocalMediaStream(streamId);
     localStreams.put(streamId, mediaStream);
+    nf.ownedStreamIds.add(streamId);
 
     if (mediaStream == null) {
       resultError("createLocalMediaStream", "Failed to create new media stream", result);
@@ -2221,18 +2280,35 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     LocalTrack track = localTracks.get(trackId);
     if (track == null) {
       Log.d(TAG, "trackDispose() track is null");
+      final NativePeerConnectionFactory ownerNf = resolveFactoryForTrack(trackId);
+      if (ownerNf != null) {
+        ownerNf.ownedTrackIds.remove(trackId);
+      }
       return;
     }
 
     removeTrackForRendererById(trackId);
-    track.setEnabled(false);
-    
-    if (track instanceof LocalVideoTrack) {
-      resolveFactoryForTrack(trackId).getUserMediaImpl.removeVideoCapturer(trackId);
+    try {
+      track.setEnabled(false);
+    } catch (Throwable t) {
+      // Native peer may already be gone if the factory was disposed
+      // before this trackDispose call landed. Ignore.
     }
 
-    //TODO: Should this be commented out?
-    // localTracks.remove(trackId);
+    final NativePeerConnectionFactory nf = resolveFactoryForTrack(trackId);
+    if (track instanceof LocalVideoTrack) {
+      if (nf != null) {
+        nf.getUserMediaImpl.removeVideoCapturer(trackId);
+      } else {
+        Log.w(TAG, "[trackDispose] no factory owns trackId " + trackId
+            + "; capturer cleanup skipped");
+      }
+    }
+
+    localTracks.remove(trackId);
+    if (nf != null) {
+      nf.ownedTrackIds.remove(trackId);
+    }
   }
 
   public void mediaStreamTrackSetEnabled(final String id, final boolean enabled, String peerConnectionId) {
@@ -2241,10 +2317,15 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     if (track == null) {
       Log.d(TAG, "mediaStreamTrackSetEnabled() track is null");
       return;
-    } else if (track.enabled() == enabled) {
-      return;
     }
-    track.setEnabled(enabled);
+    try {
+      if (track.enabled() == enabled) {
+        return;
+      }
+      track.setEnabled(enabled);
+    } catch (Throwable t) {
+      Log.w(TAG, "mediaStreamTrackSetEnabled() track " + id + " stale: " + t);
+    }
   }
 
   public void mediaStreamTrackSetVolume(final String id, final double volume, String peerConnectionId) {
@@ -2329,7 +2410,13 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       stream.removeTrack((AudioTrack) track.track);
     } else if (track.kind().equals("video")) {
       stream.removeTrack((VideoTrack) track.track);
-      resolveFactoryForTrack(_trackId).getUserMediaImpl.removeVideoCapturer(_trackId);
+      final NativePeerConnectionFactory nf = resolveFactoryForTrack(_trackId);
+      if (nf != null) {
+        nf.getUserMediaImpl.removeVideoCapturer(_trackId);
+      } else {
+        Log.w(TAG, "[mediaStreamTrackRelease] no factory owns trackId "
+            + _trackId + "; capturer cleanup skipped");
+      }
     }
   }
 
@@ -2598,17 +2685,12 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       Log.d(TAG, "peerConnectionDispose() peerConnectionObserver is null");
     }
 
-    // Drop the PC from per-call factory bookkeeping. 
+    // Drop the PC from per-call factory bookkeeping.
     final String factoryId = pcFactoryId.remove(id);
     if (factoryId != null) {
       final NativePeerConnectionFactory nf = factories.get(factoryId);
       if (nf != null) {
         nf.ownedPcIds.remove(id);
-      }
-      if (IMPLICIT_FACTORY_ID.equals(factoryId)) {
-        // Tear down the implicit factory the moment its last PC is gone.
-        // Explicit factories are owned by the SDK and disposed via disposePeerConnectionFactory.
-        releaseImplicitFactoryIfIdle();
       }
     }
 
@@ -2636,19 +2718,57 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     } else {
       Log.d(TAG, "streamDispose() mediaStream is null");
     }
+    final NativePeerConnectionFactory nf = resolveFactoryForStream(streamId);
+    if (nf != null) {
+      nf.ownedStreamIds.remove(streamId);
+    }
   }
 
   public void streamDispose(final MediaStream stream) {
     List<VideoTrack> videoTracks = stream.videoTracks;
     for (VideoTrack track : videoTracks) {
-      localTracks.remove(track.id());
-      resolveFactoryForTrack(track.id()).getUserMediaImpl.removeVideoCapturer(track.id());
-      stream.removeTrack(track);
+      String trackIdSafe;
+      try {
+        trackIdSafe = track.id();
+      } catch (Throwable t) {
+        trackIdSafe = null;
+      }
+      if (trackIdSafe != null) {
+        localTracks.remove(trackIdSafe);
+        final NativePeerConnectionFactory nf = resolveFactoryForTrack(trackIdSafe);
+        if (nf != null) {
+          try {
+            nf.getUserMediaImpl.removeVideoCapturer(trackIdSafe);
+          } catch (Throwable t) {
+            Log.w(TAG, "[streamDispose] removeVideoCapturer failed: " + t);
+          }
+        } else {
+          Log.w(TAG, "[streamDispose] no factory owns trackId "
+              + trackIdSafe + "; capturer cleanup skipped");
+        }
+      }
+      try {
+        stream.removeTrack(track);
+      } catch (Throwable t) {
+        Log.w(TAG, "[streamDispose] stream.removeTrack(video) failed: " + t);
+      }
     }
     List<AudioTrack> audioTracks = stream.audioTracks;
     for (AudioTrack track : audioTracks) {
-      localTracks.remove(track.id());
-      stream.removeTrack(track);
+      String trackIdSafe;
+      try {
+        trackIdSafe = track.id();
+      } catch (Throwable t) {
+        trackIdSafe = null;
+      }
+      if (trackIdSafe != null) {
+        localTracks.remove(trackIdSafe);
+      }
+      try {
+        stream.removeTrack(track);
+      } catch (Throwable t) {
+        Log.w(TAG, "[streamDispose] stream.removeTrack(audio) failed: " + t);
+      }
     }
   }
 
@@ -2941,9 +3061,9 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
 
     // Restart cameras across every factory so none are left in a
     // suspended state after returning from background.
-    for (NativePeerConnectionFactory mf : factories.values()) {
-      if (mf.getUserMediaImpl != null) {
-        mf.getUserMediaImpl.reStartCamera(isEnabled);
+    for (NativePeerConnectionFactory nf : factories.values()) {
+      if (nf.getUserMediaImpl != null) {
+        nf.getUserMediaImpl.reStartCamera(isEnabled);
       }
     }
   }

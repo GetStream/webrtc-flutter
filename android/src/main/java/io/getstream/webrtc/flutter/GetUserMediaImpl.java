@@ -278,9 +278,8 @@ public class GetUserMediaImpl {
     }
 
     /**
-     * Per-call factory. When set, all
-     * track/source creation routes to this factory rather than to whatever
-     * {@code stateProvider.getPeerConnectionFactory()} returns.
+     * Per-call factory. All track/source creation routes through it.
+     * This field must always be set before any media operation runs.
      */
     @Nullable
     private PeerConnectionFactory peerConnectionFactory;
@@ -290,10 +289,12 @@ public class GetUserMediaImpl {
     }
 
     private PeerConnectionFactory peerConnectionFactory() {
-        if (peerConnectionFactory != null) {
-            return peerConnectionFactory;
+        if (peerConnectionFactory == null) {
+            throw new IllegalStateException(
+                    "GetUserMediaImpl: peerConnectionFactory is not set. "
+                            + "Was setPeerConnectionFactory() called on this instance?");
         }
-        return stateProvider.getPeerConnectionFactory();
+        return peerConnectionFactory;
     }
 
     void setAudioChannelCount(int channelCount) {

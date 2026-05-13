@@ -9,6 +9,11 @@
 #import "include/stream_webrtc_flutter/LocalVideoTrack.h"
 #import "include/stream_webrtc_flutter/NativePeerConnectionFactory.h"
 #import "include/stream_webrtc_flutter/VideoProcessingAdapter.h"
+#if TARGET_OS_OSX
+// Only present in the common/darwin Classes (macOS-only). The iOS tree is
+// iOS-only at deploy-target level so this import is a no-op there.
+#import "StreamMacAudioDevices.h"
+#endif
 
 @implementation RTCMediaStreamTrack (Flutter)
 
@@ -185,6 +190,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 
   if (nf.factoryId != nil) {
     self.trackFactoryId[trackId] = nf.factoryId;
+    [nf.ownedTrackIds addObject:trackId];
   }
 
   [self ensureAudioSession];
@@ -245,6 +251,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
         }
 
         self.localStreams[mediaStreamId] = mediaStream;
+        [nf.ownedStreamIds addObject:mediaStreamId];
         result(@{
           @"streamId" : mediaStreamId,
           @"audioTracks" : audioTracks,
@@ -371,8 +378,8 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
   NSString* sourceFactoryId = self.trackFactoryId[trackId];
   NativePeerConnectionFactory* nf = [self resolveFactoryForId:sourceFactoryId];
   if (nf == nil || nf.factory == nil) {
-    NSLog(@"[cloneTrack] no factory for trackId %@, falling back to implicit", trackId);
-    nf = [self acquireImplicitFactory];
+    NSLog(@"[cloneTrack] no factory for trackId %@; refusing to clone", trackId);
+    return nil;
   }
 
   if (originalTrack != nil && [originalTrack.kind isEqualToString:@"audio"]) {
@@ -387,6 +394,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     [self.localTracks setObject:localAudioTrack forKey:newTrackId];
     if (nf.factoryId != nil) {
       self.trackFactoryId[newTrackId] = nf.factoryId;
+      [nf.ownedTrackIds addObject:newTrackId];
     }
 
     for (NSString* streamId in self.localStreams) {
@@ -412,6 +420,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     [self.localTracks setObject:localVideoTrack forKey:newTrackId];
     if (nf.factoryId != nil) {
       self.trackFactoryId[newTrackId] = nf.factoryId;
+      [nf.ownedTrackIds addObject:newTrackId];
     }
 
     for (NSString* streamId in self.localStreams) {
@@ -635,6 +644,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 
     if (nf.factoryId != nil) {
       self.trackFactoryId[trackUUID] = nf.factoryId;
+      [nf.ownedTrackIds addObject:trackUUID];
     }
 
     __weak RTCCameraVideoCapturer* capturer = self.videoCapturer;
@@ -817,6 +827,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
   RTCMediaStream* mediaStream = [nf.factory mediaStreamWithStreamId:mediaStreamId];
 
   self.localStreams[mediaStreamId] = mediaStream;
+  [nf.ownedStreamIds addObject:mediaStreamId];
   result(@{@"streamId" : [mediaStream streamId]});
 }
 
@@ -863,22 +874,17 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
   }
 #endif
 #if TARGET_OS_OSX
-  RTCAudioDeviceModule* audioDeviceModule = [self.peerConnectionFactory audioDeviceModule];
-
-  NSArray* inputDevices = [audioDeviceModule inputDevices];
-  for (RTCIODevice* device in inputDevices) {
+  for (NSDictionary* d in [StreamMacAudioDevices inputDevices]) {
     [sources addObject:@{
-      @"deviceId" : device.deviceId,
-      @"label" : device.name,
+      @"deviceId" : d[@"deviceId"],
+      @"label" : d[@"label"],
       @"kind" : @"audioinput",
     }];
   }
-
-  NSArray* outputDevices = [audioDeviceModule outputDevices];
-  for (RTCIODevice* device in outputDevices) {
+  for (NSDictionary* d in [StreamMacAudioDevices outputDevices]) {
     [sources addObject:@{
-      @"deviceId" : device.deviceId,
-      @"label" : device.name,
+      @"deviceId" : d[@"deviceId"],
+      @"label" : d[@"label"],
       @"kind" : @"audiooutput",
     }];
   }
@@ -888,16 +894,36 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 
 - (void)selectAudioInput:(NSString*)deviceId result:(FlutterResult)result {
 #if TARGET_OS_OSX
-  RTCAudioDeviceModule* audioDeviceModule = [self.peerConnectionFactory audioDeviceModule];
-  NSArray* inputDevices = [audioDeviceModule inputDevices];
-  for (RTCIODevice* device in inputDevices) {
-    if ([deviceId isEqualToString:device.deviceId]) {
-      [audioDeviceModule setInputDevice:device];
-      if (result)
-        result(nil);
-      return;
+  if (![StreamMacAudioDevices deviceIdExists:deviceId asInput:YES]) {
+    if (result)
+      result([FlutterError errorWithCode:@"selectAudioInputFailed"
+                                 message:@"Error: deviceId not found!"
+                                 details:@{@"deviceId" : deviceId ?: [NSNull null]}]);
+    return;
+  }
+
+  __block BOOL applied = NO;
+  @synchronized(self) {
+    for (NSString* fid in self.factories.allKeys) {
+      RTCAudioDeviceModule* adm = self.factories[fid].audioDeviceModule;
+      if (adm == nil) continue;
+      for (RTCIODevice* device in [adm inputDevices]) {
+        if ([deviceId isEqualToString:device.deviceId]) {
+          [adm setInputDevice:device];
+          applied = YES;
+          break;
+        }
+      }
     }
   }
+  if (result)
+    result(applied
+               ? nil
+               : [FlutterError errorWithCode:@"selectAudioInputFailed"
+                                     message:@"No active per-call factory; "
+                                             @"join a call before selecting audio input."
+                                     details:@{@"deviceId" : deviceId}]);
+  return;
 #endif
 #if TARGET_OS_IPHONE
   RTCAudioSession* session = [RTCAudioSession sharedInstance];
@@ -921,15 +947,34 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 
 - (void)selectAudioOutput:(NSString*)deviceId result:(FlutterResult)result {
 #if TARGET_OS_OSX
-  RTCAudioDeviceModule* audioDeviceModule = [self.peerConnectionFactory audioDeviceModule];
-  NSArray* outputDevices = [audioDeviceModule outputDevices];
-  for (RTCIODevice* device in outputDevices) {
-    if ([deviceId isEqualToString:device.deviceId]) {
-      [audioDeviceModule setOutputDevice:device];
-      result(nil);
-      return;
+  if (![StreamMacAudioDevices deviceIdExists:deviceId asInput:NO]) {
+    result([FlutterError errorWithCode:@"selectAudioOutputFailed"
+                               message:@"Error: deviceId not found!"
+                               details:@{@"deviceId" : deviceId ?: [NSNull null]}]);
+    return;
+  }
+
+  __block BOOL applied = NO;
+  @synchronized(self) {
+    for (NSString* fid in self.factories.allKeys) {
+      RTCAudioDeviceModule* adm = self.factories[fid].audioDeviceModule;
+      if (adm == nil) continue;
+      for (RTCIODevice* device in [adm outputDevices]) {
+        if ([deviceId isEqualToString:device.deviceId]) {
+          [adm setOutputDevice:device];
+          applied = YES;
+          break;
+        }
+      }
     }
   }
+  result(applied
+             ? nil
+             : [FlutterError errorWithCode:@"selectAudioOutputFailed"
+                                   message:@"No active per-call factory; "
+                                           @"join a call before selecting audio output."
+                                   details:@{@"deviceId" : deviceId}]);
+  return;
 #endif
 #if TARGET_OS_IPHONE
   RTCAudioSession* session = [RTCAudioSession sharedInstance];

@@ -108,6 +108,7 @@ class RTCFactoryNative extends RTCFactory {
       FrameCryptorFactoryImpl.instance;
 
   @override
+  @Deprecated('use NativePeerConnectionFactory.getRtpReceiverCapabilities')
   Future<RTCRtpCapabilities> getRtpReceiverCapabilities(String kind) async {
     final response = await WebRTC.invokeMethod(
       'getRtpReceiverCapabilities',
@@ -119,6 +120,7 @@ class RTCFactoryNative extends RTCFactory {
   }
 
   @override
+  @Deprecated('use NativePeerConnectionFactory.getRtpSenderCapabilities')
   Future<RTCRtpCapabilities> getRtpSenderCapabilities(String kind) async {
     final response = await WebRTC.invokeMethod(
       'getRtpSenderCapabilities',
@@ -171,11 +173,15 @@ Future<MediaStream> createLocalMediaStream(String label) async {
   return RTCFactoryNative.instance.createLocalMediaStream(label);
 }
 
+@Deprecated('use NativePeerConnectionFactory.getRtpReceiverCapabilities')
 Future<RTCRtpCapabilities> getRtpReceiverCapabilities(String kind) async {
+  // ignore: deprecated_member_use_from_same_package
   return RTCFactoryNative.instance.getRtpReceiverCapabilities(kind);
 }
 
+@Deprecated('use NativePeerConnectionFactory.getRtpSenderCapabilities')
 Future<RTCRtpCapabilities> getRtpSenderCapabilities(String kind) async {
+  // ignore: deprecated_member_use_from_same_package
   return RTCFactoryNative.instance.getRtpSenderCapabilities(kind);
 }
 

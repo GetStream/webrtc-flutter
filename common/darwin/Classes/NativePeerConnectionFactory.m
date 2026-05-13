@@ -25,6 +25,8 @@
     _bypassVoiceProcessing = bypassVoiceProcessing;
     _audioConfigSnapshot = [appleAudioConfiguration copy];
     _ownedPcIds = [NSMutableSet new];
+    _ownedTrackIds = [NSMutableSet new];
+    _ownedStreamIds = [NSMutableSet new];
     _disposed = NO;
 
     if (appleAudioConfiguration != nil) {

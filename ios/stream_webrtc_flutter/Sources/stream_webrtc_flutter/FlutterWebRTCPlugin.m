@@ -97,11 +97,6 @@ void postEvent(FlutterEventSink _Nullable sink, id _Nullable event) {
 }
 
 /**
- * Reserved factoryId for the implicit factory.
- */
-static NSString* const kImplicitFactoryId = @"__implicit__";
-
-/**
  * Immutable snapshot of the arguments passed to the most-recent
  * [WebRTC.initialize] call. Used as build defaults for the implicit
  * factory, since the implicit factory is built lazily on first use
@@ -439,13 +434,6 @@ static FlutterWebRTCPlugin* sharedSingleton;
                                  details:nil]);
       return;
     }
-    if ([factoryId isEqualToString:kImplicitFactoryId]) {
-      // The implicit factory's lifecycle is owned by the refcount in
-      // releaseImplicitFactoryIfIdle
-      NSLog(@"[disposePeerConnectionFactory] refusing to dispose the implicit factory");
-      result(nil);
-      return;
-    }
     NativePeerConnectionFactory* nf;
     @synchronized(self) {
       nf = _factories[factoryId];
@@ -456,9 +444,12 @@ static FlutterWebRTCPlugin* sharedSingleton;
       result(nil);
       return;
     }
-    NSLog(@"[disposePeerConnectionFactory] disposing id: %@, ownedPcs: %lu", factoryId,
-          (unsigned long)nf.ownedPcIds.count);
-    // Defensively drain any PCs the SDK forgot.
+    NSLog(@"[disposePeerConnectionFactory] disposing id: %@, ownedPcs: %lu, "
+           "ownedTracks: %lu, ownedStreams: %lu",
+          factoryId, (unsigned long)nf.ownedPcIds.count, (unsigned long)nf.ownedTrackIds.count,
+          (unsigned long)nf.ownedStreamIds.count);
+
+    // 1. Defensively drain any PCs the SDK forgot.
     NSArray<NSString*>* pcIdsSnapshot = [nf.ownedPcIds.allObjects copy];
     for (NSString* pcId in pcIdsSnapshot) {
       RTCPeerConnection* peerConnection = self.peerConnections[pcId];
@@ -469,6 +460,43 @@ static FlutterWebRTCPlugin* sharedSingleton;
       [self.pcFactoryId removeObjectForKey:pcId];
     }
     [nf.ownedPcIds removeAllObjects];
+
+    // 2. Evict every track wrapper this factory created.
+    NSArray<NSString*>* trackIdsSnapshot = [nf.ownedTrackIds.allObjects copy];
+    for (NSString* trackId in trackIdsSnapshot) {
+      id<LocalTrack> lt = self.localTracks[trackId];
+      if (lt != nil) {
+        @try {
+          lt.track.isEnabled = NO;
+        } @catch (NSException* e) {
+          // Native peer may already be gone; ignore.
+        }
+      }
+      CapturerStopHandler stopHandler = self.videoCapturerStopHandlers[trackId];
+      if (stopHandler) {
+        @try {
+          stopHandler(^{
+            NSLog(@"[disposePeerConnectionFactory] capturer stopped, trackId = %@", trackId);
+          });
+        } @catch (NSException* e) {
+          NSLog(@"[disposePeerConnectionFactory] capturer stop failed: %@", e);
+        }
+        [self.videoCapturerStopHandlers removeObjectForKey:trackId];
+        [self.videoCaptureState removeObjectForKey:trackId];
+      }
+      [self.localTracks removeObjectForKey:trackId];
+      [self.trackFactoryId removeObjectForKey:trackId];
+    }
+    [nf.ownedTrackIds removeAllObjects];
+
+    // 3. Evict every stream wrapper this factory created.
+    NSArray<NSString*>* streamIdsSnapshot = [nf.ownedStreamIds.allObjects copy];
+    for (NSString* streamId in streamIdsSnapshot) {
+      [self.localStreams removeObjectForKey:streamId];
+    }
+    [nf.ownedStreamIds removeAllObjects];
+
+    // 4. Tear down the native factory itself.
     @try {
       [nf dispose];
     } @catch (NSException* e) {
@@ -526,9 +554,7 @@ static FlutterWebRTCPlugin* sharedSingleton;
 
     self.peerConnections[peerConnectionId] = peerConnection;
 
-    NSString* resolvedFactoryId =
-        (factoryIdArg != nil && factoryIdArg.length > 0) ? factoryIdArg : kImplicitFactoryId;
-    self.pcFactoryId[peerConnectionId] = resolvedFactoryId;
+    self.pcFactoryId[peerConnectionId] = factoryIdArg;
     [nf.ownedPcIds addObject:peerConnectionId];
     result(@{@"peerConnectionId" : peerConnectionId});
   } else if ([@"getUserMedia" isEqualToString:call.method]) {
@@ -796,10 +822,15 @@ static FlutterWebRTCPlugin* sharedSingleton;
     NSDictionary* argsMap = call.arguments;
     NSString* streamId = argsMap[@"streamId"];
     RTCMediaStream* stream = self.localStreams[streamId];
+    NativePeerConnectionFactory* ownerNf = [self resolveFactoryForStreamId:streamId];
     BOOL shouldCallResult = YES;
     if (stream) {
       for (RTCVideoTrack* track in stream.videoTracks) {
         [_localTracks removeObjectForKey:track.trackId];
+        [self.trackFactoryId removeObjectForKey:track.trackId];
+        if (ownerNf != nil) {
+          [ownerNf.ownedTrackIds removeObject:track.trackId];
+        }
         RTCVideoTrack* videoTrack = (RTCVideoTrack*)track;
         FlutterRTCVideoRenderer* renderer = [self findRendererByTrackId:videoTrack.trackId];
         if (renderer != nil) {
@@ -819,9 +850,16 @@ static FlutterWebRTCPlugin* sharedSingleton;
       }
       for (RTCAudioTrack* track in stream.audioTracks) {
         [_localTracks removeObjectForKey:track.trackId];
+        [self.trackFactoryId removeObjectForKey:track.trackId];
+        if (ownerNf != nil) {
+          [ownerNf.ownedTrackIds removeObject:track.trackId];
+        }
       }
       [self.localStreams removeObjectForKey:streamId];
       [self deactiveRtcAudioSession];
+    }
+    if (ownerNf != nil) {
+      [ownerNf.ownedStreamIds removeObject:streamId];
     }
     if (shouldCallResult) {
       // do not call if will be called in stopCapturer above.
@@ -835,7 +873,11 @@ static FlutterWebRTCPlugin* sharedSingleton;
 
     RTCMediaStreamTrack* track = [self trackForId:trackId peerConnectionId:peerConnectionId];
     if (track != nil) {
-      track.isEnabled = enabled.boolValue;
+      @try {
+        track.isEnabled = enabled.boolValue;
+      } @catch (NSException* e) {
+        NSLog(@"mediaStreamTrackSetEnable: track %@ stale: %@", trackId, e);
+      }
     }
     result(nil);
   } else if ([@"mediaStreamAddTrack" isEqualToString:call.method]) {
@@ -917,9 +959,15 @@ static FlutterWebRTCPlugin* sharedSingleton;
         }
       }
     }
-    // TODO: should we remove the track from localTracks?
-    //  [_localTracks removeObjectForKey:trackId];
+    NSString* ownerFactoryId = self.trackFactoryId[trackId];
+    [_localTracks removeObjectForKey:trackId];
     [self.trackFactoryId removeObjectForKey:trackId];
+    if (ownerFactoryId != nil) {
+      NativePeerConnectionFactory* ownerNf = [self resolveFactoryForId:ownerFactoryId];
+      if (ownerNf != nil) {
+        [ownerNf.ownedTrackIds removeObject:trackId];
+      }
+    }
     if (audioTrack) {
       [self ensureAudioSession];
     }
@@ -969,11 +1017,7 @@ static FlutterWebRTCPlugin* sharedSingleton;
       }
       [dataChannels removeAllObjects];
     }
-    // Drop the PC from the per-call factory bookkeeping. The implicit
-    // factory's refcount drops accordingly. On its last PC we tear it
-    // down so the per-call ADM (and AudioEngine) doesn't outlive the
-    // call. Explicit factories are owned by the SDK and disposed via
-    // disposePeerConnectionFactory.
+
     NSString* factoryIdForPc = self.pcFactoryId[peerConnectionId];
     if (factoryIdForPc != nil) {
       [self.pcFactoryId removeObjectForKey:peerConnectionId];
@@ -983,9 +1027,6 @@ static FlutterWebRTCPlugin* sharedSingleton;
       }
       if (nf != nil) {
         [nf.ownedPcIds removeObject:peerConnectionId];
-      }
-      if ([factoryIdForPc isEqualToString:kImplicitFactoryId] && isDispose) {
-        [self releaseImplicitFactoryIfIdle];
       }
     }
     [self deactiveRtcAudioSession];
@@ -1259,7 +1300,13 @@ static FlutterWebRTCPlugin* sharedSingleton;
     NSString* trackId = argsMap[@"trackId"];
     RTCMediaStreamTrack* track = [self cloneTrack:trackId];
 
-    result([self mediaTrackToMap:track]);
+    if (track == nil) {
+      result([FlutterError errorWithCode:@"TRACK_CLONE_FAILED"
+                                 message:@"Cannot clone track: source factory not found"
+                                 details:@{@"trackId" : trackId ?: [NSNull null]}]);
+    } else {
+      result([self mediaTrackToMap:track]);
+    }
   } else if ([@"setMicrophoneMute" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* trackId = argsMap[@"trackId"];
@@ -1928,9 +1975,6 @@ static FlutterWebRTCPlugin* sharedSingleton;
     nf.audioDeviceModule.voiceProcessingBypassed = value.boolValue;
     result(nil);
   } else if ([@"setStereoPlayoutPreferred" isEqualToString:call.method]) {
-    // Stereo preference is process-wide per Phase 2 PRD §11. Apply the
-    // setting to every active factory's ADM so route-change refresh and
-    // queries observe consistent state across simultaneous calls.
     NSNumber* value = call.arguments[@"preferred"];
     BOOL preferred = value.boolValue;
     _stereoPlayoutPreferred = preferred;
@@ -1960,10 +2004,7 @@ static FlutterWebRTCPlugin* sharedSingleton;
     // (or the first explicit factory) as the source of truth.
     NativePeerConnectionFactory* nf;
     @synchronized(self) {
-      nf = self.factories[kImplicitFactoryId];
-      if (nf == nil) {
-        nf = self.factories.allValues.firstObject;
-      }
+      nf = self.factories.allValues.firstObject;
     }
     if (nf == nil || nf.audioDeviceModule == nil) {
       result(@(NO));
@@ -1985,11 +2026,20 @@ static FlutterWebRTCPlugin* sharedSingleton;
     }
     result(nil);
   } else {
-    if ([self handleFrameCryptorMethodCall:call result:result]) {
-      return;
-    } else {
-      [self handleDataPacketCryptorMethodCall:call result:result];
-    }
+    // Frame cryptor was deactivated alongside the iOS ambient-factory removal —
+    // it routed factory creation through the ambient ADM and Stream SDK does
+    // not use it. Reviving requires wiring a per-PC factoryId through every
+    // FlutterRTCFrameCryptor entry point. Until then frame-cryptor calls bubble
+    // through data-packet cryptor (which does not recognize them) and
+    // ultimately receive FlutterMethodNotImplemented.
+
+    // if ([self handleFrameCryptorMethodCall:call result:result]) {
+    //   return;
+    // } else {
+    //   [self handleDataPacketCryptorMethodCall:call result:result];
+    // }
+
+    [self handleDataPacketCryptorMethodCall:call result:result];
   }
 }
 
@@ -2039,37 +2089,23 @@ static FlutterWebRTCPlugin* sharedSingleton;
 
 - (NativePeerConnectionFactory*)resolveFactoryForId:(NSString*)factoryId {
   if (factoryId == nil || factoryId.length == 0) {
-    return [self acquireImplicitFactory];
+    return nil;
   }
   @synchronized(self) {
     return _factories[factoryId];
   }
 }
 
-- (NativePeerConnectionFactory*)acquireImplicitFactory {
+- (NativePeerConnectionFactory*)resolveFactoryForStreamId:(NSString*)streamId {
+  if (streamId == nil || streamId.length == 0)
+    return nil;
   @synchronized(self) {
-    NativePeerConnectionFactory* nf = _factories[kImplicitFactoryId];
-    if (nf != nil && !nf.isDisposed) {
-      return nf;
+    for (NativePeerConnectionFactory* nf in _factories.allValues) {
+      if ([nf.ownedStreamIds containsObject:streamId])
+        return nf;
     }
-    if (_initializeSnapshot == nil) {
-      @throw [NSException
-          exceptionWithName:NSInternalInconsistencyException
-                     reason:@"WebRTC.initialize must be called before creating peer connections"
-                   userInfo:nil];
-    }
-    nf = [[NativePeerConnectionFactory alloc]
-              initWithFactoryId:kImplicitFactoryId
-          bypassVoiceProcessing:_initializeSnapshot.bypassVoiceProcessing
-              networkIgnoreMask:(_initializeSnapshot.networkIgnoreMask ?: @[])audioProcessingModule
-                               :_audioManager.audioProcessingModule
-        appleAudioConfiguration:_initializeSnapshot.appleAudioConfiguration
-                    admObserver:self];
-    _factories[kImplicitFactoryId] = nf;
-    [self applyPersistentAdmStateToFactory:nf];
-    NSLog(@"[FlutterWebRTCPlugin] built implicit factory");
-    return nf;
   }
+  return nil;
 }
 
 #if TARGET_OS_IPHONE
@@ -2090,30 +2126,6 @@ static FlutterWebRTCPlugin* sharedSingleton;
   [adm setMuteMode:RTCAudioEngineMuteModeInputMixer];
 }
 #endif
-
-- (void)releaseImplicitFactoryIfIdle {
-  @synchronized(self) {
-    NativePeerConnectionFactory* mf = _factories[kImplicitFactoryId];
-    if (mf == nil || mf.ownedPcIds.count > 0) {
-      return;
-    }
-    [_factories removeObjectForKey:kImplicitFactoryId];
-    @try {
-      [mf dispose];
-      NSLog(@"[FlutterWebRTCPlugin] disposed implicit factory");
-    } @catch (NSException* e) {
-      NSLog(@"[FlutterWebRTCPlugin] implicit factory dispose failed: %@", e);
-    }
-  }
-}
-
-/**
- * Override the auto-generated peerConnectionFactory getter so code that doesn't have a factoryId
- * can still access the implicit factory's underlying RTCPeerConnectionFactory.
- */
-- (RTCPeerConnectionFactory*)peerConnectionFactory {
-  return [self acquireImplicitFactory].factory;
-}
 
 - (void)ensureAudioSession {
 #if TARGET_OS_IPHONE
@@ -2207,6 +2219,7 @@ static FlutterWebRTCPlugin* sharedSingleton;
 - (void)mediaStreamGetTracks:(NSString*)streamId result:(FlutterResult)result {
   RTCMediaStream* stream = [self streamForId:streamId peerConnectionId:@""];
   if (stream) {
+    NativePeerConnectionFactory* streamFactory = [self resolveFactoryForStreamId:streamId];
     NSMutableArray* audioTracks = [NSMutableArray array];
     NSMutableArray* videoTracks = [NSMutableArray array];
 
@@ -2214,6 +2227,12 @@ static FlutterWebRTCPlugin* sharedSingleton;
       NSString* trackId = track.trackId;
       [self.localTracks setObject:[[LocalAudioTrack alloc] initWithTrack:(RTCAudioTrack*)track]
                            forKey:trackId];
+      if (streamFactory != nil) {
+        [streamFactory.ownedTrackIds addObject:trackId];
+        if (streamFactory.factoryId != nil) {
+          self.trackFactoryId[trackId] = streamFactory.factoryId;
+        }
+      }
       [audioTracks addObject:@{
         @"enabled" : @(track.isEnabled),
         @"id" : trackId,
@@ -2228,6 +2247,12 @@ static FlutterWebRTCPlugin* sharedSingleton;
       NSString* trackId = track.trackId;
       [_localTracks setObject:[[LocalVideoTrack alloc] initWithTrack:(RTCVideoTrack*)track]
                        forKey:trackId];
+      if (streamFactory != nil) {
+        [streamFactory.ownedTrackIds addObject:trackId];
+        if (streamFactory.factoryId != nil) {
+          self.trackFactoryId[trackId] = streamFactory.factoryId;
+        }
+      }
       [videoTracks addObject:@{
         @"enabled" : @(track.isEnabled),
         @"id" : trackId,
@@ -3049,7 +3074,13 @@ static FlutterWebRTCPlugin* sharedSingleton;
 
 - (void)audioDeviceModule:(RTCAudioDeviceModule*)audioDeviceModule
     didReceiveSpeechActivityEvent:(RTCSpeechActivityEvent)speechActivityEvent {
-  // No-op stub.
+  if (!self.eventSink)
+    return;
+  NSString* type = (speechActivityEvent == RTCSpeechActivityEventStarted) ? @"started" : @"ended";
+  postEvent(self.eventSink, @{
+    @"event" : @"onSpeechActivityChanged",
+    @"type" : type,
+  });
 }
 
 - (NSInteger)audioDeviceModule:(RTCAudioDeviceModule*)audioDeviceModule

@@ -29,6 +29,7 @@ import io.getstream.webrtc.flutter.audio.AudioUtils;
 import io.getstream.webrtc.flutter.audio.LocalAudioTrack;
 import io.getstream.webrtc.flutter.audio.PlaybackSamplesReadyCallbackAdapter;
 import io.getstream.webrtc.flutter.audio.RecordSamplesReadyCallbackAdapter;
+import io.getstream.webrtc.flutter.audio.SpeechActivityDetector;
 import io.getstream.webrtc.flutter.utils.ConstraintsMap;
 import io.getstream.webrtc.flutter.utils.EglUtils;
 import org.webrtc.video.CustomVideoDecoderFactory;
@@ -101,6 +102,14 @@ public class NativePeerConnectionFactory {
 
     /** PCs created from this factory; populated by MethodCallHandlerImpl. */
     public final Set<String> ownedPcIds = ConcurrentHashMap.newKeySet();
+
+    /**
+     * IDs of tracks created via this factory.
+     */
+    public final Set<String> ownedTrackIds = ConcurrentHashMap.newKeySet();
+
+    /** IDs of streams created via this factory. */
+    public final Set<String> ownedStreamIds = ConcurrentHashMap.newKeySet();
 
     private volatile boolean disposed = false;
 
@@ -233,7 +242,7 @@ public class NativePeerConnectionFactory {
 
         recordSamplesAdapter.addCallback(getUserMediaImpl.inputSamplesInterceptor);
         recordSamplesAdapter.addCallback(audioSamples -> {
-            // only iterate tracks owned by THIS factory's getUserMediaImpl. 
+            // only iterate tracks owned by THIS factory's getUserMediaImpl.
             for (LocalTrack track : ctx.localTracksSupplier.get()) {
                 if (!(track instanceof LocalAudioTrack)) continue;
                 final String trackId;
@@ -251,6 +260,18 @@ public class NativePeerConnectionFactory {
                 }
             }
         });
+
+        // Speaking-while-muted detector. Posts onSpeechActivityChanged events through
+        // FlutterWebRTCPlugin's eventSink.
+        final SpeechActivityDetector speechDetector = new SpeechActivityDetector(speaking -> {
+            FlutterWebRTCPlugin plugin = FlutterWebRTCPlugin.sharedSingleton;
+            if (plugin == null) return;
+            ConstraintsMap event = new ConstraintsMap();
+            event.putString("event", "onSpeechActivityChanged");
+            event.putString("type", speaking ? "started" : "ended");
+            plugin.sendEvent(event.toMap());
+        });
+        recordSamplesAdapter.addCallback(speechDetector);
 
         // Audio buffer callback for screen-audio mixing. 
         admBuilder.setAudioBufferCallback(

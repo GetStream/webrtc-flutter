@@ -30,7 +30,15 @@ class CameraEventsHandler implements CameraVideoCapturer.CameraEventsHandler {
 
     public void waitForCameraClosed() {
         Log.d(TAG, "CameraEventsHandler.waitForCameraClosed");
-        while (state != CameraState.CLOSED && state != CameraState.ERROR) {
+        
+        final long deadlineMs = System.currentTimeMillis() + 2000L;
+        while (state != CameraState.CLOSED
+                && state != CameraState.ERROR
+                && state != CameraState.DISCONNECTED) {
+            if (System.currentTimeMillis() >= deadlineMs) {
+                Log.w(TAG, "CameraEventsHandler.waitForCameraClosed timed out in state " + state);
+                return;
+            }
             try {
                 Thread.sleep(1);
             } catch (InterruptedException e) {
