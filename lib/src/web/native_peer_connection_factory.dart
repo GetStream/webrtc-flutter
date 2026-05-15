@@ -47,5 +47,8 @@ class NativePeerConnectionFactory {
   Future<void> startLocalRecording() async => throw UnimplementedError();
   Future<void> stopLocalRecording() async => throw UnimplementedError();
 
+  Future<void> suspendAudio() async {}
+  Future<void> resumeAudio() async {}
+
   Future<void> dispose() async {}
 }

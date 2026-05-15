@@ -136,63 +136,64 @@
   NSString* rtpSenderId = constraints[@"rtpSenderId"];
   NSString* rtpReceiverId = constraints[@"rtpReceiverId"];
 
-  if ([type isEqualToString:@"sender"]) {
-    RTCRtpSender* sender = [self getRtpSenderById:peerConnection Id:rtpSenderId];
-    if (sender == nil) {
-      result([FlutterError errorWithCode:@"frameCryptorFactoryCreateFrameCryptorFailed"
-                                 message:[NSString stringWithFormat:@"Error: sender not found!"]
-                                 details:nil]);
-      return;
-    }
+  // TODO: Implement per-call factory
+  //  if ([type isEqualToString:@"sender"]) {
+  //    RTCRtpSender* sender = [self getRtpSenderById:peerConnection Id:rtpSenderId];
+  //    if (sender == nil) {
+  //      result([FlutterError errorWithCode:@"frameCryptorFactoryCreateFrameCryptorFailed"
+  //                                 message:[NSString stringWithFormat:@"Error: sender not found!"]
+  //                                 details:nil]);
+  //      return;
+  //    }
 
-    RTCFrameCryptor* frameCryptor =
-        [[RTCFrameCryptor alloc] initWithFactory:self.peerConnectionFactory
-                                       rtpSender:sender
-                                   participantId:participantId
-                                       algorithm:[self getAlgorithm:algorithm]
-                                     keyProvider:keyProvider];
-    NSString* frameCryptorId = [[NSUUID UUID] UUIDString];
+  //   RTCFrameCryptor* frameCryptor =
+  //       [[RTCFrameCryptor alloc] initWithFactory:self.peerConnectionFactory
+  //                                      rtpSender:sender
+  //                                  participantId:participantId
+  //                                      algorithm:[self getAlgorithm:algorithm]
+  //                                    keyProvider:keyProvider];
+  //   NSString* frameCryptorId = [[NSUUID UUID] UUIDString];
 
-    FlutterEventChannel* eventChannel = [FlutterEventChannel
-        eventChannelWithName:[NSString stringWithFormat:@"FlutterWebRTC/frameCryptorEvent%@",
-                                                        frameCryptorId]
-             binaryMessenger:self.messenger];
+  //   FlutterEventChannel* eventChannel = [FlutterEventChannel
+  //       eventChannelWithName:[NSString stringWithFormat:@"FlutterWebRTC/frameCryptorEvent%@",
+  //                                                       frameCryptorId]
+  //            binaryMessenger:self.messenger];
 
-    frameCryptor.eventChannel = eventChannel;
-    [eventChannel setStreamHandler:frameCryptor];
-    frameCryptor.delegate = self;
+  //   frameCryptor.eventChannel = eventChannel;
+  //   [eventChannel setStreamHandler:frameCryptor];
+  //   frameCryptor.delegate = self;
 
-    self.frameCryptors[frameCryptorId] = frameCryptor;
-    result(@{@"frameCryptorId" : frameCryptorId});
-  } else if ([type isEqualToString:@"receiver"]) {
-    RTCRtpReceiver* receiver = [self getRtpReceiverById:peerConnection Id:rtpReceiverId];
-    if (receiver == nil) {
-      result([FlutterError errorWithCode:@"frameCryptorFactoryCreateFrameCryptorFailed"
-                                 message:[NSString stringWithFormat:@"Error: receiver not found!"]
-                                 details:nil]);
-      return;
-    }
-    RTCFrameCryptor* frameCryptor =
-        [[RTCFrameCryptor alloc] initWithFactory:self.peerConnectionFactory
-                                     rtpReceiver:receiver
-                                   participantId:participantId
-                                       algorithm:[self getAlgorithm:algorithm]
-                                     keyProvider:keyProvider];
-    NSString* frameCryptorId = [[NSUUID UUID] UUIDString];
-    FlutterEventChannel* eventChannel = [FlutterEventChannel
-        eventChannelWithName:[NSString stringWithFormat:@"FlutterWebRTC/frameCryptorEvent%@",
-                                                        frameCryptorId]
-             binaryMessenger:self.messenger];
+  //   self.frameCryptors[frameCryptorId] = frameCryptor;
+  //   result(@{@"frameCryptorId" : frameCryptorId});
+  // } else if ([type isEqualToString:@"receiver"]) {
+  //   RTCRtpReceiver* receiver = [self getRtpReceiverById:peerConnection Id:rtpReceiverId];
+  //   if (receiver == nil) {
+  //     result([FlutterError errorWithCode:@"frameCryptorFactoryCreateFrameCryptorFailed"
+  //                                message:[NSString stringWithFormat:@"Error: receiver not
+  //                                found!"] details:nil]);
+  //     return;
+  //   }
+  //   RTCFrameCryptor* frameCryptor =
+  //       [[RTCFrameCryptor alloc] initWithFactory:self.peerConnectionFactory
+  //                                    rtpReceiver:receiver
+  //                                  participantId:participantId
+  //                                      algorithm:[self getAlgorithm:algorithm]
+  //                                    keyProvider:keyProvider];
+  //   NSString* frameCryptorId = [[NSUUID UUID] UUIDString];
+  //   FlutterEventChannel* eventChannel = [FlutterEventChannel
+  //       eventChannelWithName:[NSString stringWithFormat:@"FlutterWebRTC/frameCryptorEvent%@",
+  //                                                       frameCryptorId]
+  //            binaryMessenger:self.messenger];
 
-    frameCryptor.eventChannel = eventChannel;
-    [eventChannel setStreamHandler:frameCryptor];
-    frameCryptor.delegate = self;
-    self.frameCryptors[frameCryptorId] = frameCryptor;
-    result(@{@"frameCryptorId" : frameCryptorId});
-  } else {
-    result([FlutterError errorWithCode:@"InvalidArgument" message:@"Invalid type" details:nil]);
-    return;
-  }
+  //   frameCryptor.eventChannel = eventChannel;
+  //   [eventChannel setStreamHandler:frameCryptor];
+  //   frameCryptor.delegate = self;
+  //   self.frameCryptors[frameCryptorId] = frameCryptor;
+  //   result(@{@"frameCryptorId" : frameCryptorId});
+  // } else {
+  //   result([FlutterError errorWithCode:@"InvalidArgument" message:@"Invalid type" details:nil]);
+  //   return;
+  // }
 }
 
 - (void)frameCryptorSetKeyIndex:(nonnull NSDictionary*)constraints

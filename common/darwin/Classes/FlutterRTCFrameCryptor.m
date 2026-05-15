@@ -136,63 +136,64 @@
   NSString* rtpSenderId = constraints[@"rtpSenderId"];
   NSString* rtpReceiverId = constraints[@"rtpReceiverId"];
 
-  if ([type isEqualToString:@"sender"]) {
-    RTCRtpSender* sender = [self getRtpSenderById:peerConnection Id:rtpSenderId];
-    if (sender == nil) {
-      result([FlutterError errorWithCode:@"frameCryptorFactoryCreateFrameCryptorFailed"
-                                 message:[NSString stringWithFormat:@"Error: sender not found!"]
-                                 details:nil]);
-      return;
-    }
+  // TODO: Implement per-call factory
+  //  if ([type isEqualToString:@"sender"]) {
+  //    RTCRtpSender* sender = [self getRtpSenderById:peerConnection Id:rtpSenderId];
+  //    if (sender == nil) {
+  //      result([FlutterError errorWithCode:@"frameCryptorFactoryCreateFrameCryptorFailed"
+  //                                 message:[NSString stringWithFormat:@"Error: sender not found!"]
+  //                                 details:nil]);
+  //      return;
+  //    }
 
-    RTCFrameCryptor* frameCryptor =
-        [[RTCFrameCryptor alloc] initWithFactory:self.peerConnectionFactory
-                                         rtpSender:sender
-                                     participantId:participantId
-                                         algorithm:[self getAlgorithm:algorithm]
-                                        keyProvider:keyProvider];
-    NSString* frameCryptorId = [[NSUUID UUID] UUIDString];
+  //   RTCFrameCryptor* frameCryptor =
+  //       [[RTCFrameCryptor alloc] initWithFactory:self.peerConnectionFactory
+  //                                        rtpSender:sender
+  //                                    participantId:participantId
+  //                                        algorithm:[self getAlgorithm:algorithm]
+  //                                       keyProvider:keyProvider];
+  //   NSString* frameCryptorId = [[NSUUID UUID] UUIDString];
 
-    FlutterEventChannel* eventChannel = [FlutterEventChannel
-        eventChannelWithName:[NSString stringWithFormat:@"FlutterWebRTC/frameCryptorEvent%@",
-                                                        frameCryptorId]
-             binaryMessenger:self.messenger];
+  //   FlutterEventChannel* eventChannel = [FlutterEventChannel
+  //       eventChannelWithName:[NSString stringWithFormat:@"FlutterWebRTC/frameCryptorEvent%@",
+  //                                                       frameCryptorId]
+  //            binaryMessenger:self.messenger];
 
-    frameCryptor.eventChannel = eventChannel;
-    [eventChannel setStreamHandler:frameCryptor];
-    frameCryptor.delegate = self;
+  //   frameCryptor.eventChannel = eventChannel;
+  //   [eventChannel setStreamHandler:frameCryptor];
+  //   frameCryptor.delegate = self;
 
-    self.frameCryptors[frameCryptorId] = frameCryptor;
-    result(@{@"frameCryptorId" : frameCryptorId});
-  } else if ([type isEqualToString:@"receiver"]) {
-    RTCRtpReceiver* receiver = [self getRtpReceiverById:peerConnection Id:rtpReceiverId];
-    if (receiver == nil) {
-      result([FlutterError errorWithCode:@"frameCryptorFactoryCreateFrameCryptorFailed"
-                                 message:[NSString stringWithFormat:@"Error: receiver not found!"]
-                                 details:nil]);
-      return;
-    }
-    RTCFrameCryptor* frameCryptor =
-        [[RTCFrameCryptor alloc] initWithFactory:self.peerConnectionFactory
-                                         rtpReceiver:receiver
-                                       participantId:participantId
-                                           algorithm:[self getAlgorithm:algorithm]
-                                          keyProvider:keyProvider];
-    NSString* frameCryptorId = [[NSUUID UUID] UUIDString];
-    FlutterEventChannel* eventChannel = [FlutterEventChannel
-        eventChannelWithName:[NSString stringWithFormat:@"FlutterWebRTC/frameCryptorEvent%@",
-                                                        frameCryptorId]
-             binaryMessenger:self.messenger];
+  //   self.frameCryptors[frameCryptorId] = frameCryptor;
+  //   result(@{@"frameCryptorId" : frameCryptorId});
+  // } else if ([type isEqualToString:@"receiver"]) {
+  //   RTCRtpReceiver* receiver = [self getRtpReceiverById:peerConnection Id:rtpReceiverId];
+  //   if (receiver == nil) {
+  //     result([FlutterError errorWithCode:@"frameCryptorFactoryCreateFrameCryptorFailed"
+  //                                message:[NSString stringWithFormat:@"Error: receiver not
+  //                                found!"] details:nil]);
+  //     return;
+  //   }
+  //   RTCFrameCryptor* frameCryptor =
+  //       [[RTCFrameCryptor alloc] initWithFactory:self.peerConnectionFactory
+  //                                        rtpReceiver:receiver
+  //                                      participantId:participantId
+  //                                          algorithm:[self getAlgorithm:algorithm]
+  //                                         keyProvider:keyProvider];
+  //   NSString* frameCryptorId = [[NSUUID UUID] UUIDString];
+  //   FlutterEventChannel* eventChannel = [FlutterEventChannel
+  //       eventChannelWithName:[NSString stringWithFormat:@"FlutterWebRTC/frameCryptorEvent%@",
+  //                                                       frameCryptorId]
+  //            binaryMessenger:self.messenger];
 
-    frameCryptor.eventChannel = eventChannel;
-    [eventChannel setStreamHandler:frameCryptor];
-    frameCryptor.delegate = self;
-    self.frameCryptors[frameCryptorId] = frameCryptor;
-    result(@{@"frameCryptorId" : frameCryptorId});
-  } else {
-    result([FlutterError errorWithCode:@"InvalidArgument" message:@"Invalid type" details:nil]);
-    return;
-  }
+  //   frameCryptor.eventChannel = eventChannel;
+  //   [eventChannel setStreamHandler:frameCryptor];
+  //   frameCryptor.delegate = self;
+  //   self.frameCryptors[frameCryptorId] = frameCryptor;
+  //   result(@{@"frameCryptorId" : frameCryptorId});
+  // } else {
+  //   result([FlutterError errorWithCode:@"InvalidArgument" message:@"Invalid type" details:nil]);
+  //   return;
+  // }
 }
 
 - (void)frameCryptorSetKeyIndex:(nonnull NSDictionary*)constraints
@@ -311,7 +312,7 @@
 }
 
 - (void)frameCryptorFactoryCreateKeyProvider:(nonnull NSDictionary*)constraints
-                                     result:(nonnull FlutterResult)result {
+                                      result:(nonnull FlutterResult)result {
   NSString* keyProviderId = [[NSUUID UUID] UUIDString];
 
   id keyProviderOptions = constraints[@"keyProviderOptions"];
@@ -352,21 +353,25 @@
 
   NSNumber* keyRingSize = keyProviderOptions[@"keyRingSize"];
 
-  NSNumber* discardFrameWhenCryptorNotReady = keyProviderOptions[@"discardFrameWhenCryptorNotReady"];
-  
-  RTCFrameCryptorKeyProvider* keyProvider =
-      [[RTCFrameCryptorKeyProvider alloc] initWithRatchetSalt:ratchetSalt.data
-                                           ratchetWindowSize:[ratchetWindowSize intValue]
-                                               sharedKeyMode:[sharedKey boolValue]
-                                         uncryptedMagicBytes: uncryptedMagicBytes != nil ? uncryptedMagicBytes.data : nil
-                                            failureTolerance:failureTolerance != nil ? [failureTolerance intValue] : -1
-                                                 keyRingSize:keyRingSize != nil ? [keyRingSize intValue] : 0
-                             discardFrameWhenCryptorNotReady:discardFrameWhenCryptorNotReady != nil ? [discardFrameWhenCryptorNotReady boolValue] : NO];
+  NSNumber* discardFrameWhenCryptorNotReady =
+      keyProviderOptions[@"discardFrameWhenCryptorNotReady"];
+
+  RTCFrameCryptorKeyProvider* keyProvider = [[RTCFrameCryptorKeyProvider alloc]
+                  initWithRatchetSalt:ratchetSalt.data
+                    ratchetWindowSize:[ratchetWindowSize intValue]
+                        sharedKeyMode:[sharedKey boolValue]
+                  uncryptedMagicBytes:uncryptedMagicBytes != nil ? uncryptedMagicBytes.data : nil
+                     failureTolerance:failureTolerance != nil ? [failureTolerance intValue] : -1
+                          keyRingSize:keyRingSize != nil ? [keyRingSize intValue] : 0
+      discardFrameWhenCryptorNotReady:discardFrameWhenCryptorNotReady != nil
+                                          ? [discardFrameWhenCryptorNotReady boolValue]
+                                          : NO];
   self.keyProviders[keyProviderId] = keyProvider;
   result(@{@"keyProviderId" : keyProviderId});
 }
 
--(nullable RTCFrameCryptorKeyProvider *) getKeyProviderForId:(NSString*)keyProviderId result:(nonnull FlutterResult)result {
+- (nullable RTCFrameCryptorKeyProvider*)getKeyProviderForId:(NSString*)keyProviderId
+                                                     result:(nonnull FlutterResult)result {
   if (keyProviderId == nil) {
     result([FlutterError errorWithCode:@"getKeyProviderForIdFailed"
                                message:@"Invalid keyProviderId"
@@ -383,13 +388,14 @@
   return keyProvider;
 }
 
-- (void)keyProviderSetSharedKey:(nonnull NSDictionary*)constraints result:(nonnull FlutterResult)result {
-
-  RTCFrameCryptorKeyProvider * keyProvider = [self getKeyProviderForId:constraints[@"keyProviderId"] result:result];
-  if(keyProvider == nil) {
+- (void)keyProviderSetSharedKey:(nonnull NSDictionary*)constraints
+                         result:(nonnull FlutterResult)result {
+  RTCFrameCryptorKeyProvider* keyProvider = [self getKeyProviderForId:constraints[@"keyProviderId"]
+                                                               result:result];
+  if (keyProvider == nil) {
     return;
   }
- 
+
   NSNumber* keyIndex = constraints[@"keyIndex"];
   if (keyIndex == nil) {
     result([FlutterError errorWithCode:@"keyProviderSetKeyFailed"
@@ -411,9 +417,10 @@
 }
 
 - (void)keyProviderRatchetSharedKey:(nonnull NSDictionary*)constraints
-                      result:(nonnull FlutterResult)result {
-  RTCFrameCryptorKeyProvider * keyProvider = [self getKeyProviderForId:constraints[@"keyProviderId"] result:result];
-  if(keyProvider == nil) {
+                             result:(nonnull FlutterResult)result {
+  RTCFrameCryptorKeyProvider* keyProvider = [self getKeyProviderForId:constraints[@"keyProviderId"]
+                                                               result:result];
+  if (keyProvider == nil) {
     return;
   }
 
@@ -429,11 +436,11 @@
   result(@{@"result" : newKey});
 }
 
-
 - (void)keyProviderExportSharedKey:(nonnull NSDictionary*)constraints
-                      result:(nonnull FlutterResult)result {
-  RTCFrameCryptorKeyProvider * keyProvider = [self getKeyProviderForId:constraints[@"keyProviderId"] result:result];
-  if(keyProvider == nil) {
+                            result:(nonnull FlutterResult)result {
+  RTCFrameCryptorKeyProvider* keyProvider = [self getKeyProviderForId:constraints[@"keyProviderId"]
+                                                               result:result];
+  if (keyProvider == nil) {
     return;
   }
 
@@ -450,8 +457,9 @@
 }
 
 - (void)keyProviderSetKey:(nonnull NSDictionary*)constraints result:(nonnull FlutterResult)result {
-  RTCFrameCryptorKeyProvider * keyProvider = [self getKeyProviderForId:constraints[@"keyProviderId"] result:result];
-  if(keyProvider == nil) {
+  RTCFrameCryptorKeyProvider* keyProvider = [self getKeyProviderForId:constraints[@"keyProviderId"]
+                                                               result:result];
+  if (keyProvider == nil) {
     return;
   }
 
@@ -484,9 +492,10 @@
 }
 
 - (void)keyProviderRatchetKey:(nonnull NSDictionary*)constraints
-                      result:(nonnull FlutterResult)result {
-  RTCFrameCryptorKeyProvider * keyProvider = [self getKeyProviderForId:constraints[@"keyProviderId"] result:result];
-  if(keyProvider == nil) {
+                       result:(nonnull FlutterResult)result {
+  RTCFrameCryptorKeyProvider* keyProvider = [self getKeyProviderForId:constraints[@"keyProviderId"]
+                                                               result:result];
+  if (keyProvider == nil) {
     return;
   }
 
@@ -512,8 +521,9 @@
 
 - (void)keyProviderExportKey:(nonnull NSDictionary*)constraints
                       result:(nonnull FlutterResult)result {
-  RTCFrameCryptorKeyProvider * keyProvider = [self getKeyProviderForId:constraints[@"keyProviderId"] result:result];
-  if(keyProvider == nil) {
+  RTCFrameCryptorKeyProvider* keyProvider = [self getKeyProviderForId:constraints[@"keyProviderId"]
+                                                               result:result];
+  if (keyProvider == nil) {
     return;
   }
 
@@ -537,9 +547,11 @@
   result(@{@"result" : key});
 }
 
-- (void)keyProviderSetSifTrailer:(nonnull NSDictionary*)constraints result:(nonnull FlutterResult)result {
-  RTCFrameCryptorKeyProvider * keyProvider = [self getKeyProviderForId:constraints[@"keyProviderId"] result:result];
-  if(keyProvider == nil) {
+- (void)keyProviderSetSifTrailer:(nonnull NSDictionary*)constraints
+                          result:(nonnull FlutterResult)result {
+  RTCFrameCryptorKeyProvider* keyProvider = [self getKeyProviderForId:constraints[@"keyProviderId"]
+                                                               result:result];
+  if (keyProvider == nil) {
     return;
   }
 

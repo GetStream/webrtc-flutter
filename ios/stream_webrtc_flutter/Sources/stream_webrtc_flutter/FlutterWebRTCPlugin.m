@@ -502,6 +502,7 @@ static FlutterWebRTCPlugin* sharedSingleton;
     } @catch (NSException* e) {
       NSLog(@"[disposePeerConnectionFactory] dispose failed: %@", e);
     }
+
     result(nil);
   } else if ([@"setVideoEffects" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
@@ -1943,6 +1944,62 @@ static FlutterWebRTCPlugin* sharedSingleton;
                                                        (long)admResult]
                     details:nil]);
         }
+      });
+    });
+  } else if ([@"suspendAudioPeerConnectionFactory" isEqualToString:call.method]) {
+    NSString* factoryId = call.arguments[@"factoryId"];
+    NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+    if (nf == nil) {
+      result([FlutterError
+          errorWithCode:@"suspendAudioPeerConnectionFactory"
+                message:[NSString stringWithFormat:@"unknown factoryId %@", factoryId]
+                details:nil]);
+      return;
+    }
+    RTCAudioDeviceModule* adm = nf.audioDeviceModule;
+    BOOL wasPlaying = adm.isPlaying;
+    BOOL wasRecording = adm.isRecording;
+    nf.wasPlayingBeforeSuspend = wasPlaying;
+    nf.wasRecordingBeforeSuspend = wasRecording;
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+      if (wasRecording)
+        [adm stopRecording];
+      if (wasPlaying)
+        [adm stopPlayout];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        result(nil);
+      });
+    });
+  } else if ([@"resumeAudioPeerConnectionFactory" isEqualToString:call.method]) {
+    NSString* factoryId = call.arguments[@"factoryId"];
+    NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+    if (nf == nil) {
+      result([FlutterError
+          errorWithCode:@"resumeAudioPeerConnectionFactory"
+                message:[NSString stringWithFormat:@"unknown factoryId %@", factoryId]
+                details:nil]);
+      return;
+    }
+    RTCAudioDeviceModule* adm = nf.audioDeviceModule;
+    NSDictionary* audioConfigSnapshot = nf.audioConfigSnapshot;
+    BOOL restorePlaying = nf.wasPlayingBeforeSuspend;
+    BOOL restoreRecording = nf.wasRecordingBeforeSuspend;
+    if (audioConfigSnapshot != nil) {
+      [AudioUtils setAppleAudioConfiguration:audioConfigSnapshot];
+    }
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+      if (restorePlaying) {
+        [adm initPlayout];
+        [adm startPlayout];
+      }
+      if (restoreRecording) {
+        [adm initRecording];
+        [adm startRecording];
+      }
+      dispatch_async(dispatch_get_main_queue(), ^{
+        nf.wasPlayingBeforeSuspend = NO;
+        nf.wasRecordingBeforeSuspend = NO;
+        result(nil);
       });
     });
   } else if ([@"isVoiceProcessingEnabled" isEqualToString:call.method]) {

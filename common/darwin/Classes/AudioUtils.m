@@ -13,14 +13,15 @@
   if (recording && session.category != AVAudioSessionCategoryPlayAndRecord &&
       session.category != AVAudioSessionCategoryMultiRoute) {
     config.category = AVAudioSessionCategoryPlayAndRecord;
-    config.categoryOptions =
-        AVAudioSessionCategoryOptionAllowBluetooth |
-        AVAudioSessionCategoryOptionAllowBluetoothA2DP |
-        AVAudioSessionCategoryOptionAllowAirPlay;
+    config.categoryOptions = AVAudioSessionCategoryOptionAllowBluetooth |
+                             AVAudioSessionCategoryOptionAllowBluetoothA2DP |
+                             AVAudioSessionCategoryOptionAllowAirPlay;
 
     [session lockForConfiguration];
     NSError* error = nil;
-    bool success = [session setCategory:config.category withOptions:config.categoryOptions error:&error];
+    bool success = [session setCategory:config.category
+                            withOptions:config.categoryOptions
+                                  error:&error];
     if (!success)
       NSLog(@"ensureAudioSessionWithRecording[true]: setCategory failed due to: %@", error);
     success = [session setMode:config.mode error:&error];
@@ -64,9 +65,10 @@
 + (void)setSpeakerphoneOn:(BOOL)enable {
   RTCAudioSession* session = [RTCAudioSession sharedInstance];
   RTCAudioSessionConfiguration* config = [RTCAudioSessionConfiguration webRTCConfiguration];
-    
-  if(enable && config.category != AVAudioSessionCategoryPlayAndRecord) {
-    NSLog(@"setSpeakerphoneOn: Category option 'defaultToSpeaker' is only applicable with category 'playAndRecord', ignore.");
+
+  if (enable && config.category != AVAudioSessionCategoryPlayAndRecord) {
+    NSLog(@"setSpeakerphoneOn: Category option 'defaultToSpeaker' is only applicable with category "
+          @"'playAndRecord', ignore.");
     return;
   }
 
@@ -114,8 +116,7 @@
                                       AVAudioSessionCategoryOptionDefaultToSpeaker
                                 error:&error];
 
-  success = [session overrideOutputAudioPort:kAudioSessionOverrideAudioRoute_None
-                                        error:&error];
+  success = [session overrideOutputAudioPort:kAudioSessionOverrideAudioRoute_None error:&error];
   if (!success)
     NSLog(@"setSpeakerphoneOnButPreferBluetooth: Port override failed due to: %@", error);
 
@@ -123,7 +124,8 @@
   if (!success)
     NSLog(@"setSpeakerphoneOnButPreferBluetooth: Audio session override failed: %@", error);
   else
-    NSLog(@"AudioSession override with bluetooth preference via setSpeakerphoneOnButPreferBluetooth successfull ");
+    NSLog(@"AudioSession override with bluetooth preference via "
+          @"setSpeakerphoneOnButPreferBluetooth successfull ");
   [session unlockForConfiguration];
 }
 
@@ -141,88 +143,108 @@
   [session unlockForConfiguration];
 }
 
-
 + (AVAudioSessionMode)audioSessionModeFromString:(NSString*)mode {
-  if([@"default_" isEqualToString:mode]) {
+  if ([@"default_" isEqualToString:mode]) {
     return AVAudioSessionModeDefault;
-  } else if([@"voicePrompt" isEqualToString:mode]) {
+  } else if ([@"voicePrompt" isEqualToString:mode]) {
     return AVAudioSessionModeVoicePrompt;
-  } else if([@"videoRecording" isEqualToString:mode]) {
+  } else if ([@"videoRecording" isEqualToString:mode]) {
     return AVAudioSessionModeVideoRecording;
-  } else if([@"videoChat" isEqualToString:mode]) {
+  } else if ([@"videoChat" isEqualToString:mode]) {
     return AVAudioSessionModeVideoChat;
-  } else if([@"voiceChat" isEqualToString:mode]) {
+  } else if ([@"voiceChat" isEqualToString:mode]) {
     return AVAudioSessionModeVoiceChat;
-  } else if([@"gameChat" isEqualToString:mode]) {
+  } else if ([@"gameChat" isEqualToString:mode]) {
     return AVAudioSessionModeGameChat;
-  } else if([@"measurement" isEqualToString:mode]) {
+  } else if ([@"measurement" isEqualToString:mode]) {
     return AVAudioSessionModeMeasurement;
-  } else if([@"moviePlayback" isEqualToString:mode]) {
+  } else if ([@"moviePlayback" isEqualToString:mode]) {
     return AVAudioSessionModeMoviePlayback;
-  } else if([@"spokenAudio" isEqualToString:mode]) {
+  } else if ([@"spokenAudio" isEqualToString:mode]) {
     return AVAudioSessionModeSpokenAudio;
-  } 
+  }
   return AVAudioSessionModeDefault;
 }
 
-+ (AVAudioSessionCategory)audioSessionCategoryFromString:(NSString *)category {
-  if([@"ambient" isEqualToString:category]) {
++ (AVAudioSessionCategory)audioSessionCategoryFromString:(NSString*)category {
+  if ([@"ambient" isEqualToString:category]) {
     return AVAudioSessionCategoryAmbient;
-  } else if([@"soloAmbient" isEqualToString:category]) {
+  } else if ([@"soloAmbient" isEqualToString:category]) {
     return AVAudioSessionCategorySoloAmbient;
-  } else if([@"playback" isEqualToString:category]) {
+  } else if ([@"playback" isEqualToString:category]) {
     return AVAudioSessionCategoryPlayback;
-  } else if([@"record" isEqualToString:category]) {
+  } else if ([@"record" isEqualToString:category]) {
     return AVAudioSessionCategoryRecord;
-  } else if([@"playAndRecord" isEqualToString:category]) {
+  } else if ([@"playAndRecord" isEqualToString:category]) {
     return AVAudioSessionCategoryPlayAndRecord;
-  } else if([@"multiRoute" isEqualToString:category]) {
+  } else if ([@"multiRoute" isEqualToString:category]) {
     return AVAudioSessionCategoryMultiRoute;
   }
   return AVAudioSessionCategoryAmbient;
 }
 
-+ (void) setAppleAudioConfiguration:(NSDictionary*)configuration {
++ (void)setAppleAudioConfiguration:(NSDictionary*)configuration {
   RTCAudioSession* session = [RTCAudioSession sharedInstance];
   RTCAudioSessionConfiguration* config = [RTCAudioSessionConfiguration webRTCConfiguration];
 
   NSString* appleAudioCategory = configuration[@"appleAudioCategory"];
   NSArray* appleAudioCategoryOptions = configuration[@"appleAudioCategoryOptions"];
   NSString* appleAudioMode = configuration[@"appleAudioMode"];
-  
+
   [session lockForConfiguration];
 
-  if(appleAudioCategoryOptions != nil) {
-    config.categoryOptions = 0;
-    for(NSString* option in appleAudioCategoryOptions) {
-      if([@"mixWithOthers" isEqualToString:option]) {
-        config.categoryOptions |= AVAudioSessionCategoryOptionMixWithOthers;
-      } else if([@"duckOthers" isEqualToString:option]) {
-        config.categoryOptions |= AVAudioSessionCategoryOptionDuckOthers;
-      } else if([@"allowBluetooth" isEqualToString:option]) {
-        config.categoryOptions |= AVAudioSessionCategoryOptionAllowBluetooth;
-      } else if([@"allowBluetoothA2DP" isEqualToString:option]) {
-        config.categoryOptions |= AVAudioSessionCategoryOptionAllowBluetoothA2DP;
-      } else if([@"allowAirPlay" isEqualToString:option]) {
-        config.categoryOptions |= AVAudioSessionCategoryOptionAllowAirPlay;
-      } else if([@"defaultToSpeaker" isEqualToString:option]) {
-        config.categoryOptions |= AVAudioSessionCategoryOptionDefaultToSpeaker;
+  AVAudioSessionCategoryOptions desiredOptions = 0;
+  BOOL haveOptions = NO;
+  if (appleAudioCategoryOptions != nil) {
+    haveOptions = YES;
+    for (NSString* option in appleAudioCategoryOptions) {
+      if ([@"mixWithOthers" isEqualToString:option]) {
+        desiredOptions |= AVAudioSessionCategoryOptionMixWithOthers;
+      } else if ([@"duckOthers" isEqualToString:option]) {
+        desiredOptions |= AVAudioSessionCategoryOptionDuckOthers;
+      } else if ([@"allowBluetooth" isEqualToString:option]) {
+        desiredOptions |= AVAudioSessionCategoryOptionAllowBluetooth;
+      } else if ([@"allowBluetoothA2DP" isEqualToString:option]) {
+        desiredOptions |= AVAudioSessionCategoryOptionAllowBluetoothA2DP;
+      } else if ([@"allowAirPlay" isEqualToString:option]) {
+        desiredOptions |= AVAudioSessionCategoryOptionAllowAirPlay;
+      } else if ([@"defaultToSpeaker" isEqualToString:option]) {
+        desiredOptions |= AVAudioSessionCategoryOptionDefaultToSpeaker;
       }
+    }
+    config.categoryOptions = desiredOptions;
+  }
+
+  AVAudioSessionCategory desiredCategory = nil;
+  AVAudioSessionMode desiredMode = nil;
+  if (appleAudioCategory != nil) {
+    desiredCategory = [AudioUtils audioSessionCategoryFromString:appleAudioCategory];
+    config.category = desiredCategory;
+  }
+  if (appleAudioMode != nil) {
+    desiredMode = [AudioUtils audioSessionModeFromString:appleAudioMode];
+    config.mode = desiredMode;
+  }
+
+  NSError* err = nil;
+  if (desiredCategory != nil && desiredMode != nil && haveOptions) {
+    BOOL ok = [session setCategory:desiredCategory
+                              mode:desiredMode
+                           options:desiredOptions
+                             error:&err];
+    if (!ok) {
+      NSLog(@"setCategory:mode:options: failed: %@", err);
+    }
+  } else {
+    if (desiredCategory != nil) {
+      [session setCategory:desiredCategory withOptions:desiredOptions error:nil];
+    }
+    if (desiredMode != nil) {
+      [session setMode:desiredMode error:nil];
     }
   }
 
-  if(appleAudioCategory != nil) {
-    config.category = [AudioUtils audioSessionCategoryFromString:appleAudioCategory];
-    [session setCategory:config.category withOptions:config.categoryOptions error:nil];
-  }
-
-  if(appleAudioMode != nil) {
-    config.mode = [AudioUtils audioSessionModeFromString:appleAudioMode];
-    [session setMode:config.mode error:nil];
-  }
-
   [session unlockForConfiguration];
-
 }
 
 @end

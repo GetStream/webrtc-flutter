@@ -215,6 +215,29 @@ class NativePeerConnectionFactory {
     );
   }
 
+  /// Suspends this factory's audio capture + playback. Use when another
+  /// factory needs exclusive access to mic/speaker resources (multicall scenario). Native impl
+  Future<void> suspendAudio() async {
+    _checkDisposed('suspendAudio');
+    await WebRTC.invokeMethod(
+      'suspendAudioPeerConnectionFactory',
+      <String, dynamic>{
+        'factoryId': factoryId,
+      },
+    );
+  }
+
+  /// Resumes a previously [suspendAudio]'d factory.
+  Future<void> resumeAudio() async {
+    _checkDisposed('resumeAudio');
+    await WebRTC.invokeMethod(
+      'resumeAudioPeerConnectionFactory',
+      <String, dynamic>{
+        'factoryId': factoryId,
+      },
+    );
+  }
+
   void _checkDisposed(String op) {
     if (_disposed) {
       throw StateError(

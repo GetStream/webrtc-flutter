@@ -41,6 +41,11 @@ import org.webrtc.video.CustomVideoEncoderFactory;
 public class NativePeerConnectionFactory {
 
     private static final String TAG = "NativePeerConnectionFactory";
+    /** Live factory registry. Required to coordinate access to the
+     *  process-global ExternalAudioProcessingFactory for noise cancellation: only one
+     *  non-suspended factory may hold the external APM at a time. */
+    private static final Set<NativePeerConnectionFactory> liveFactories =
+            java.util.Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     /** Inputs for a single NativePeerConnectionFactory build. */
     public static final class BuildContext {
@@ -57,7 +62,7 @@ public class NativePeerConnectionFactory {
         public Integer audioSampleRate;
         @Nullable
         public Integer audioOutputSampleRate;
-        @NonNull
+        @Nullable
         public AudioProcessingFactoryProvider audioProcessingFactoryProvider;
         @NonNull
         public StateProvider stateProvider;
@@ -84,6 +89,17 @@ public class NativePeerConnectionFactory {
     public final JavaAudioDeviceModule adm;
     @NonNull
     public final GetUserMediaImpl getUserMediaImpl;
+
+    /** True iff this factory was built with the external audio processing
+     *  factory (e.g. noise cancellation). Set at build time; immutable. */
+    public final boolean usesExternalApm;
+
+    /** Audio-suspended flag — flipped via {@link #setAudioSuspended(boolean)}
+     *  from the suspendAudio/resumeAudio method-channel handlers. Suspended
+     *  factories are invisible to the external-APM grant logic when *another*
+     *  factory is being built, so the new factory can claim the shared global
+     *  APM. */
+    private volatile boolean audioSuspended = false;
     @NonNull
     public final RecordSamplesReadyCallbackAdapter recordSamplesAdapter;
     @NonNull
@@ -125,7 +141,8 @@ public class NativePeerConnectionFactory {
             boolean bypassVoiceProcessing,
             @Nullable ConstraintsMap audioConfigSnapshot,
             @Nullable Integer audioSampleRate,
-            @Nullable Integer audioOutputSampleRate) {
+            @Nullable Integer audioOutputSampleRate,
+            boolean usesExternalApm) {
         this.id = id;
         this.factory = factory;
         this.adm = adm;
@@ -138,6 +155,24 @@ public class NativePeerConnectionFactory {
         this.audioConfigSnapshot = audioConfigSnapshot;
         this.audioSampleRate = audioSampleRate;
         this.audioOutputSampleRate = audioOutputSampleRate;
+        this.usesExternalApm = usesExternalApm;
+    }
+
+    private static boolean anyActiveFactoryHoldsExternalApm() {
+        for (NativePeerConnectionFactory f : liveFactories) {
+            if (f.usesExternalApm && !f.audioSuspended && !f.disposed) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean isAudioSuspended() {
+        return audioSuspended;
+    }
+
+    public void setAudioSuspended(boolean value) {
+        this.audioSuspended = value;
     }
 
     /**
@@ -273,7 +308,7 @@ public class NativePeerConnectionFactory {
         });
         recordSamplesAdapter.addCallback(speechDetector);
 
-        // Audio buffer callback for screen-audio mixing. 
+        // Audio buffer callback for screen-audio mixing.
         admBuilder.setAudioBufferCallback(
                 (audioBuffer, audioFormat, channelCount, sampleRate, bytesRead, captureTimeNs) -> {
                     boolean micMuted = isMicrophoneMutedForFactory(getUserMediaImpl,
@@ -320,18 +355,34 @@ public class NativePeerConnectionFactory {
         final Options options = new Options();
         options.networkIgnoreMask = ctx.networkIgnoreMask;
 
-        PeerConnectionFactory factory = PeerConnectionFactory.builder()
+        // Decide whether THIS factory should be wired to the external audio
+        // processing factory (noise cancellation).
+        // The ExternalAudioProcessingFactory is process-global, so
+        // only one factory may hold it at a time. 
+        final boolean wantsExternalApm = ctx.audioProcessingFactoryProvider != null;
+        final boolean grantExternalApm =
+                wantsExternalApm && !anyActiveFactoryHoldsExternalApm();
+        if (wantsExternalApm && !grantExternalApm) {
+            Log.i(TAG, "[build] external APM skipped for factory " + id
+                    + " — another non-suspended factory holds the global APM."
+                    + " Suspend its audio first to grant external processing here.");
+        }
+
+        PeerConnectionFactory.Builder pcFactoryBuilder = PeerConnectionFactory.builder()
                 .setOptions(options)
                 .setVideoEncoderFactory(videoEncoderFactory)
                 .setVideoDecoderFactory(videoDecoderFactory)
-                .setAudioProcessingFactory(ctx.audioProcessingFactoryProvider.getFactory())
-                .setAudioDeviceModule(adm)
-                .createPeerConnectionFactory();
+                .setAudioDeviceModule(adm);
+                
+        if (grantExternalApm) {
+            pcFactoryBuilder.setAudioProcessingFactory(
+                    ctx.audioProcessingFactoryProvider.getFactory());
+        }
+        PeerConnectionFactory factory = pcFactoryBuilder.createPeerConnectionFactory();
 
-        // Pin the freshly-built factory onto this getUserMediaImpl 
         getUserMediaImpl.setPeerConnectionFactory(factory);
 
-        return new NativePeerConnectionFactory(
+        final NativePeerConnectionFactory nf = new NativePeerConnectionFactory(
                 id,
                 factory,
                 adm,
@@ -343,7 +394,10 @@ public class NativePeerConnectionFactory {
                 ctx.bypassVoiceProcessing,
                 ctx.androidAudioConfiguration,
                 ctx.audioSampleRate,
-                ctx.audioOutputSampleRate);
+                ctx.audioOutputSampleRate,
+                grantExternalApm);
+        liveFactories.add(nf);
+        return nf;
     }
 
     /**
@@ -355,6 +409,7 @@ public class NativePeerConnectionFactory {
             return;
         }
         disposed = true;
+        liveFactories.remove(this);
 
         try {
             getUserMediaImpl.audioDeviceModule = null;

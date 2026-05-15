@@ -883,7 +883,7 @@ public class GetUserMediaImpl {
         } else {
             AudioSource audioSource = mAudioSources.get(trackId);
             mAudioSources.put(newTrackId, audioSource);
-            
+
             AudioTrack track = pcFactory.createAudioTrack(newTrackId, audioSource);
 
             stateProvider.putLocalTrack(track.id(), new LocalAudioTrack(track));

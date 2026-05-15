@@ -268,11 +268,11 @@ class _MyAppState extends State<LoopBackSampleUnifiedTracks> {
     _keySharedProvider ??=
         await _frameCyrptorFactory.createDefaultKeyProvider(keyProviderOptions);
     await _keySharedProvider?.setSharedKey(key: aesKey);
-    acaps = await getRtpSenderCapabilities('audio');
-    print('sender audio capabilities: ${acaps!.toMap()}');
+    // acaps = await getRtpSenderCapabilities('audio');
+    // print('sender audio capabilities: ${acaps!.toMap()}');
 
-    vcaps = await getRtpSenderCapabilities('video');
-    print('sender video capabilities: ${vcaps!.toMap()}');
+    // vcaps = await getRtpSenderCapabilities('video');
+    // print('sender video capabilities: ${vcaps!.toMap()}');
 
     if (_remotePeerConnection != null) return;
 

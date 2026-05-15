@@ -367,10 +367,6 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
           androidAudioConfiguration.toMap());
     }
 
-    if (audioProcessingFactoryProvider == null) {
-      audioProcessingFactoryProvider = new AudioProcessingController();
-    }
-
     final NativePeerConnectionFactory.BuildContext ctx = new NativePeerConnectionFactory.BuildContext();
     ctx.context = context;
     ctx.bypassVoiceProcessing = bypassVoiceProcessing;
@@ -572,10 +568,6 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
 
     if (androidAudioConfiguration != null && AudioSwitchManager.instance != null) {
       AudioSwitchManager.instance.setAudioConfiguration(androidAudioConfiguration.toMap());
-    }
-
-    if (audioProcessingFactoryProvider == null) {
-      audioProcessingFactoryProvider = new AudioProcessingController();
     }
 
     // FlutterRTCFrameCryptor + FlutterDataPacketCryptor are deactivated
@@ -1591,6 +1583,46 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       case "setLogSeverity": {
         //now it's possible to setup logSeverity only via PeerConnectionFactory.initialize method
         //Log.d(TAG, "no implementation for 'setLogSeverity'");
+        break;
+      }
+      case "suspendAudioPeerConnectionFactory": {
+        final String factoryId = call.argument("factoryId");
+        final NativePeerConnectionFactory nf = resolveFactory(factoryId);
+        if (nf == null) {
+          resultError("suspendAudioPeerConnectionFactory",
+              "unknown factoryId " + factoryId, result);
+          break;
+        }
+        final JavaAudioDeviceModule adm = nf.adm;
+        nf.setAudioSuspended(true);
+        executor.execute(() -> {
+          try {
+            adm.setSpeakerMute(true);
+          } catch (Throwable t) {
+            Log.w(TAG, "[suspendAudioPeerConnectionFactory] setSpeakerMute: " + t);
+          }
+          mainHandler.post(() -> result.success(null));
+        });
+        break;
+      }
+      case "resumeAudioPeerConnectionFactory": {
+        final String factoryId = call.argument("factoryId");
+        final NativePeerConnectionFactory nf = resolveFactory(factoryId);
+        if (nf == null) {
+          resultError("resumeAudioPeerConnectionFactory",
+              "unknown factoryId " + factoryId, result);
+          break;
+        }
+        final JavaAudioDeviceModule adm = nf.adm;
+        nf.setAudioSuspended(false);
+        executor.execute(() -> {
+          try {
+            adm.setSpeakerMute(false);
+          } catch (Throwable t) {
+            Log.w(TAG, "[resumeAudioPeerConnectionFactory] setSpeakerMute: " + t);
+          }
+          mainHandler.post(() -> result.success(null));
+        });
         break;
       }
       default:

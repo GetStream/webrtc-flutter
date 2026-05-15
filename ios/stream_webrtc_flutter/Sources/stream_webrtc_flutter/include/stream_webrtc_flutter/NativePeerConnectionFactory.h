@@ -43,6 +43,14 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property(nonatomic, assign, readonly) BOOL isDisposed;
 
+/**
+ * Snapshot of the ADM's playout/recording state captured at suspend time
+ * so resumeAudio can restore only what was active. Toggled by the
+ * suspendAudio/resumeAudio method-channel handlers in FlutterWebRTCPlugin.
+ */
+@property(nonatomic, assign) BOOL wasPlayingBeforeSuspend;
+@property(nonatomic, assign) BOOL wasRecordingBeforeSuspend;
+
 - (instancetype)initWithFactoryId:(NSString*)factoryId
             bypassVoiceProcessing:(BOOL)bypassVoiceProcessing
                 networkIgnoreMask:(NSArray<NSString*>*)networkIgnoreMask

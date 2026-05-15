@@ -81,9 +81,13 @@
   }
   _disposed = YES;
 
-  // Order matters: drop our reference to the ADM first so any in-flight
-  // access through that handle stops before the factory destructor runs.
   if (_audioDeviceModule != nil) {
+    @try {
+      [_audioDeviceModule stopRecording];
+      [_audioDeviceModule stopPlayout];
+    } @catch (NSException* e) {
+      NSLog(@"[NativePeerConnectionFactory] stopRecording/stopPlayout failed: %@", e);
+    }
     _audioDeviceModule.observer = nil;
     _audioDeviceModule = nil;
   }

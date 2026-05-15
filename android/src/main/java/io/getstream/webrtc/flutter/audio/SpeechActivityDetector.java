@@ -9,17 +9,11 @@ import org.webrtc.audio.JavaAudioDeviceModule.AudioSamples;
 import org.webrtc.audio.JavaAudioDeviceModule.SamplesReadyCallback;
 
 /**
- * Per-factory speaking-while-muted detector. Computes RMS over a sliding
- * window from the JavaAudioDeviceModule's recording samples and emits
- * {@code started} / {@code ended} transitions to a delegate.
+ * Speaking-while-muted detector.
  *
- * <p>Mirrors the Stream Android SDK's {@code SoundInputProcessor} (-45 dB
- * threshold, 600 ms window). Always-on once attached: matches the iOS
- * fork's {@code didReceiveSpeechActivityEvent:} delegate, which fires
- * unconditionally for any per-call ADM.
+ * Mirrors the Stream Android SDK's {@code SoundInputProcessor} (-45 dB
+ * threshold, 600 ms window).
  *
- * <p>Cost is negligible (single pass over the sample buffer; ~480
- * iterations of int math per ~10 ms callback).
  */
 public class SpeechActivityDetector implements SamplesReadyCallback {
 
