@@ -7,7 +7,6 @@ import '../desktop_capturer.dart';
 import 'android/audio_configuration.dart';
 import 'data_packet_cryptor_impl.dart';
 import 'desktop_capturer_impl.dart';
-import 'frame_cryptor_impl.dart';
 import 'media_recorder_impl.dart';
 import 'media_stream_impl.dart';
 import 'mediadevices_impl.dart';
@@ -104,10 +103,6 @@ class RTCFactoryNative extends RTCFactory {
   Navigator get navigator => NavigatorNative.instance;
 
   @override
-  FrameCryptorFactory get frameCryptorFactory =>
-      FrameCryptorFactoryImpl.instance;
-
-  @override
   @Deprecated('use NativePeerConnectionFactory.getRtpReceiverCapabilities')
   Future<RTCRtpCapabilities> getRtpReceiverCapabilities(String kind) async {
     final response = await WebRTC.invokeMethod(
@@ -194,8 +189,6 @@ Navigator get navigator => RTCFactoryNative.instance.navigator;
 DesktopCapturer get desktopCapturer => DesktopCapturerNative.instance;
 
 MediaDevices get mediaDevices => MediaDeviceNative.instance;
-
-FrameCryptorFactory get frameCryptorFactory => FrameCryptorFactoryImpl.instance;
 
 Stream<Map<String, dynamic>> get eventStream =>
     MediaDeviceNative.instance.eventStream;
