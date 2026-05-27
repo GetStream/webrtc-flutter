@@ -19,7 +19,6 @@ add_definitions(-DFLUTTER_ELINUX)
 
 add_library(${PLUGIN_NAME} SHARED
   "../common/cpp/src/flutter_data_channel.cc"
-  "../common/cpp/src/flutter_frame_cryptor.cc"
   "../common/cpp/src/flutter_frame_capturer.cc"
   "../common/cpp/src/flutter_media_stream.cc"
   "../common/cpp/src/flutter_peerconnection.cc"
