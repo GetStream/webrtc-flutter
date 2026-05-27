@@ -27,5 +27,5 @@ export 'src/native/ios/audio_management.dart';
 export 'src/native/rtc_video_platform_view_controller.dart';
 export 'src/native/rtc_video_platform_view.dart';
 
-const String androidWebRTCVersion = '145.6.0';
-const String iosWebRTCVersion = '145.6.0';
+const String androidWebRTCVersion = '145.9.0';
+const String iosWebRTCVersion = '145.9.0';
