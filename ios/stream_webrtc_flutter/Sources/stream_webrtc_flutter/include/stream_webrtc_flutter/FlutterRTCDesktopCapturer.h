@@ -6,7 +6,9 @@
 
 @interface FlutterWebRTCPlugin (DesktopCapturer)
 
-- (void)getDisplayMedia:(nonnull NSDictionary*)constraints result:(nonnull FlutterResult)result;
+- (void)getDisplayMedia:(nonnull NSDictionary*)constraints
+              factoryId:(nullable NSString*)factoryId
+                 result:(nonnull FlutterResult)result;
 
 - (void)getDesktopSources:(nonnull NSDictionary*)argsMap result:(nonnull FlutterResult)result;
 

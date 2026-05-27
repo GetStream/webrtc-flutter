@@ -9,9 +9,12 @@
 
 - (RTCVideoTrack* _Nullable)cloneTrack:(nonnull NSString*)trackId;
 
-- (void)getUserMedia:(nonnull NSDictionary*)constraints result:(nonnull FlutterResult)result;
+- (void)getUserMedia:(nonnull NSDictionary*)constraints
+           factoryId:(nullable NSString*)factoryId
+              result:(nonnull FlutterResult)result;
 
-- (void)createLocalMediaStream:(nonnull FlutterResult)result;
+- (void)createLocalMediaStream:(nullable NSString*)factoryId
+                        result:(nonnull FlutterResult)result;
 
 - (void)getSources:(nonnull FlutterResult)result;
 

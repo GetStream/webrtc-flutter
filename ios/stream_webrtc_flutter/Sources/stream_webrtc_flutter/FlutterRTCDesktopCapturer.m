@@ -6,6 +6,7 @@
 #import "include/stream_webrtc_flutter/Broadcast/FlutterBroadcastScreenCapturer.h"
 #import "include/stream_webrtc_flutter/FlutterRPScreenRecorder.h"
 #import "include/stream_webrtc_flutter/LocalVideoTrack.h"
+#import "include/stream_webrtc_flutter/NativePeerConnectionFactory.h"
 #import "include/stream_webrtc_flutter/VideoProcessingAdapter.h"
 
 #if TARGET_OS_OSX
@@ -16,10 +17,20 @@ NSArray<RTCDesktopSource*>* _captureSources;
 
 @implementation FlutterWebRTCPlugin (DesktopCapturer)
 
-- (void)getDisplayMedia:(NSDictionary*)constraints result:(FlutterResult)result {
+- (void)getDisplayMedia:(NSDictionary*)constraints
+              factoryId:(NSString*)factoryId
+                 result:(FlutterResult)result {
   NSString* mediaStreamId = [[NSUUID UUID] UUIDString];
-  RTCMediaStream* mediaStream = [self.peerConnectionFactory mediaStreamWithStreamId:mediaStreamId];
-  RTCVideoSource* videoSource = [self.peerConnectionFactory videoSourceForScreenCast:YES];
+  NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+  if (nf == nil || nf.factory == nil) {
+    result([FlutterError
+        errorWithCode:@"getDisplayMedia"
+              message:[NSString stringWithFormat:@"unknown factoryId %@", factoryId]
+              details:nil]);
+    return;
+  }
+  RTCMediaStream* mediaStream = [nf.factory mediaStreamWithStreamId:mediaStreamId];
+  RTCVideoSource* videoSource = [nf.factory videoSourceForScreenCast:YES];
   NSString* trackUUID = [[NSUUID UUID] UUIDString];
   VideoProcessingAdapter* videoProcessingAdapter =
       [[VideoProcessingAdapter alloc] initWithRTCVideoSource:videoSource];
@@ -141,14 +152,18 @@ NSArray<RTCDesktopSource*>* _captureSources;
   };
 #endif
 
-  RTCVideoTrack* videoTrack = [self.peerConnectionFactory videoTrackWithSource:videoSource
-                                                                       trackId:trackUUID];
+  RTCVideoTrack* videoTrack = [nf.factory videoTrackWithSource:videoSource
+                                                       trackId:trackUUID];
   [mediaStream addVideoTrack:videoTrack];
 
   LocalVideoTrack* localVideoTrack = [[LocalVideoTrack alloc] initWithTrack:videoTrack
                                                             videoProcessing:videoProcessingAdapter];
 
   [self.localTracks setObject:localVideoTrack forKey:trackUUID];
+  
+  if (nf.factoryId != nil) {
+    self.trackFactoryId[trackUUID] = nf.factoryId;
+  }
 
   NSMutableArray* audioTracks = [NSMutableArray array];
   NSMutableArray* videoTracks = [NSMutableArray array];

@@ -30,6 +30,7 @@ import android.util.SparseArray;
 import android.view.Display;
 import android.view.WindowManager;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 
@@ -276,6 +277,26 @@ public class GetUserMediaImpl {
         this.applicationContext = applicationContext;
     }
 
+    /**
+     * Per-call factory. All track/source creation routes through it.
+     * This field must always be set before any media operation runs.
+     */
+    @Nullable
+    private PeerConnectionFactory peerConnectionFactory;
+
+    void setPeerConnectionFactory(@NonNull PeerConnectionFactory peerConnectionFactory) {
+        this.peerConnectionFactory = peerConnectionFactory;
+    }
+
+    private PeerConnectionFactory peerConnectionFactory() {
+        if (peerConnectionFactory == null) {
+            throw new IllegalStateException(
+                    "GetUserMediaImpl: peerConnectionFactory is not set. "
+                            + "Was setPeerConnectionFactory() called on this instance?");
+        }
+        return peerConnectionFactory;
+    }
+
     void setAudioChannelCount(int channelCount) {
         this.audioChannelCount = channelCount;
     }
@@ -417,7 +438,7 @@ public class GetUserMediaImpl {
         Log.i(TAG, "getUserMedia(audio): " + audioConstraints);
 
         String trackId = stateProvider.getNextTrackUUID();
-        PeerConnectionFactory pcFactory = stateProvider.getPeerConnectionFactory();
+        PeerConnectionFactory pcFactory = peerConnectionFactory();
         AudioSource audioSource = pcFactory.createAudioSource(audioConstraints);
 
         mAudioSources.put(trackId, audioSource);
@@ -620,7 +641,7 @@ public class GetUserMediaImpl {
 
         currentScreenCapturer = videoCapturer;
 
-        PeerConnectionFactory pcFactory = stateProvider.getPeerConnectionFactory();
+        PeerConnectionFactory pcFactory = peerConnectionFactory();
         VideoSource videoSource = pcFactory.createVideoSource(true);
 
         String threadName = Thread.currentThread().getName() + "_texture_screen_thread";
@@ -841,7 +862,7 @@ public class GetUserMediaImpl {
         String newTrackId = stateProvider.getNextTrackUUID();
         LocalTrack originalLocalTrack = stateProvider.getLocalTrack(trackId);
 
-        PeerConnectionFactory pcFactory = stateProvider.getPeerConnectionFactory();
+        PeerConnectionFactory pcFactory = peerConnectionFactory();
         ConstraintsMap trackParams = new ConstraintsMap();
 
         if (originalLocalTrack instanceof LocalVideoTrack) {
@@ -862,7 +883,7 @@ public class GetUserMediaImpl {
         } else {
             AudioSource audioSource = mAudioSources.get(trackId);
             mAudioSources.put(newTrackId, audioSource);
-            
+
             AudioTrack track = pcFactory.createAudioTrack(newTrackId, audioSource);
 
             stateProvider.putLocalTrack(track.id(), new LocalAudioTrack(track));
@@ -928,7 +949,7 @@ public class GetUserMediaImpl {
         }
         // else, leave facingMode as it was (for non-standard cameras)
 
-        PeerConnectionFactory pcFactory = stateProvider.getPeerConnectionFactory();
+        PeerConnectionFactory pcFactory = peerConnectionFactory();
         VideoSource videoSource = pcFactory.createVideoSource(false);
         String threadName = Thread.currentThread().getName() + "_texture_camera_thread";
         SurfaceTextureHelper surfaceTextureHelper =
@@ -1027,6 +1048,24 @@ public class GetUserMediaImpl {
         trackParams.putMap("settings", settings.toMap());
 
         return trackParams;
+    }
+
+    /**
+     * Returns true if this {@code GetUserMediaImpl} owns track-scoped state
+     * (capturer, audio source, or recorder) for the given id.
+     */
+    public boolean ownsTrack(String trackId) {
+        if (trackId == null) {
+            return false;
+        }
+        return mVideoCapturers.containsKey(trackId)
+                || mAudioSources.containsKey(trackId)
+                || mVideoSources.containsKey(trackId);
+    }
+
+    /** Returns true if this impl owns the recorder. */
+    public boolean ownsRecorder(int recorderId) {
+        return mediaRecorders.get(recorderId) != null;
     }
 
     void removeVideoCapturer(String id) {

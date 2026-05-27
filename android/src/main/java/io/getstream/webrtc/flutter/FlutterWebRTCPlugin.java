@@ -136,7 +136,7 @@ public class FlutterWebRTCPlugin implements FlutterPlugin, ActivityAware, EventC
                                 TextureRegistry textureRegistry) {
         if (AudioSwitchManager.instance == null) {
             AudioSwitchManager.instance = new AudioSwitchManager(context);
-        } 
+        }
 
         methodCallHandler = new MethodCallHandlerImpl(context, messenger, textureRegistry);
         methodChannel = new MethodChannel(messenger, "FlutterWebRTC.Method");

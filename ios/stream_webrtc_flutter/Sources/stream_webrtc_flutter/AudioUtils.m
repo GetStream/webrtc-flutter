@@ -193,33 +193,55 @@
 
   [session lockForConfiguration];
 
+  AVAudioSessionCategoryOptions desiredOptions = 0;
+  BOOL haveOptions = NO;
   if (appleAudioCategoryOptions != nil) {
-    config.categoryOptions = 0;
+    haveOptions = YES;
     for (NSString* option in appleAudioCategoryOptions) {
       if ([@"mixWithOthers" isEqualToString:option]) {
-        config.categoryOptions |= AVAudioSessionCategoryOptionMixWithOthers;
+        desiredOptions |= AVAudioSessionCategoryOptionMixWithOthers;
       } else if ([@"duckOthers" isEqualToString:option]) {
-        config.categoryOptions |= AVAudioSessionCategoryOptionDuckOthers;
+        desiredOptions |= AVAudioSessionCategoryOptionDuckOthers;
       } else if ([@"allowBluetooth" isEqualToString:option]) {
-        config.categoryOptions |= AVAudioSessionCategoryOptionAllowBluetooth;
+        desiredOptions |= AVAudioSessionCategoryOptionAllowBluetooth;
       } else if ([@"allowBluetoothA2DP" isEqualToString:option]) {
-        config.categoryOptions |= AVAudioSessionCategoryOptionAllowBluetoothA2DP;
+        desiredOptions |= AVAudioSessionCategoryOptionAllowBluetoothA2DP;
       } else if ([@"allowAirPlay" isEqualToString:option]) {
-        config.categoryOptions |= AVAudioSessionCategoryOptionAllowAirPlay;
+        desiredOptions |= AVAudioSessionCategoryOptionAllowAirPlay;
       } else if ([@"defaultToSpeaker" isEqualToString:option]) {
-        config.categoryOptions |= AVAudioSessionCategoryOptionDefaultToSpeaker;
+        desiredOptions |= AVAudioSessionCategoryOptionDefaultToSpeaker;
       }
     }
+    config.categoryOptions = desiredOptions;
   }
 
+  AVAudioSessionCategory desiredCategory = nil;
+  AVAudioSessionMode desiredMode = nil;
   if (appleAudioCategory != nil) {
-    config.category = [AudioUtils audioSessionCategoryFromString:appleAudioCategory];
-    [session setCategory:config.category withOptions:config.categoryOptions error:nil];
+    desiredCategory = [AudioUtils audioSessionCategoryFromString:appleAudioCategory];
+    config.category = desiredCategory;
+  }
+  if (appleAudioMode != nil) {
+    desiredMode = [AudioUtils audioSessionModeFromString:appleAudioMode];
+    config.mode = desiredMode;
   }
 
-  if (appleAudioMode != nil) {
-    config.mode = [AudioUtils audioSessionModeFromString:appleAudioMode];
-    [session setMode:config.mode error:nil];
+  NSError* err = nil;
+  if (desiredCategory != nil && desiredMode != nil && haveOptions) {
+    BOOL ok = [session setCategory:desiredCategory
+                              mode:desiredMode
+                           options:desiredOptions
+                             error:&err];
+    if (!ok) {
+      NSLog(@"setCategory:mode:options: failed: %@", err);
+    }
+  } else {
+    if (desiredCategory != nil) {
+      [session setCategory:desiredCategory withOptions:desiredOptions error:nil];
+    }
+    if (desiredMode != nil) {
+      [session setMode:desiredMode error:nil];
+    }
   }
 
   [session unlockForConfiguration];

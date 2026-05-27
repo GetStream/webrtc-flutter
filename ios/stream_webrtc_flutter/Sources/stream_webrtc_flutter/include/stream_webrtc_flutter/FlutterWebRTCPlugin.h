@@ -8,6 +8,7 @@
 @class FlutterRTCFrameCapturer;
 @class FlutterRTCMediaRecorder;
 @class AudioManager;
+@class NativePeerConnectionFactory;
 
 void postEvent(FlutterEventSink _Nullable sink, id _Nullable event);
 
@@ -26,7 +27,27 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 #endif
                                            >
 
-@property(nonatomic, strong) RTCPeerConnectionFactory* _Nullable peerConnectionFactory;
+/**
+ * Per-call factory registry, keyed by factoryId.
+ */
+@property(nonatomic, strong, readonly, nonnull)
+    NSMutableDictionary<NSString*, NativePeerConnectionFactory*>* factories;
+
+/**
+ * Maps a peer connection id to the factoryId of the NativePeerConnectionFactory
+ * that built it.
+ */
+@property(nonatomic, strong, readonly, nonnull)
+    NSMutableDictionary<NSString*, NSString*>* pcFactoryId;
+
+/**
+ * Maps a track id (audio or video) to the factoryId of the
+ * NativePeerConnectionFactory whose RTCPeerConnectionFactory created the
+ * underlying RTCMediaSource.
+ */
+@property(nonatomic, strong, readonly, nonnull)
+    NSMutableDictionary<NSString*, NSString*>* trackFactoryId;
+
 @property(nonatomic, strong)
     NSMutableDictionary<NSString*, RTCPeerConnection*>* _Nullable peerConnections;
 @property(nonatomic, strong)
@@ -72,10 +93,8 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 
 @property(nonatomic, strong) AudioManager* _Nullable audioManager;
 
-@property(nonatomic, strong)
-    NSMutableDictionary<NSString*, NSNumber*>* _Nonnull trackVolumeCache;
-@property(nonatomic, strong)
-    NSMutableDictionary<NSString*, NSNumber*>* _Nonnull pausedTrackVolumes;
+@property(nonatomic, strong) NSMutableDictionary<NSString*, NSNumber*>* _Nonnull trackVolumeCache;
+@property(nonatomic, strong) NSMutableDictionary<NSString*, NSNumber*>* _Nonnull pausedTrackVolumes;
 @property(nonatomic) BOOL isAudioPlayoutPaused;
 
 - (void)mediaStreamTrackSetVideoEffects:(nonnull NSString*)trackId
@@ -105,6 +124,20 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
                                          Id:(NSString* _Nonnull)Id;
 
 - (void)postEventWithName:(NSString* _Nonnull)eventName data:(NSDictionary* _Nullable)data;
+
+#pragma mark - Per-call factory resolution
+
+/**
+ * Resolves a factoryId to a NativePeerConnectionFactory.
+ */
+- (NativePeerConnectionFactory* _Nullable)resolveFactoryForId:(NSString* _Nullable)factoryId;
+
+/**
+ * Resolves the NativePeerConnectionFactory that owns the local stream
+ * registered under {@code streamId}. Returns nil when no registered
+ * factory owns the stream.
+ */
+- (NativePeerConnectionFactory* _Nullable)resolveFactoryForStreamId:(NSString* _Nullable)streamId;
 
 + (FlutterWebRTCPlugin* _Nullable)sharedSingleton;
 

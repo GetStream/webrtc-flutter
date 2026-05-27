@@ -134,7 +134,38 @@ public class FlutterRTCVideoRenderer implements EventChannel.StreamHandler {
      * resources (if rendering is in progress).
      */
     private void removeRendererFromVideoTrack() {
-        videoTrack.removeSink(surfaceTextureRenderer);
+        try {
+            videoTrack.removeSink(surfaceTextureRenderer);
+        } catch (Throwable t) {
+            Log.w(TAG, "removeRendererFromVideoTrack: track stale: " + t);
+        }
+    }
+
+    public void forceClearVideoTrack() {
+        this.videoTrack = null;
+        this.mediaStream = null;
+    }
+
+    public boolean detachIfRenderingAny(java.util.Set<String> dyingTrackIds) {
+        final VideoTrack current = this.videoTrack;
+        if (current == null || dyingTrackIds == null || dyingTrackIds.isEmpty()) {
+            return false;
+        }
+
+        String currentId;
+        try {
+            currentId = current.id();
+        } catch (Throwable t) {
+            // Native peer already gone — drop the reference defensively.
+            forceClearVideoTrack();
+            return true;
+        }
+        if (currentId != null && dyingTrackIds.contains(currentId)) {
+            forceClearVideoTrack();
+            return true;
+        }
+        
+        return false;
     }
 
     /**

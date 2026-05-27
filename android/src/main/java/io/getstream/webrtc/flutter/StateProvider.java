@@ -29,8 +29,6 @@ public interface StateProvider {
 
   String getNextTrackUUID();
 
-  PeerConnectionFactory getPeerConnectionFactory();
-
   PeerConnectionObserver getPeerConnectionObserver(String peerConnectionId);
 
   @Nullable

@@ -3,6 +3,7 @@
 #import "AudioUtils.h"
 #import "FlutterRTCDataChannel.h"
 #import "FlutterWebRTCPlugin.h"
+#import "NativePeerConnectionFactory.h"
 
 #if TARGET_OS_IPHONE
 #import <StreamWebRTC/StreamWebRTC.h>
@@ -691,8 +692,7 @@
       if (self.trackVolumeCache[trackId] == nil) {
         self.trackVolumeCache[trackId] = @(1.0);
       }
-      if (self.isAudioPlayoutPaused &&
-          [rtpReceiver.track isKindOfClass:[RTCAudioTrack class]]) {
+      if (self.isAudioPlayoutPaused && [rtpReceiver.track isKindOfClass:[RTCAudioTrack class]]) {
         RTCAudioTrack* audioTrack = (RTCAudioTrack*)rtpReceiver.track;
         self.pausedTrackVolumes[trackId] = self.trackVolumeCache[trackId];
         audioTrack.source.volume = 0.0;
@@ -779,9 +779,16 @@ NSDictionary<NSString*, NSString*>* stringToParameters(NSString* str) {
 
 - (void)peerConnectionGetRtpReceiverCapabilities:(nonnull NSDictionary*)argsMap
                                           result:(nonnull FlutterResult)result {
+  NSString* factoryId = argsMap[@"factoryId"];
+  NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+  if (factoryId == nil || factoryId.length == 0 || nf == nil || nf.factory == nil) {
+    result([FlutterError errorWithCode:@"MISSING_FACTORY_ID"
+                               message:@"getRtpReceiverCapabilities requires a valid factoryId"
+                               details:@{@"factoryId" : factoryId ?: [NSNull null]}]);
+    return;
+  }
   NSString* kind = argsMap[@"kind"];
-  RTCRtpCapabilities* caps =
-      [self.peerConnectionFactory rtpReceiverCapabilitiesForKind:mediaTypeFromString(kind)];
+  RTCRtpCapabilities* caps = [nf.factory rtpReceiverCapabilitiesForKind:mediaTypeFromString(kind)];
   NSMutableArray* codecsMap = [NSMutableArray array];
   for (RTCRtpCodecCapability* c in caps.codecs) {
     if ([kind isEqualToString:@"audio"]) {
@@ -808,9 +815,16 @@ NSDictionary<NSString*, NSString*>* stringToParameters(NSString* str) {
 
 - (void)peerConnectionGetRtpSenderCapabilities:(nonnull NSDictionary*)argsMap
                                         result:(nonnull FlutterResult)result {
+  NSString* factoryId = argsMap[@"factoryId"];
+  NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+  if (factoryId == nil || factoryId.length == 0 || nf == nil || nf.factory == nil) {
+    result([FlutterError errorWithCode:@"MISSING_FACTORY_ID"
+                               message:@"getRtpSenderCapabilities requires a valid factoryId"
+                               details:@{@"factoryId" : factoryId ?: [NSNull null]}]);
+    return;
+  }
   NSString* kind = argsMap[@"kind"];
-  RTCRtpCapabilities* caps =
-      [self.peerConnectionFactory rtpSenderCapabilitiesForKind:mediaTypeFromString(kind)];
+  RTCRtpCapabilities* caps = [nf.factory rtpSenderCapabilitiesForKind:mediaTypeFromString(kind)];
   NSMutableArray* codecsMap = [NSMutableArray array];
   for (RTCRtpCodecCapability* c in caps.codecs) {
     if ([kind isEqualToString:@"audio"]) {
@@ -835,11 +849,14 @@ NSDictionary<NSString*, NSString*>* stringToParameters(NSString* str) {
   });
 }
 
-- (RTC_OBJC_TYPE(RTCRtpCodecCapability) *)findCodecCapability:(NSString*)kind
-                                                        codec:(NSString*)codec
-                                                   parameters:(NSDictionary<NSString*, NSString*>*)
-                                                                  parameters {
-  RTCRtpCapabilities* caps = [self.peerConnectionFactory
+- (RTC_OBJC_TYPE(RTCRtpCodecCapability) *)
+    findCodecCapability:(NSString*)kind
+                  codec:(NSString*)codec
+             parameters:(NSDictionary<NSString*, NSString*>*)parameters
+                factory:(RTCPeerConnectionFactory*)factory {
+  if (factory == nil)
+    return nil;
+  RTCRtpCapabilities* caps = [factory
       rtpSenderCapabilitiesForKind:[kind isEqualToString:@"video"] ? kRTCMediaStreamTrackKindVideo
                                                                    : kRTCMediaStreamTrackKindAudio];
   for (RTCRtpCodecCapability* capCodec in caps.codecs) {
@@ -871,6 +888,9 @@ NSDictionary<NSString*, NSString*>* stringToParameters(NSString* str) {
               details:nil]);
     return;
   }
+  NSString* factoryIdForPc = self.pcFactoryId[peerConnectionId];
+  NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryIdForPc];
+  RTCPeerConnectionFactory* factory = nf.factory;
   NSString* transceiverId = argsMap[@"transceiverId"];
   RTCRtpTransceiver* transcevier = [self getRtpTransceiverById:peerConnection Id:transceiverId];
   if (transcevier == nil) {
@@ -890,7 +910,10 @@ NSDictionary<NSString*, NSString*>* stringToParameters(NSString* str) {
     if (c[@"sdpFmtpLine"] != nil && ![((NSString*)c[@"sdpFmtpLine"]) isEqualToString:@""]) {
       parameters = stringToParameters((NSString*)c[@"sdpFmtpLine"]);
     }
-    RTCRtpCodecCapability* codec = [self findCodecCapability:kind codec:name parameters:parameters];
+    RTCRtpCodecCapability* codec = [self findCodecCapability:kind
+                                                       codec:name
+                                                  parameters:parameters
+                                                     factory:factory];
     if (codec != nil) {
       [codecCaps addObject:codec];
     }

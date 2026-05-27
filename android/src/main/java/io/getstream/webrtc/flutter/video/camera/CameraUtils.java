@@ -30,6 +30,7 @@ import org.webrtc.CameraEnumerationAndroid;
 
 import java.lang.reflect.Field;
 import java.util.List;
+import java.util.function.Function;
 
 import io.flutter.embedding.engine.systemchannels.PlatformChannel;
 import io.flutter.plugin.common.MethodCall;
@@ -38,11 +39,16 @@ import io.flutter.plugin.common.MethodChannel;
 public class CameraUtils {
   private static final String TAG = "CameraUtils";
   Activity activity;
-  private GetUserMediaImpl getUserMediaImpl;
+  /**
+   * Resolves the {@link GetUserMediaImpl} that owns the capturer for a given
+   * trackId.
+   */
+  private final Function<String, GetUserMediaImpl> getUserMediaImplResolver;
   private boolean isTorchOn = false;
   private DeviceOrientationManager deviceOrientationManager;
-  public CameraUtils(GetUserMediaImpl getUserMediaImpl, Activity activity) {
-    this.getUserMediaImpl = getUserMediaImpl;
+
+  public CameraUtils(Function<String, GetUserMediaImpl> getUserMediaImplResolver, Activity activity) {
+    this.getUserMediaImplResolver = getUserMediaImplResolver;
     this.activity = activity;
     this.deviceOrientationManager = new DeviceOrientationManager(activity, 0);
     // commented out because you cannot register a reciever when the app is terminated
@@ -55,10 +61,18 @@ public class CameraUtils {
     // this.deviceOrientationManager.start();
   }
 
+  private VideoCapturerInfo lookupCapturerInfo(String trackId) {
+    GetUserMediaImpl impl = getUserMediaImplResolver.apply(trackId);
+    if (impl == null) {
+      return null;
+    }
+    return impl.getCapturerInfo(trackId);
+  }
+
   public void setFocusMode(MethodCall call, AnyThreadResult result) {
     String trackId = call.argument("trackId");
     String mode = call.argument("mode");
-    VideoCapturerInfo info = getUserMediaImpl.getCapturerInfo(trackId);
+    VideoCapturerInfo info = lookupCapturerInfo(trackId);
     if (info == null) {
       resultError("setFocusMode", "Video capturer not found for id: " + trackId, result);
       return;
@@ -177,7 +191,7 @@ public class CameraUtils {
   public void setFocusPoint(MethodCall call, Point focusPoint, AnyThreadResult result) {
     String trackId = call.argument("trackId");
     String mode = call.argument("mode");
-    VideoCapturerInfo info = getUserMediaImpl.getCapturerInfo(trackId);
+    VideoCapturerInfo info = lookupCapturerInfo(trackId);
     if (info == null) {
       resultError("setFocusMode", "Video capturer not found for id: " + trackId, result);
       return;
@@ -271,7 +285,7 @@ public class CameraUtils {
   public void setExposurePoint(MethodCall call,Point exposurePoint,  AnyThreadResult result) {
     String trackId = call.argument("trackId");
     String mode = call.argument("mode");
-    VideoCapturerInfo info = getUserMediaImpl.getCapturerInfo(trackId);
+    VideoCapturerInfo info = lookupCapturerInfo(trackId);
     if (info == null) {
       resultError("setExposurePoint", "Video capturer not found for id: " + trackId, result);
       return;
@@ -368,7 +382,7 @@ public class CameraUtils {
   }
 
   public void hasTorch(String trackId, MethodChannel.Result result) {
-    VideoCapturerInfo info = getUserMediaImpl.getCapturerInfo(trackId);
+    VideoCapturerInfo info = lookupCapturerInfo(trackId);
     if (info == null) {
       resultError("hasTorch", "Video capturer not found for id: " + trackId, result);
       return;
@@ -434,7 +448,7 @@ public class CameraUtils {
 
   @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
   public void setZoom(String trackId, double zoomLevel, MethodChannel.Result result) {
-    VideoCapturerInfo info = getUserMediaImpl.getCapturerInfo(trackId);
+    VideoCapturerInfo info = lookupCapturerInfo(trackId);
     if (info == null) {
       resultError("setZoom", "Video capturer not found for id: " + trackId, result);
       return;
@@ -545,7 +559,7 @@ public class CameraUtils {
 
   @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
   public void setTorch(String trackId, boolean torch, MethodChannel.Result result) {
-    VideoCapturerInfo info = getUserMediaImpl.getCapturerInfo(trackId);
+    VideoCapturerInfo info = lookupCapturerInfo(trackId);
     if (info == null) {
       resultError("setTorch", "Video capturer not found for id: " + trackId, result);
       return;

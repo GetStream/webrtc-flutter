@@ -26,6 +26,13 @@ import io.getstream.webrtc.flutter.utils.AnyThreadSink;
 import io.getstream.webrtc.flutter.utils.ConstraintsMap;
 import io.getstream.webrtc.flutter.utils.ConstraintsArray;
 
+/**
+ * E2E frame encryption support.
+ *
+ * Frame cryptor is currently disabled and will not work until rewritten to use a per-call factory.
+ * Each method must receive a {@code factoryId} to ensure {@link org.webrtc.FrameCryptorFactory}
+ * uses the correct {@link org.webrtc.PeerConnectionFactory}.
+ */
 public class FlutterRTCFrameCryptor {
 
     class FrameCryptorStateObserver  implements FrameCryptor.Observer, EventChannel.StreamHandler {
@@ -176,41 +183,42 @@ public class FlutterRTCFrameCryptor {
         String rtpSenderId = (String) params.get("rtpSenderId");
         String rtpReceiverId = (String) params.get("rtpReceiverId");
 
-        if(type.equals("sender")) {
-            RtpSender rtpSender = pco.getRtpSenderById(rtpSenderId);
+        //TODO: Implement per-call factory 
+        // if(type.equals("sender")) {
+        //     RtpSender rtpSender = pco.getRtpSenderById(rtpSenderId);
 
-            FrameCryptor frameCryptor = FrameCryptorFactory.createFrameCryptorForRtpSender(stateProvider.getPeerConnectionFactory(),
-                    rtpSender,
-                    participantId,
-                    frameCryptorAlgorithmFromInt(algorithm),
-                    keyProvider);
-            String frameCryptorId = UUID.randomUUID().toString();
-            frameCryptos.put(frameCryptorId, frameCryptor);
-            FrameCryptorStateObserver observer = new FrameCryptorStateObserver(stateProvider.getMessenger(), frameCryptorId);
-            frameCryptor.setObserver(observer);
-            frameCryptoObservers.put(frameCryptorId, observer);
-            ConstraintsMap paramsResult = new ConstraintsMap();
-            paramsResult.putString("frameCryptorId", frameCryptorId);
-            result.success(paramsResult.toMap());
-        } else if(type.equals("receiver")) {
-            RtpReceiver rtpReceiver = pco.getRtpReceiverById(rtpReceiverId);
+        //     FrameCryptor frameCryptor = FrameCryptorFactory.createFrameCryptorForRtpSender(stateProvider.getPeerConnectionFactory(),
+        //             rtpSender,
+        //             participantId,
+        //             frameCryptorAlgorithmFromInt(algorithm),
+        //             keyProvider);
+        //     String frameCryptorId = UUID.randomUUID().toString();
+        //     frameCryptos.put(frameCryptorId, frameCryptor);
+        //     FrameCryptorStateObserver observer = new FrameCryptorStateObserver(stateProvider.getMessenger(), frameCryptorId);
+        //     frameCryptor.setObserver(observer);
+        //     frameCryptoObservers.put(frameCryptorId, observer);
+        //     ConstraintsMap paramsResult = new ConstraintsMap();
+        //     paramsResult.putString("frameCryptorId", frameCryptorId);
+        //     result.success(paramsResult.toMap());
+        // } else if(type.equals("receiver")) {
+        //     RtpReceiver rtpReceiver = pco.getRtpReceiverById(rtpReceiverId);
 
-            FrameCryptor frameCryptor = FrameCryptorFactory.createFrameCryptorForRtpReceiver(stateProvider.getPeerConnectionFactory(),
-                    rtpReceiver,
-                    participantId,
-                    frameCryptorAlgorithmFromInt(algorithm),
-                    keyProvider);
-            String frameCryptorId = UUID.randomUUID().toString();
-            frameCryptos.put(frameCryptorId, frameCryptor);
-            FrameCryptorStateObserver observer = new FrameCryptorStateObserver(stateProvider.getMessenger(), frameCryptorId);
-            frameCryptor.setObserver(observer);
-            frameCryptoObservers.put(frameCryptorId, observer);
-            ConstraintsMap paramsResult = new ConstraintsMap();
-            paramsResult.putString("frameCryptorId", frameCryptorId);
-            result.success(paramsResult.toMap());
-        } else {
-            result.error("frameCryptorFactoryCreateFrameCryptorFailed", "type must be sender or receiver", null);
-        }
+        //     FrameCryptor frameCryptor = FrameCryptorFactory.createFrameCryptorForRtpReceiver(stateProvider.getPeerConnectionFactory(),
+        //             rtpReceiver,
+        //             participantId,
+        //             frameCryptorAlgorithmFromInt(algorithm),
+        //             keyProvider);
+        //     String frameCryptorId = UUID.randomUUID().toString();
+        //     frameCryptos.put(frameCryptorId, frameCryptor);
+        //     FrameCryptorStateObserver observer = new FrameCryptorStateObserver(stateProvider.getMessenger(), frameCryptorId);
+        //     frameCryptor.setObserver(observer);
+        //     frameCryptoObservers.put(frameCryptorId, observer);
+        //     ConstraintsMap paramsResult = new ConstraintsMap();
+        //     paramsResult.putString("frameCryptorId", frameCryptorId);
+        //     result.success(paramsResult.toMap());
+        // } else {
+        //     result.error("frameCryptorFactoryCreateFrameCryptorFailed", "type must be sender or receiver", null);
+        // }
     }
 
     private void frameCryptorSetKeyIndex(Map<String, Object> params, @NonNull Result result) {

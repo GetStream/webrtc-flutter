@@ -8,8 +8,9 @@
 #import "FlutterRPScreenRecorder.h"
 #endif
 
-#import "VideoProcessingAdapter.h"
 #import "LocalVideoTrack.h"
+#import "NativePeerConnectionFactory.h"
+#import "VideoProcessingAdapter.h"
 
 #if TARGET_OS_OSX
 RTCDesktopMediaList* _screen = nil;
@@ -19,13 +20,24 @@ NSArray<RTCDesktopSource*>* _captureSources;
 
 @implementation FlutterWebRTCPlugin (DesktopCapturer)
 
-- (void)getDisplayMedia:(NSDictionary*)constraints result:(FlutterResult)result {
+- (void)getDisplayMedia:(NSDictionary*)constraints
+              factoryId:(NSString*)factoryId
+                 result:(FlutterResult)result {
   NSString* mediaStreamId = [[NSUUID UUID] UUIDString];
-  RTCMediaStream* mediaStream = [self.peerConnectionFactory mediaStreamWithStreamId:mediaStreamId];
-  RTCVideoSource* videoSource = [self.peerConnectionFactory videoSourceForScreenCast:YES];
+  NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+  if (nf == nil || nf.factory == nil) {
+    result([FlutterError
+        errorWithCode:@"getDisplayMedia"
+              message:[NSString stringWithFormat:@"unknown factoryId %@", factoryId]
+              details:nil]);
+    return;
+  }
+  RTCMediaStream* mediaStream = [nf.factory mediaStreamWithStreamId:mediaStreamId];
+  RTCVideoSource* videoSource = [nf.factory videoSourceForScreenCast:YES];
   NSString* trackUUID = [[NSUUID UUID] UUIDString];
-  VideoProcessingAdapter *videoProcessingAdapter = [[VideoProcessingAdapter alloc] initWithRTCVideoSource:videoSource];
-  
+  VideoProcessingAdapter* videoProcessingAdapter =
+      [[VideoProcessingAdapter alloc] initWithRTCVideoSource:videoSource];
+
 #if TARGET_OS_IPHONE
   BOOL useBroadcastExtension = false;
   BOOL presentBroadcastPicker = false;
@@ -33,19 +45,19 @@ NSArray<RTCDesktopSource*>* _captureSources;
   id videoConstraints = constraints[@"video"];
   if ([videoConstraints isKindOfClass:[NSDictionary class]]) {
     // constraints.video.deviceId
-    useBroadcastExtension =
-        [((NSDictionary*)videoConstraints)[@"deviceId"] hasPrefix:@"broadcast"];
-    presentBroadcastPicker =
-        useBroadcastExtension &&
-        ![((NSDictionary*)videoConstraints)[@"deviceId"] hasSuffix:@"-manual"];
+    useBroadcastExtension = [((NSDictionary*)videoConstraints)[@"deviceId"] hasPrefix:@"broadcast"];
+    presentBroadcastPicker = useBroadcastExtension &&
+                             ![((NSDictionary*)videoConstraints)[@"deviceId"] hasSuffix:@"-manual"];
   }
 
   id screenCapturer;
 
   if (useBroadcastExtension) {
-    screenCapturer = [[FlutterBroadcastScreenCapturer alloc] initWithDelegate:videoProcessingAdapter];
+    screenCapturer =
+        [[FlutterBroadcastScreenCapturer alloc] initWithDelegate:videoProcessingAdapter];
   } else {
-    screenCapturer = [[FlutterRPScreenRecorder alloc] initWithDelegate:[videoProcessingAdapter source]];
+    screenCapturer =
+        [[FlutterRPScreenRecorder alloc] initWithDelegate:[videoProcessingAdapter source]];
   }
 
   [screenCapturer startCapture];
@@ -143,13 +155,17 @@ NSArray<RTCDesktopSource*>* _captureSources;
   };
 #endif
 
-  RTCVideoTrack* videoTrack = [self.peerConnectionFactory videoTrackWithSource:videoSource
-                                                                       trackId:trackUUID];
+  RTCVideoTrack* videoTrack = [nf.factory videoTrackWithSource:videoSource trackId:trackUUID];
   [mediaStream addVideoTrack:videoTrack];
 
-  LocalVideoTrack *localVideoTrack = [[LocalVideoTrack alloc] initWithTrack:videoTrack videoProcessing:videoProcessingAdapter];
+  LocalVideoTrack* localVideoTrack = [[LocalVideoTrack alloc] initWithTrack:videoTrack
+                                                            videoProcessing:videoProcessingAdapter];
 
   [self.localTracks setObject:localVideoTrack forKey:trackUUID];
+
+  if (nf.factoryId != nil) {
+    self.trackFactoryId[trackUUID] = nf.factoryId;
+  }
 
   NSMutableArray* audioTracks = [NSMutableArray array];
   NSMutableArray* videoTracks = [NSMutableArray array];
@@ -284,7 +300,10 @@ NSArray<RTCDesktopSource*>* _captureSources;
   NSRect imageRect = NSMakeRect(0.0, 0.0, width, height);
 
   [newImage lockFocus];
-    [sourceImage drawInRect:thumbnailRect fromRect:imageRect operation:NSCompositingOperationCopy fraction:1.0];
+  [sourceImage drawInRect:thumbnailRect
+                 fromRect:imageRect
+                operation:NSCompositingOperationCopy
+                 fraction:1.0];
   [newImage unlockFocus];
 
   return newImage;
