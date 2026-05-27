@@ -136,15 +136,6 @@ class _MyAppState extends State<MyApp> {
                 MaterialPageRoute(
                     builder: (BuildContext context) => AdmSample()));
           }),
-      RouteItem(
-          title: 'Data Packet Cryptor Sample',
-          push: (BuildContext context) {
-            Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (BuildContext context) =>
-                        DataPacketCryptorSample()));
-          }),
     ];
   }
 }
