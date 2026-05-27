@@ -30,8 +30,7 @@ class FlutterWebRTC : public FlutterWebRTCBase,
                       public FlutterMediaStream,
                       public FlutterPeerConnection,
                       public FlutterScreenCapture,
-                      public FlutterDataChannel,
-                      public FlutterFrameCryptor {
+                      public FlutterDataChannel {
  public:
   FlutterWebRTC(FlutterWebRTCPlugin* plugin);
   virtual ~FlutterWebRTC();
