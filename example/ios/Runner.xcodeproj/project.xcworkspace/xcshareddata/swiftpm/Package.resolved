@@ -1,5 +1,4 @@
 {
-  "originHash" : "f460b0f01ea083628a181a64701e7fabef0f3c0af018e2a5ae3f13252b822c75",
   "pins" : [
     {
       "identity" : "stream-video-swift-webrtc",
@@ -11,5 +10,5 @@
       }
     }
   ],
-  "version" : 3
+  "version" : 2
 }
