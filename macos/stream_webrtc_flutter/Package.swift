@@ -10,15 +10,16 @@ let package = Package(
         .library(name: "stream-webrtc-flutter", targets: ["stream_webrtc_flutter"])
     ],
     dependencies: [
+        .package(name: "FlutterFramework", path: "../FlutterFramework"),
         .package(
             url: "https://github.com/GetStream/stream-video-swift-webrtc.git", exact: "145.9.0"
         )
-
     ],
     targets: [
         .target(
             name: "stream_webrtc_flutter",
             dependencies: [
+                .product(name: "FlutterFramework", package: "FlutterFramework"),
                 .product(name: "StreamWebRTC", package: "stream-video-swift-webrtc")
             ],
             resources: []
