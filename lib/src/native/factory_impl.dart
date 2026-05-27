@@ -125,6 +125,12 @@ class RTCFactoryNative extends RTCFactory {
     );
     return RTCRtpCapabilities.fromMap(response);
   }
+
+  @override
+  FrameCryptorFactory get frameCryptorFactory => throw UnimplementedError(
+        'FrameCryptor support has been temporarily removed from '
+        'stream_webrtc_flutter and will be re-added in a future release.',
+      );
 }
 
 Future<void> setVideoEffects(

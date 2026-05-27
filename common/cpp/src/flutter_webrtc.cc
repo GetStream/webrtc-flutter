@@ -15,8 +15,7 @@ FlutterWebRTC::FlutterWebRTC(FlutterWebRTCPlugin* plugin)
       FlutterMediaStream::FlutterMediaStream(this),
       FlutterPeerConnection::FlutterPeerConnection(this),
       FlutterScreenCapture::FlutterScreenCapture(this),
-      FlutterDataChannel::FlutterDataChannel(this),
-      FlutterFrameCryptor::FlutterFrameCryptor(this) {}
+      FlutterDataChannel::FlutterDataChannel(this) {}
 
 FlutterWebRTC::~FlutterWebRTC() {}
 
@@ -1296,11 +1295,7 @@ void FlutterWebRTC::HandleMethodCall(
       initLoggerCallback(severity);
     }
   } else {
-    if (HandleFrameCryptorMethodCall(method_call, std::move(result), &result)) {
-      return;
-    } else {
-      result->NotImplemented();
-    }
+    result->NotImplemented();
   }
 }
 
