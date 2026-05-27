@@ -6,7 +6,6 @@
 #import "include/stream_webrtc_flutter/FlutterDataPacketCryptor.h"
 #import "include/stream_webrtc_flutter/FlutterRTCDataChannel.h"
 #import "include/stream_webrtc_flutter/FlutterRTCDesktopCapturer.h"
-#import "include/stream_webrtc_flutter/FlutterRTCFrameCryptor.h"
 #import "include/stream_webrtc_flutter/FlutterRTCMediaRecorder.h"
 #import "include/stream_webrtc_flutter/FlutterRTCMediaStream.h"
 #import "include/stream_webrtc_flutter/FlutterRTCPeerConnection.h"
@@ -211,9 +210,6 @@ static FlutterWebRTCPlugin* sharedSingleton;
   self.localStreams = [NSMutableDictionary new];
   self.localTracks = [NSMutableDictionary new];
   self.renders = [NSMutableDictionary new];
-  self.frameCryptors = [NSMutableDictionary new];
-  self.dataCryptors = [NSMutableDictionary new];
-  self.keyProviders = [NSMutableDictionary new];
   self.videoCapturerStopHandlers = [NSMutableDictionary new];
   self.videoCaptureState = [NSMutableDictionary new];
   self.recorders = [NSMutableDictionary new];
