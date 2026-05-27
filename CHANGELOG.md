@@ -20,6 +20,8 @@ This release introduces a fully isolated per-call PC factory model: each call no
 **New**
 
 * `NativePeerConnectionFactory` — representing one native factory with an isolated ADM per call.
+* Bumped WebRTC to M145 (`stream-video-swift-webrtc` 145.9.0).
+* Added Swift Package Manager support for macOS.
 
 **Audio lifecycle**
 
