@@ -1,13 +1,13 @@
 {
-  "originHash" : "7ee5623db3cce3ac924c3268452331eccfbd5018f0f2c8dc993b63ffbbbc91f6",
+  "originHash" : "f460b0f01ea083628a181a64701e7fabef0f3c0af018e2a5ae3f13252b822c75",
   "pins" : [
     {
       "identity" : "stream-video-swift-webrtc",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/GetStream/stream-video-swift-webrtc.git",
       "state" : {
-        "revision" : "af8bb8ff4da92953567d777baba55369f998dc01",
-        "version" : "137.0.54"
+        "revision" : "f8689677681ed6b8d0f17b409cbbde67273017b2",
+        "version" : "145.9.0"
       }
     }
   ],

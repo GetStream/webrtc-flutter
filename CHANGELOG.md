@@ -15,10 +15,13 @@ This release introduces a fully isolated per-call PC factory model: each call no
 * `WebRTC.initialize`: replaced `options['reinitialize']` with `bool refresh = false`. Re-initialization no longer disposes existing PeerConnections, tracks, or streams. It refreshes build defaults for the next factory.
 * [iOS / macOS] Removed `FlutterWebRTCPlugin.peerConnectionFactory`. Use `factories[factoryId]`, `resolveFactoryForId()`, or `resolveFactoryForStreamId()`.
 * [Android] `MethodCallHandlerImpl` no longer lazily creates a default `AudioProcessingController`. Register one via `FlutterWebRTCPlugin.sharedSingleton.setAudioProcessingFactoryProvider(...)` if you need an external APM.
+* Temporarily removed FrameCryptor support across all platforms (Dart, C++, iOS, Android). The `frameCryptorFactory` getter now throws `UnimplementedError`. FrameCryptor will be re-added in a future release.
 
 **New**
 
 * `NativePeerConnectionFactory` — representing one native factory with an isolated ADM per call.
+* Bumped WebRTC to M145 (`stream-video-swift-webrtc` 145.9.0).
+* Added Swift Package Manager support for macOS.
 
 **Audio lifecycle**
 
@@ -27,8 +30,8 @@ This release introduces a fully isolated per-call PC factory model: each call no
 
 **Fixes**
 
-* [Android] Fixed multi-call audio corruption caused by the shared `ExternalAudioProcessingFactory` leaking APM state across concurrent factories.
-* [iOS] `setAppleAudioConfiguration` now uses the atomic `setCategory:mode:options:error:` API, preventing Bluetooth route drops during mid-transition category changes.
+* Fixed multi-call audio corruption caused by the leaking APM state across concurrent factories.
+* [iOS] `setAppleAudioConfiguration` now uses the atomic `setCategory` API, preventing Bluetooth route drops during mid-transition category changes.
 
 [2.2.7] - 2026-04-27
 * [iOS] Fixed missing result callback in video effects method.
