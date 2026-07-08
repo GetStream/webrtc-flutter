@@ -36,7 +36,8 @@ class NativePeerConnectionFactory {
   Future<MediaStream> createLocalMediaStream(String label) async =>
       throw UnimplementedError();
 
-  Future<bool> requestCapturePermission() async => throw UnimplementedError();
+  Future<bool> requestCapturePermission({bool fullScreenOnly = false}) async =>
+      throw UnimplementedError();
 
   Future<RTCRtpCapabilities> getRtpSenderCapabilities(String kind) async =>
       throw UnimplementedError();

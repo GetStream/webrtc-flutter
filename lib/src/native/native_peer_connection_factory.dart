@@ -136,7 +136,7 @@ class NativePeerConnectionFactory {
   /// Requests Android screen-capture permission. The granted projection data
   /// lives on this factory's `GetUserMediaImpl`, so the subsequent
   /// [getDisplayMedia] call must be issued through this same instance.
-  Future<bool> requestCapturePermission() async {
+  Future<bool> requestCapturePermission({bool fullScreenOnly = false}) async {
     _checkDisposed('requestCapturePermission');
     if (!WebRTC.platformIsAndroid) {
       throw Exception('requestCapturePermission only supported for Android');
@@ -145,6 +145,7 @@ class NativePeerConnectionFactory {
       'requestCapturePermission',
       <String, dynamic>{
         'factoryId': factoryId,
+        'fullScreenOnly': fullScreenOnly,
       },
     );
     return result == true;

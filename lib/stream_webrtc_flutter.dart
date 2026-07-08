@@ -29,3 +29,6 @@ export 'src/native/rtc_video_platform_view.dart';
 
 const String androidWebRTCVersion = '145.9.0';
 const String iosWebRTCVersion = '145.9.0';
+const String macOsWebRTCVersion = '145.9.0';
+const String windowsWebRTCVersion = '144.7559.09';
+const String linuxWebRTCVersion = '144.7559.09';
