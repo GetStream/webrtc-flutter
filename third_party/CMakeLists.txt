@@ -123,7 +123,9 @@ if(NOT EXISTS "${ZIPFILE}")
   message(NOTICE "download: ${DOWNLOAD_URL}")
   file(MAKE_DIRECTORY "${LIBWEBRTC_THIRD_PARTY_DIR}/downloads")
   file(DOWNLOAD "${DOWNLOAD_URL}"
-      ${ZIPFILE}
+      "${ZIPFILE}"
+      TLS_VERIFY ON
+      INACTIVITY_TIMEOUT 120
       STATUS download_status
       LOG download_log)
 
