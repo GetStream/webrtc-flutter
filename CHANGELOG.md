@@ -1,8 +1,9 @@
 
 # Changelog
 
-[3.0.1] - upcoming
+[3.0.1] - 2026.07.10
 
+* [iOS] Added an onAudioRouteChangeEvent that fires whenever audio output route changes.
 * Synced flutter-webrtc v1.5.2
 	* [iOS] fix: audio session output port override for speaker toggle (#1941)
 	* [Android] fix: tolerate Qualcomm/Hisi encoders in VideoFileRenderer and guard muxer writes against invalid sample buffers. (#2031 and #2030)

@@ -267,6 +267,18 @@ static FlutterWebRTCPlugin* sharedSingleton;
                          routeChangeReason == AVAudioSessionRouteChangeReasonCategoryChange ||
                          routeChangeReason == AVAudioSessionRouteChangeReasonOverride)) {
     postEvent(self.eventSink, @{@"event" : @"onDeviceChange"});
+
+    // Report the newly-active audio output
+    AVAudioSessionPortDescription* output =
+        [RTCAudioSession sharedInstance].currentRoute.outputs.firstObject;
+    if (output != nil) {
+      postEvent(self.eventSink, @{
+        @"event" : @"onAudioRouteChange",
+        @"deviceId" : output.UID ?: @"",
+        @"label" : output.portName ?: @"",
+        @"groupId" : output.portType ?: @"",
+      });
+    }
   }
 
   // When stereo playout is preferred, debounce-refresh stereo playout state
