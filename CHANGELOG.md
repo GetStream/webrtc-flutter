@@ -1,6 +1,12 @@
 
 # Changelog
 
+[3.0.1] - upcoming
+
+**New**
+
+* [iOS] Added an onAudioRouteChangeEvent that fires whenever audio output route changes.
+
 [3.0.0] - 2026-05-14
 
 **Per-call peer connection factory architecture**
