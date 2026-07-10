@@ -1206,7 +1206,9 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
               "unknown factoryId " + factoryId, result);
           break;
         }
-        nf.getUserMediaImpl.requestCapturePermission(result);
+        Boolean fullScreenOnlyArg = call.argument("fullScreenOnly");
+        boolean fullScreenOnly = fullScreenOnlyArg != null && fullScreenOnlyArg;
+        nf.getUserMediaImpl.requestCapturePermission(result, fullScreenOnly);
         break;
       }
       case "getDisplayMedia": {

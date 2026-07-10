@@ -1,11 +1,17 @@
 
 # Changelog
 
-[3.0.1] - upcoming
-
-**New**
+[3.0.1] - 2026.07.10
 
 * [iOS] Added an onAudioRouteChangeEvent that fires whenever audio output route changes.
+* Synced flutter-webrtc v1.5.2
+	* [iOS] fix: audio session output port override for speaker toggle (#1941)
+	* [Android] fix: tolerate Qualcomm/Hisi encoders in VideoFileRenderer and guard muxer writes against invalid sample buffers. (#2031 and #2030)
+	* [Android] feat: add fullScreenOnly option to requestCapturePermission to force entire-screen capture on API 34+ (#2079)
+	* [Android] fix: recreate the texture surface when the incoming frame size changes, so simulcast layer upgrades no longer stay blurry. (#2085)
+	* [Android] Support AGP 9's built-in Kotlin: apply the Kotlin Gradle Plugin only when built-in Kotlin is inactive (AGP < 9, or AGP 9 with `android.builtInKotlin=false`), set the JVM target through the `kotlin { compilerOptions {} }` DSL when available, and fall back to the legacy `kotlinOptions` DSL for apps still on Kotlin Gradle Plugin 1.8.x. (#2075)
+	* [Windows/Linux] chore: drive prebuilt libwebrtc download from third_party/libwebrtc_version.ini. Bump WebRTC version to 144.7559.09. (#2061 and #2078)
+	* [Windows/Linux] fix: map echoCancellation/noiseSuppression/autoGainControl constraints to RTCAudioOptions (#2068)
 
 [3.0.0] - 2026-05-14
 
