@@ -6,6 +6,27 @@ to end. This document is the handoff for the remaining testing/validation work, 
 real Linux (and eventually Windows) machine with the actual toolchain — this environment could
 only do static/syntax-level verification.
 
+> **Update (2026-07-17) — approach changed + Linux build working.** Two things changed since the
+> paragraph above was written:
+>
+> 1. **The wrapper is now vendored into `GetStream/webrtc` at `//libwebrtc`** rather than fetched
+>    from `webrtc-sdk/libwebrtc` at build time. Apple/Android never used the wrapper, and keeping
+>    a build-time patch in sync with an upstream we don't control was fragile. The wrapper source
+>    (MIT) now lives in-tree with its m145 compatibility fixes applied directly; the fetch logic
+>    is removed from the `desktop` fastlane lane. See `libwebrtc/VENDORING.md` in `GetStream/webrtc`
+>    for provenance (upstream commit `8586c07c…`) and the exact local modifications.
+> 2. **The `libwebrtc.so` desktop build now succeeds for linux/x64** on a real Ubuntu machine —
+>    a valid ~25 MB ELF exporting the `libwebrtc::` symbols, packaged as
+>    `libwebrtc-linux-x64-release.zip` in the layout `third_party/CMakeLists.txt` expects. Getting
+>    there required a new `rtc_build_libwebrtc` GN arg (the wrapper GN target must be reachable for
+>    `gn gen` to emit it — the dropped `add_libwebrtc_build_target` patch was actually needed) and
+>    three wrapper source fixes: add `#include <cstdint>`, drop the frame-cryptor
+>    `key_derivation_algorithm` (absent in m145), and drop `CreateAudioDeviceModule`'s removed 3rd
+>    arg.
+>
+> Sections below describing the fetch/pin mechanism are superseded by the vendoring; the
+> remaining-work steps (publish, end-to-end, Windows, webOS) still stand.
+
 ## Why this work exists
 
 `stream_webrtc_flutter`'s desktop platforms (Windows, Linux, eLinux) don't use the native
@@ -38,11 +59,11 @@ was used throughout this work and matters if these clones are shared with others
 
 ### 1. `GetStream/webrtc` — desktop wrapper compatibility (commit `f268371008`)
 
-The `libwebrtc` C++ wrapper's own source (`include/`, `src/`) is **not** vendored into
-`GetStream/webrtc` — see the pre-existing `.gitignore` rule for `/libwebrtc` (added independently
-by a Stream engineer in Nov 2024). It's fetched fresh from `webrtc-sdk/libwebrtc` at build time
-(see fastlane lane below). What **does** need to live in `GetStream/webrtc` permanently is
-whatever changes core WebRTC itself needs so that wrapper source compiles.
+The `libwebrtc` C++ wrapper's own source (`include/`, `src/`) is now **vendored into
+`GetStream/webrtc` at `//libwebrtc`** (the pre-existing `.gitignore` `/libwebrtc` rule was
+removed; see `libwebrtc/VENDORING.md` for provenance and the m145 fixes applied in-tree).
+Previously it was fetched fresh from `webrtc-sdk/libwebrtc` at build time. Separately, core
+WebRTC itself needs the following changes so that wrapper source compiles:
 
 Three of `webrtc-sdk/libwebrtc`'s four wrapper-compatibility patches (originally written against
 `webrtc-sdk/webrtc@m144_release`) were forward-ported onto `GetStream/webrtc`'s `145.10.0` tag
@@ -96,10 +117,13 @@ lane (direct `gn gen` + `ninja`, not the Apple/Android Python-script delegation)
 
 - Takes `target_os` (`linux`/`win`/`webos`), `arch` (`x64`/`arm64`/`arm`), `profile`
   (`release`/`debug`), resolves the matching local mb config.
-- Fetches the `libwebrtc` wrapper source fresh from a **pinned** `webrtc-sdk/libwebrtc` commit
-  (`8586c07c4c0a82f645cb0867913d43593a9e9466`) into `<root>/libwebrtc` — unpatched, since (per
-  above) only `GetStream/webrtc`'s own core needed patching, not the wrapper itself.
-- Builds the `libwebrtc` GN target explicitly by name.
+- ~~Fetches the `libwebrtc` wrapper source fresh from a pinned `webrtc-sdk/libwebrtc` commit.~~
+  **Superseded (2026-07-17):** the wrapper is now vendored in-tree at `GetStream/webrtc`'s
+  `//libwebrtc`, so the lane no longer fetches anything — it compiles the wrapper straight from
+  the checkout. (The wrapper *did* need three m145 source fixes; those live in the vendored tree,
+  see `libwebrtc/VENDORING.md`.)
+- Builds the `libwebrtc` GN target explicitly by name (enabled via the `rtc_build_libwebrtc=true`
+  GN arg the lane injects; the target is off by default so mobile builds are unaffected).
 - Stages `lib/` (the `.so`/`.dll`(+`.lib`)) + `include/` + `LICENSE` into a self-contained
   artifact directory, then zips it as `libwebrtc-{target_os}-{arch}-{profile}.zip`, wrapped in a
   single top-level directory — **this exact layout and naming was chosen to match what
@@ -188,12 +212,13 @@ bundle exec fastlane desktop build \
 (This assumes a `gclient sync`/`runhooks` has already populated `.output/src` — see how
 `prepare-desktop`'s composite action does it, or just run the CI job instead, see Step 2.)
 
-Expect to iterate here — this is genuinely untested. Watch particularly for:
-- Whether the pinned wrapper commit (`8586c07c4c0a82f645cb0867913d43593a9e9466`) actually builds
-  cleanly against `GetStream/webrtc@145.10.0` with the audio-transport-factory patch — the
-  `-fsyntax-only` check in this work only validated `common/cpp`'s usage of the wrapper's public
-  headers, **not** the wrapper's own `src/*.cc` implementation, which wasn't compiled at all.
-- GN/ninja errors from the `libwebrtc` target itself.
+**Update (2026-07-17): linux/x64 now builds successfully** from the vendored wrapper — the
+wrapper's `src/*.cc` compiles and links against `GetStream/webrtc@m145` after the three fixes
+noted at the top. The concerns below are resolved for linux/x64; arm64/Windows/webOS still need
+their first real build.
+- ~~Whether the wrapper builds cleanly against m145~~ — done for linux/x64 (the wrapper's own
+  `src/*.cc` is now compiled, not just header-checked).
+- GN/ninja errors from the `libwebrtc` target itself — resolved via the `rtc_build_libwebrtc` arg.
 
 Once linux x64 builds, try `arch:arm64` too (likely needs cross-compilation setup or an arm64
 runner/machine).
@@ -266,9 +291,12 @@ This phase's webOS scope is **only** getting `libwebrtc.so` to build for the arm
 
 - **Windows CI is unverified** — first-ever Windows job in `GetStream/webrtc`'s Actions history.
 - **webOS NDK provisioning is an open problem**, not solved by this work.
-- **Wrapper `src/*.cc` was never actually compiled**, only its public headers' usage from
-  `common/cpp` was verified. The real GN/ninja build (Step 1) is the first time the wrapper's own
-  implementation gets compiled against `GetStream/webrtc@145.10.0`.
+- ~~**Wrapper `src/*.cc` was never actually compiled**~~ — resolved for linux/x64 (2026-07-17):
+  the vendored wrapper now compiles and links against `GetStream/webrtc@m145`. arm64/Windows/webOS
+  wrapper builds are still unverified.
+- **Vendored-wrapper drift**: the wrapper is now in-tree at `//libwebrtc` with local m145 fixes
+  (see `libwebrtc/VENDORING.md`). Pulling newer `webrtc-sdk/libwebrtc` changes is a deliberate
+  manual merge that must re-apply those fixes — there is no automatic sync.
 - **Future WebRTC milestone bumps**: the `AudioTransportFactory` patch is now permanent
   `GetStream/webrtc` source (not a reapplied `.patch` file), living in files this fork's own
   audio-pipeline branches (stereo playout, reworked audio pipeline, etc.) also touch — check it
