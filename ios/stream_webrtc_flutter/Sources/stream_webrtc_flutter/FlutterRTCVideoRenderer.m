@@ -20,6 +20,11 @@
   bool _isFirstFrameRendered;
   bool _frameAvailable;
   os_unfair_lock _lock;
+  id<RTCI420Buffer> _rotatedBuffer;  // reused across frames for rotation
+  CVPixelBufferRef _nv12BufferRef;   // reused NV12 output for the crop path
+  CVPixelBufferRef _currentBuffer;   // buffer handed to Flutter this frame
+  uint8_t* _cropTempBuffer;          // reused scratch for cropAndScaleTo
+  size_t _cropTempSize;
 }
 
 @synthesize textureId = _textureId;
@@ -54,12 +59,28 @@
 - (CVPixelBufferRef)copyPixelBuffer {
   CVPixelBufferRef buffer = nil;
   os_unfair_lock_lock(&_lock);
-  if (_pixelBufferRef != nil && _frameAvailable) {
-    buffer = CVBufferRetain(_pixelBufferRef);
+  if (_currentBuffer != nil && _frameAvailable) {
+    buffer = CVBufferRetain(_currentBuffer);
     _frameAvailable = false;
   }
   os_unfair_lock_unlock(&_lock);
   return buffer;
+}
+
+// (re)create the reused NV12 output buffer used by the crop path.
+- (void)ensureNV12BufferWithWidth:(int)width height:(int)height {
+  if (_nv12BufferRef != nil && CVPixelBufferGetWidth(_nv12BufferRef) == (size_t)width &&
+      CVPixelBufferGetHeight(_nv12BufferRef) == (size_t)height) {
+    return;
+  }
+  if (_nv12BufferRef != nil) {
+    CVBufferRelease(_nv12BufferRef);
+    _nv12BufferRef = nil;
+  }
+  NSDictionary* attrs = @{(id)kCVPixelBufferIOSurfacePropertiesKey : @{}};
+  CVPixelBufferCreate(kCFAllocatorDefault, width, height,
+                      kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+                      (__bridge CFDictionaryRef)attrs, &_nv12BufferRef);
 }
 
 - (void)dispose {
@@ -70,6 +91,20 @@
     CVBufferRelease(_pixelBufferRef);
     _pixelBufferRef = nil;
   }
+  if (_currentBuffer) {
+    CVBufferRelease(_currentBuffer);
+    _currentBuffer = nil;
+  }
+  if (_nv12BufferRef) {
+    CVBufferRelease(_nv12BufferRef);
+    _nv12BufferRef = nil;
+  }
+  if (_cropTempBuffer) {
+    free(_cropTempBuffer);
+    _cropTempBuffer = NULL;
+    _cropTempSize = 0;
+  }
+  _rotatedBuffer = nil;  // release the reused rotation buffer
   _frameAvailable = false;
   os_unfair_lock_unlock(&_lock);
 }
@@ -95,6 +130,11 @@
 
 - (id<RTCI420Buffer>)correctRotation:(const id<RTCI420Buffer>)src
                         withRotation:(RTCVideoRotation)rotation {
+  // an unrotated frame needs no rotation
+  if (rotation == RTCVideoRotation_0) {
+    return src;
+  }
+
   int rotated_width = src.width;
   int rotated_height = src.height;
 
@@ -104,8 +144,13 @@
     rotated_height = temp;
   }
 
-  id<RTCI420Buffer> buffer = [[RTCI420Buffer alloc] initWithWidth:rotated_width
-                                                           height:rotated_height];
+  // reuse one rotation buffer across frames; (re)allocate only when the
+  // rotated dimensions change, instead of allocating on every frame.
+  if (_rotatedBuffer == nil || _rotatedBuffer.width != rotated_width ||
+      _rotatedBuffer.height != rotated_height) {
+    _rotatedBuffer = [[RTCI420Buffer alloc] initWithWidth:rotated_width height:rotated_height];
+  }
+  id<RTCI420Buffer> buffer = _rotatedBuffer;
 
   [RTCYUVHelper I420Rotate:src.dataY
                 srcStrideY:src.strideY
@@ -128,8 +173,8 @@
 
 - (void)copyI420ToCVPixelBuffer:(CVPixelBufferRef)outputPixelBuffer
                       withFrame:(RTCVideoFrame*)frame {
-  id<RTCI420Buffer> i420Buffer = [self correctRotation:[frame.buffer toI420]
-                                          withRotation:frame.rotation];
+  id<RTCI420Buffer> srcI420 = [frame.buffer toI420];
+  id<RTCI420Buffer> i420Buffer = [self correctRotation:srcI420 withRotation:frame.rotation];
   CVPixelBufferLockBaseAddress(outputPixelBuffer, 0);
 
   const OSType pixelFormat = CVPixelBufferGetPixelFormatType(outputPixelBuffer);
@@ -197,12 +242,55 @@
     os_unfair_lock_unlock(&_lock);
     return;
   }
-  if (!_frameAvailable && _pixelBufferRef) {
-    [self copyI420ToCVPixelBuffer:_pixelBufferRef withFrame:frame];
-    if (_textureId != -1) {
-      [_registry textureFrameAvailable:_textureId];
+  if (!_frameAvailable) {
+    CVPixelBufferRef output = NULL;  // becomes the buffer handed to Flutter
+
+    // hardware-decoded, upright frames are already NV12 in an IOSurface.
+    // Hand that to Flutter with no color conversion — zero-copy when the buffer
+    // is unpadded, otherwise a single crop-copy into a reused NV12 buffer.
+    if (frame.rotation == RTCVideoRotation_0 &&
+        [frame.buffer isKindOfClass:[RTCCVPixelBuffer class]]) {
+      RTCCVPixelBuffer* cvBuffer = (RTCCVPixelBuffer*)frame.buffer;
+      CVPixelBufferRef src = cvBuffer.pixelBuffer;
+      const OSType fmt = CVPixelBufferGetPixelFormatType(src);
+      if (fmt == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange ||
+          fmt == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) {
+        if (![cvBuffer requiresCropping] && CVPixelBufferGetIOSurface(src) != NULL) {
+          output = src;  // true zero-copy
+        } else {
+          [self ensureNV12BufferWithWidth:cvBuffer.cropWidth height:cvBuffer.cropHeight];
+          int tmpSize = [cvBuffer bufferSizeForCroppingAndScalingToWidth:cvBuffer.cropWidth
+                                                                  height:cvBuffer.cropHeight];
+          if (tmpSize > 0 && (_cropTempBuffer == NULL || _cropTempSize < (size_t)tmpSize)) {
+            free(_cropTempBuffer);
+            _cropTempBuffer = malloc((size_t)tmpSize);
+            _cropTempSize = (size_t)tmpSize;
+          }
+          if (_nv12BufferRef != nil && [cvBuffer cropAndScaleTo:_nv12BufferRef
+                                                 withTempBuffer:_cropTempBuffer]) {
+            output = _nv12BufferRef;
+          }
+        }
+      }
     }
-    _frameAvailable = true;
+
+    if (output == NULL && _pixelBufferRef != nil) {
+      // Fallback: software-decoded (I420) or rotated frames → BGRA convert path
+      [self copyI420ToCVPixelBuffer:_pixelBufferRef withFrame:frame];
+      output = _pixelBufferRef;
+    }
+
+    if (output != NULL) {
+      CVBufferRetain(output);
+      if (_currentBuffer != nil) {
+        CVBufferRelease(_currentBuffer);
+      }
+      _currentBuffer = output;
+      if (_textureId != -1) {
+        [_registry textureFrameAvailable:_textureId];
+      }
+      _frameAvailable = true;
+    }
   }
   os_unfair_lock_unlock(&_lock);
 

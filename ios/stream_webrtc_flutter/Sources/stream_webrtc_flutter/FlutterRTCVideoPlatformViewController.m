@@ -46,7 +46,8 @@
   }
   _videoTrack = videoTrack;
   _isFirstFrameRendered = false;
-  if (!oldValue) {
+  if (oldValue) {
+    // Detach from the previous track.
     [oldValue removeRenderer:(id<RTCVideoRenderer>)self];
     _videoView.frame = CGRectZero;
   }
