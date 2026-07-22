@@ -21,7 +21,7 @@
   bool _frameAvailable;
   os_unfair_lock _lock;
   id<RTCI420Buffer> _rotatedBuffer;  // reused across frames for rotation
-  CVPixelBufferRef _nv12BufferRef;   // reused NV12 output for the crop path
+  CVPixelBufferRef _nv12Buffers[2];  // double-buffered NV12 crop output (ping-pong)
   CVPixelBufferRef _currentBuffer;   // buffer handed to Flutter this frame
   uint8_t* _cropTempBuffer;          // reused scratch for cropAndScaleTo
   size_t _cropTempSize;
@@ -67,20 +67,25 @@
   return buffer;
 }
 
-// (re)create the reused NV12 output buffer used by the crop path.
-- (void)ensureNV12BufferWithWidth:(int)width height:(int)height {
-  if (_nv12BufferRef != nil && CVPixelBufferGetWidth(_nv12BufferRef) == (size_t)width &&
-      CVPixelBufferGetHeight(_nv12BufferRef) == (size_t)height) {
-    return;
-  }
-  if (_nv12BufferRef != nil) {
-    CVBufferRelease(_nv12BufferRef);
-    _nv12BufferRef = nil;
-  }
+// (re)create the two reused NV12 output buffers used by the crop path. They are
+// double-buffered (ping-pong) so the next crop never overwrites the buffer still
+// being read by Flutter. The pixel format is taken from the source frame so
+// video-range and full-range NV12 both keep their correct color range.
+- (void)ensureNV12BuffersWithWidth:(int)width height:(int)height pixelFormat:(OSType)pixelFormat {
   NSDictionary* attrs = @{(id)kCVPixelBufferIOSurfacePropertiesKey : @{}};
-  CVPixelBufferCreate(kCFAllocatorDefault, width, height,
-                      kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
-                      (__bridge CFDictionaryRef)attrs, &_nv12BufferRef);
+  for (int i = 0; i < 2; i++) {
+    if (_nv12Buffers[i] != nil && CVPixelBufferGetWidth(_nv12Buffers[i]) == (size_t)width &&
+        CVPixelBufferGetHeight(_nv12Buffers[i]) == (size_t)height &&
+        CVPixelBufferGetPixelFormatType(_nv12Buffers[i]) == pixelFormat) {
+      continue;
+    }
+    if (_nv12Buffers[i] != nil) {
+      CVBufferRelease(_nv12Buffers[i]);
+      _nv12Buffers[i] = nil;
+    }
+    CVPixelBufferCreate(kCFAllocatorDefault, width, height, pixelFormat,
+                        (__bridge CFDictionaryRef)attrs, &_nv12Buffers[i]);
+  }
 }
 
 - (void)dispose {
@@ -95,9 +100,11 @@
     CVBufferRelease(_currentBuffer);
     _currentBuffer = nil;
   }
-  if (_nv12BufferRef) {
-    CVBufferRelease(_nv12BufferRef);
-    _nv12BufferRef = nil;
+  for (int i = 0; i < 2; i++) {
+    if (_nv12Buffers[i]) {
+      CVBufferRelease(_nv12Buffers[i]);
+      _nv12Buffers[i] = nil;
+    }
   }
   if (_cropTempBuffer) {
     free(_cropTempBuffer);
@@ -258,7 +265,9 @@
         if (![cvBuffer requiresCropping] && CVPixelBufferGetIOSurface(src) != NULL) {
           output = src;  // true zero-copy
         } else {
-          [self ensureNV12BufferWithWidth:cvBuffer.cropWidth height:cvBuffer.cropHeight];
+          [self ensureNV12BuffersWithWidth:cvBuffer.cropWidth
+                                    height:cvBuffer.cropHeight
+                               pixelFormat:fmt];
           int tmpSize = [cvBuffer bufferSizeForCroppingAndScalingToWidth:cvBuffer.cropWidth
                                                                   height:cvBuffer.cropHeight];
           if (tmpSize > 0 && (_cropTempBuffer == NULL || _cropTempSize < (size_t)tmpSize)) {
@@ -266,9 +275,12 @@
             _cropTempBuffer = malloc((size_t)tmpSize);
             _cropTempSize = (size_t)tmpSize;
           }
-          if (_nv12BufferRef != nil && [cvBuffer cropAndScaleTo:_nv12BufferRef
-                                                 withTempBuffer:_cropTempBuffer]) {
-            output = _nv12BufferRef;
+          // Pick the buffer not currently published to Flutter, so the crop never
+          // overwrites the frame the compositor may still be reading.
+          CVPixelBufferRef dst =
+              (_nv12Buffers[0] != _currentBuffer) ? _nv12Buffers[0] : _nv12Buffers[1];
+          if (dst != nil && [cvBuffer cropAndScaleTo:dst withTempBuffer:_cropTempBuffer]) {
+            output = dst;
           }
         }
       }
