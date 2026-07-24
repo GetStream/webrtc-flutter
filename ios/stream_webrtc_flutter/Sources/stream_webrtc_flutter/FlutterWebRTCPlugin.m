@@ -1954,6 +1954,39 @@ static FlutterWebRTCPlugin* sharedSingleton;
         }
       });
     });
+  } else if ([@"admSetMicrophoneMuted" isEqualToString:call.method]) {
+    NSString* factoryId = call.arguments[@"factoryId"];
+    NSNumber* muted = call.arguments[@"muted"];
+    NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+    if (nf == nil) {
+      result([FlutterError
+          errorWithCode:@"admSetMicrophoneMuted"
+                message:[NSString stringWithFormat:@"unknown factoryId %@", factoryId]
+                details:nil]);
+      return;
+    }
+    RTCAudioDeviceModule* adm = nf.audioDeviceModule;
+    // Run on background queue
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+      // Mutes capture inside the Voice-Processing I/O unit while the audio
+      // engine keeps running, so Apple's muted-talker detection stays armed
+      // and the ADM keeps delivering didReceiveSpeechActivityEvent while the
+      // user speaks muted.
+      NSInteger admResult = [adm setMicrophoneMuted:muted.boolValue];
+
+      // Return to main queue
+      dispatch_async(dispatch_get_main_queue(), ^{
+        if (admResult == 0) {
+          result(nil);
+        } else {
+          result([FlutterError
+              errorWithCode:[NSString stringWithFormat:@"%@ failed", call.method]
+                    message:[NSString stringWithFormat:@"Error: adm api failed with code: %ld",
+                                                       (long)admResult]
+                    details:nil]);
+        }
+      });
+    });
   } else if ([@"suspendAudioPeerConnectionFactory" isEqualToString:call.method]) {
     NSString* factoryId = call.arguments[@"factoryId"];
     NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];

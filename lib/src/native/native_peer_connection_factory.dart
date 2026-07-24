@@ -203,6 +203,23 @@ class NativePeerConnectionFactory {
     }
   }
 
+  /// Mutes / unmutes microphone capture at the audio-device-module level,
+  /// keeping the audio engine capturing.
+  Future<void> setMicrophoneMuted(bool muted) async {
+    _checkDisposed('setMicrophoneMuted');
+    try {
+      await WebRTC.invokeMethod(
+        'admSetMicrophoneMuted',
+        <String, dynamic>{
+          'factoryId': factoryId,
+          'muted': muted,
+        },
+      );
+    } on PlatformException catch (e) {
+      throw 'Unable to set microphone muted: ${e.message}';
+    }
+  }
+
   /// Disposes the underlying native factory.
   Future<void> dispose() async {
     if (_disposed) {

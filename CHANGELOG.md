@@ -1,6 +1,12 @@
 
 # Changelog
 
+Upcoming
+
+* Added `NativePeerConnectionFactory.setMicrophoneMuted` (`admSetMicrophoneMuted` method channel): mutes microphone capture at the audio-device-module level while the audio engine keeps running.
+	* [iOS/macOS] Mutes inside the Voice-Processing I/O unit, arming Apple's muted-talker detection so the plugin emits `onSpeechActivityChanged` events while the user speaks muted.
+	* [Android] Maps to `JavaAudioDeviceModule.setMicrophoneMute`.
+
 [3.0.1] - 2026.07.10
 
 * [iOS] Added an onAudioRouteChangeEvent that fires whenever audio output route changes.

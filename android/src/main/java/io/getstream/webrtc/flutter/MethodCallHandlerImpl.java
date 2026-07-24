@@ -1582,6 +1582,21 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         });
         break;
       }
+      case "admSetMicrophoneMuted": {
+        final String factoryId = call.argument("factoryId");
+        final Boolean muted = call.argument("muted");
+        final NativePeerConnectionFactory nf = resolveFactory(factoryId);
+        if (nf == null) {
+          resultError("admSetMicrophoneMuted", "unknown factoryId " + factoryId, result);
+          break;
+        }
+        final JavaAudioDeviceModule adm = nf.adm;
+        executor.execute(() -> {
+          adm.setMicrophoneMute(muted != null && muted);
+          mainHandler.post(() -> result.success(null));
+        });
+        break;
+      }
       case "setLogSeverity": {
         //now it's possible to setup logSeverity only via PeerConnectionFactory.initialize method
         //Log.d(TAG, "no implementation for 'setLogSeverity'");
