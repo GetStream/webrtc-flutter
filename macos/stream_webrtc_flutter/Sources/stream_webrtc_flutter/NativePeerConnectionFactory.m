@@ -23,6 +23,11 @@
     _ownedTrackIds = [NSMutableSet new];
     _ownedStreamIds = [NSMutableSet new];
     _disposed = NO;
+    // Ensure ADM operations are executed sequentially in order of invocation.
+    _admQueue = dispatch_queue_create(
+        [[NSString stringWithFormat:@"io.getstream.webrtc.adm.%@", factoryId] UTF8String],
+        dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED,
+                                                0));
 
     VideoDecoderFactory* decoderFactory = [[VideoDecoderFactory alloc] init];
     VideoEncoderFactory* encoderFactory = [[VideoEncoderFactory alloc] init];

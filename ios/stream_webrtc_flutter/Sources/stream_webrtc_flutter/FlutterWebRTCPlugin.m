@@ -1909,8 +1909,16 @@ static FlutterWebRTCPlugin* sharedSingleton;
       return;
     }
     RTCAudioDeviceModule* adm = nf.audioDeviceModule;
-    // Run on background queue
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+    if (adm == nil) {
+      result([FlutterError
+          errorWithCode:@"startLocalRecording"
+                message:[NSString
+                            stringWithFormat:@"factory %@ has no audio device module", factoryId]
+                details:nil]);
+      return;
+    }
+    // Run on the factory's serial ADM queue
+    dispatch_async(nf.admQueue, ^{
       NSInteger admResult = [adm initAndStartRecording];
 
       // Return to main queue
@@ -1937,8 +1945,16 @@ static FlutterWebRTCPlugin* sharedSingleton;
       return;
     }
     RTCAudioDeviceModule* adm = nf.audioDeviceModule;
-    // Run on background queue
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+    if (adm == nil) {
+      result([FlutterError
+          errorWithCode:@"stopLocalRecording"
+                message:[NSString
+                            stringWithFormat:@"factory %@ has no audio device module", factoryId]
+                details:nil]);
+      return;
+    }
+    // Run on the factory's serial ADM queue
+    dispatch_async(nf.admQueue, ^{
       NSInteger admResult = [adm stopRecording];
 
       // Return to main queue
@@ -1966,8 +1982,17 @@ static FlutterWebRTCPlugin* sharedSingleton;
       return;
     }
     RTCAudioDeviceModule* adm = nf.audioDeviceModule;
-    // Run on background queue
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+    if (adm == nil) {
+      result([FlutterError
+          errorWithCode:@"admSetMicrophoneMuted"
+                message:[NSString
+                            stringWithFormat:@"factory %@ has no audio device module", factoryId]
+                details:nil]);
+      return;
+    }
+    // Run on the factory's serial ADM queue: mute is an absolute set, so two
+    // rapid toggles must not be reordered.
+    dispatch_async(nf.admQueue, ^{
       // Mutes capture inside the Voice-Processing I/O unit while the audio
       // engine keeps running, so Apple's muted-talker detection stays armed
       // and the ADM keeps delivering didReceiveSpeechActivityEvent while the
@@ -1998,11 +2023,18 @@ static FlutterWebRTCPlugin* sharedSingleton;
       return;
     }
     RTCAudioDeviceModule* adm = nf.audioDeviceModule;
+    if (adm == nil) {
+      // Nothing to suspend: the factory already released its ADM.
+      nf.wasPlayingBeforeSuspend = NO;
+      nf.wasRecordingBeforeSuspend = NO;
+      result(nil);
+      return;
+    }
     BOOL wasPlaying = adm.isPlaying;
     BOOL wasRecording = adm.isRecording;
     nf.wasPlayingBeforeSuspend = wasPlaying;
     nf.wasRecordingBeforeSuspend = wasRecording;
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+    dispatch_async(nf.admQueue, ^{
       if (wasRecording)
         [adm stopRecording];
       if (wasPlaying)
@@ -2022,13 +2054,20 @@ static FlutterWebRTCPlugin* sharedSingleton;
       return;
     }
     RTCAudioDeviceModule* adm = nf.audioDeviceModule;
+    if (adm == nil) {
+      // Nothing to restore: the factory already released its ADM.
+      nf.wasPlayingBeforeSuspend = NO;
+      nf.wasRecordingBeforeSuspend = NO;
+      result(nil);
+      return;
+    }
     NSDictionary* audioConfigSnapshot = nf.audioConfigSnapshot;
     BOOL restorePlaying = nf.wasPlayingBeforeSuspend;
     BOOL restoreRecording = nf.wasRecordingBeforeSuspend;
     if (audioConfigSnapshot != nil) {
       [AudioUtils setAppleAudioConfiguration:audioConfigSnapshot];
     }
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+    dispatch_async(nf.admQueue, ^{
       if (restorePlaying) {
         [adm initPlayout];
         [adm startPlayout];
