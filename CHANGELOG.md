@@ -6,6 +6,11 @@ Upcoming
 * Added `NativePeerConnectionFactory.setMicrophoneMuted` (`admSetMicrophoneMuted` method channel): mutes microphone capture at the audio-device-module level while the audio engine keeps running.
 	* [iOS/macOS] Mutes inside the Voice-Processing I/O unit, arming Apple's muted-talker detection so the plugin emits `onSpeechActivityChanged` events while the user speaks muted.
 	* [Android] Maps to `JavaAudioDeviceModule.setMicrophoneMute`.
+* Added `NativePeerConnectionFactory.isMicrophoneMuted` (`admIsMicrophoneMuted` method channel): reads back the ADM mute state.
+	* [iOS/macOS] Reads the ADM's own state.
+	* [Android] Mirrors the last requested value.
+* [iOS/macOS] ADM operations (start/stop recording, microphone mute, suspend/resume) now run on a per-factory serial queue instead of the global concurrent queue. Two rapid `setMicrophoneMuted` calls could previously be applied out of order, leaving the microphone in the wrong state indefinitely.
+* [iOS/macOS] ADM method-channel handlers now report an error instead of a silent success when the factory has already released its audio device module.
 
 [3.0.1] - 2026.07.10
 

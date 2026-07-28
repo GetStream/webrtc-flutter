@@ -1591,9 +1591,26 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
           break;
         }
         final JavaAudioDeviceModule adm = nf.adm;
+        final boolean admMute = muted != null && muted;
         executor.execute(() -> {
-          adm.setMicrophoneMute(muted != null && muted);
+          adm.setMicrophoneMute(admMute);
+          nf.setMicrophoneMuted(admMute);
           mainHandler.post(() -> result.success(null));
+        });
+        break;
+      }
+      case "admIsMicrophoneMuted": {
+        final String factoryId = call.argument("factoryId");
+        final NativePeerConnectionFactory nf = resolveFactory(factoryId);
+        if (nf == null) {
+          resultError("admIsMicrophoneMuted", "unknown factoryId " + factoryId, result);
+          break;
+        }
+        // Read on the same executor that applies mutes, so the value reflects
+        // every mute already requested.
+        executor.execute(() -> {
+          final boolean muted = nf.isMicrophoneMuted();
+          mainHandler.post(() -> result.success(muted));
         });
         break;
       }

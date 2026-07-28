@@ -51,6 +51,8 @@ class NativePeerConnectionFactory {
   Future<void> setMicrophoneMuted(bool muted) async =>
       throw UnimplementedError();
 
+  Future<bool> isMicrophoneMuted() async => throw UnimplementedError();
+
   Future<void> suspendAudio() async {}
   Future<void> resumeAudio() async {}
 

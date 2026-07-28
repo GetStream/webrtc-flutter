@@ -220,6 +220,22 @@ class NativePeerConnectionFactory {
     }
   }
 
+  /// Reads back the audio-device-module microphone mute state.
+  Future<bool> isMicrophoneMuted() async {
+    _checkDisposed('isMicrophoneMuted');
+    try {
+      final response = await WebRTC.invokeMethod(
+        'admIsMicrophoneMuted',
+        <String, dynamic>{
+          'factoryId': factoryId,
+        },
+      );
+      return response == true;
+    } on PlatformException catch (e) {
+      throw 'Unable to read microphone muted: ${e.message}';
+    }
+  }
+
   /// Disposes the underlying native factory.
   Future<void> dispose() async {
     if (_disposed) {
