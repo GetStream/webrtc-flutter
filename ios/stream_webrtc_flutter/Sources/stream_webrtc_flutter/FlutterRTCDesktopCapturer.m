@@ -77,9 +77,20 @@ NSArray<RTCDesktopSource*>* _captureSources;
     } else {
       NSLog(@"Not able to find the %@ key", kRTCScreenSharingExtension);
     }
-    SEL selector = NSSelectorFromString(@"buttonPressed:");
-    if ([picker respondsToSelector:selector]) {
-      [picker performSelector:selector withObject:nil];
+    // Trigger the picker's internal button via public UIControl APIs only.
+    // Calling the private buttonPressed: selector gets apps rejected under
+    // App Store Guideline 2.5.1 (non-public API).
+    UIButton* pickerButton = nil;
+    for (UIView* subview in picker.subviews) {
+      if ([subview isKindOfClass:[UIButton class]]) {
+        pickerButton = (UIButton*)subview;
+        break;
+      }
+    }
+    if (pickerButton != nil) {
+      [pickerButton sendActionsForControlEvents:UIControlEventTouchUpInside];
+    } else {
+      NSLog(@"RPSystemBroadcastPickerView button not found, broadcast picker was not presented");
     }
   }
 #endif
@@ -152,15 +163,14 @@ NSArray<RTCDesktopSource*>* _captureSources;
   };
 #endif
 
-  RTCVideoTrack* videoTrack = [nf.factory videoTrackWithSource:videoSource
-                                                       trackId:trackUUID];
+  RTCVideoTrack* videoTrack = [nf.factory videoTrackWithSource:videoSource trackId:trackUUID];
   [mediaStream addVideoTrack:videoTrack];
 
   LocalVideoTrack* localVideoTrack = [[LocalVideoTrack alloc] initWithTrack:videoTrack
                                                             videoProcessing:videoProcessingAdapter];
 
   [self.localTracks setObject:localVideoTrack forKey:trackUUID];
-  
+
   if (nf.factoryId != nil) {
     self.trackFactoryId[trackUUID] = nf.factoryId;
   }

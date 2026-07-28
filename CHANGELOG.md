@@ -11,6 +11,7 @@ Upcoming
 	* [Android] Mirrors the last requested value.
 * [iOS/macOS] ADM operations (start/stop recording, microphone mute, suspend/resume) now run on a per-factory serial queue instead of the global concurrent queue. Two rapid `setMicrophoneMuted` calls could previously be applied out of order, leaving the microphone in the wrong state indefinitely.
 * [iOS/macOS] ADM method-channel handlers now report an error instead of a silent success when the factory has already released its audio device module.
+* [iOS] fix: trigger the screen-share broadcast picker (`RPSystemBroadcastPickerView`) via public APIs instead of the private `buttonPressed:` selector.
 
 [3.0.1] - 2026.07.10
 
