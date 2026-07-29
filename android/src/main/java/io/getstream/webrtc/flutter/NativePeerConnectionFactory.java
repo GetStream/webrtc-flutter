@@ -100,11 +100,6 @@ public class NativePeerConnectionFactory {
      *  factory is being built, so the new factory can claim the shared global
      *  APM. */
     private volatile boolean audioSuspended = false;
-
-    /**
-     * Holds the last known microphone mute state as set or observed.
-     */
-    private volatile boolean microphoneMuted = false;
     @NonNull
     public final RecordSamplesReadyCallbackAdapter recordSamplesAdapter;
     @NonNull
@@ -178,14 +173,6 @@ public class NativePeerConnectionFactory {
 
     public void setAudioSuspended(boolean value) {
         this.audioSuspended = value;
-    }
-
-    public boolean isMicrophoneMuted() {
-        return microphoneMuted;
-    }
-
-    public void setMicrophoneMuted(boolean value) {
-        this.microphoneMuted = value;
     }
 
     /**

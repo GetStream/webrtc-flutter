@@ -57,6 +57,11 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, assign) BOOL wasPlayingBeforeSuspend;
 @property(nonatomic, assign) BOOL wasRecordingBeforeSuspend;
 
+/**
+ * Whether audio is currently suspended.
+ */
+@property(nonatomic, assign) BOOL audioSuspended;
+
 - (instancetype)initWithFactoryId:(NSString*)factoryId
             bypassVoiceProcessing:(BOOL)bypassVoiceProcessing
                 networkIgnoreMask:(NSArray<NSString*>*)networkIgnoreMask

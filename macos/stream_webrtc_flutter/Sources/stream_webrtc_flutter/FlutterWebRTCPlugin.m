@@ -1739,21 +1739,27 @@ static FlutterWebRTCPlugin* sharedSingleton;
         }
       });
     });
-  } else if ([@"admSetMicrophoneMuted" isEqualToString:call.method]) {
+  } else if ([@"appleAdmSetMicrophoneMuted" isEqualToString:call.method]) {
     NSString* factoryId = call.arguments[@"factoryId"];
     NSNumber* muted = call.arguments[@"muted"];
     NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
     if (nf == nil) {
       result([FlutterError
-          errorWithCode:@"admSetMicrophoneMuted"
+          errorWithCode:@"appleAdmSetMicrophoneMuted"
                 message:[NSString stringWithFormat:@"unknown factoryId %@", factoryId]
                 details:nil]);
+      return;
+    }
+    if (![muted isKindOfClass:[NSNumber class]]) {
+      result([FlutterError errorWithCode:@"appleAdmSetMicrophoneMuted"
+                                 message:@"missing or non-boolean 'muted' argument"
+                                 details:nil]);
       return;
     }
     RTCAudioDeviceModule* adm = nf.audioDeviceModule;
     if (adm == nil) {
       result([FlutterError
-          errorWithCode:@"admSetMicrophoneMuted"
+          errorWithCode:@"appleAdmSetMicrophoneMuted"
                 message:[NSString
                             stringWithFormat:@"factory %@ has no audio device module", factoryId]
                 details:nil]);
@@ -1781,12 +1787,12 @@ static FlutterWebRTCPlugin* sharedSingleton;
         }
       });
     });
-  } else if ([@"admIsMicrophoneMuted" isEqualToString:call.method]) {
+  } else if ([@"appleAdmIsMicrophoneMuted" isEqualToString:call.method]) {
     NSString* factoryId = call.arguments[@"factoryId"];
     NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
     if (nf == nil) {
       result([FlutterError
-          errorWithCode:@"admIsMicrophoneMuted"
+          errorWithCode:@"appleAdmIsMicrophoneMuted"
                 message:[NSString stringWithFormat:@"unknown factoryId %@", factoryId]
                 details:nil]);
       return;
@@ -1794,7 +1800,7 @@ static FlutterWebRTCPlugin* sharedSingleton;
     RTCAudioDeviceModule* adm = nf.audioDeviceModule;
     if (adm == nil) {
       result([FlutterError
-          errorWithCode:@"admIsMicrophoneMuted"
+          errorWithCode:@"appleAdmIsMicrophoneMuted"
                 message:[NSString
                             stringWithFormat:@"factory %@ has no audio device module", factoryId]
                 details:nil]);
@@ -1822,6 +1828,7 @@ static FlutterWebRTCPlugin* sharedSingleton;
       dispatch_async(nf.admQueue, ^{
         nf.wasPlayingBeforeSuspend = NO;
         nf.wasRecordingBeforeSuspend = NO;
+        nf.audioSuspended = NO;
         dispatch_async(dispatch_get_main_queue(), ^{
           result(nil);
         });
@@ -1829,14 +1836,18 @@ static FlutterWebRTCPlugin* sharedSingleton;
       return;
     }
     dispatch_async(nf.admQueue, ^{
-      BOOL wasPlaying = adm.isPlaying;
-      BOOL wasRecording = adm.isRecording;
-      nf.wasPlayingBeforeSuspend = wasPlaying;
-      nf.wasRecordingBeforeSuspend = wasRecording;
-      if (wasRecording)
-        [adm stopRecording];
-      if (wasPlaying)
-        [adm stopPlayout];
+      // Idempotent: only the first suspend snapshots and stops.
+      if (!nf.audioSuspended) {
+        BOOL wasPlaying = adm.isPlaying;
+        BOOL wasRecording = adm.isRecording;
+        nf.wasPlayingBeforeSuspend = wasPlaying;
+        nf.wasRecordingBeforeSuspend = wasRecording;
+        nf.audioSuspended = YES;
+        if (wasRecording)
+          [adm stopRecording];
+        if (wasPlaying)
+          [adm stopPlayout];
+      }
       dispatch_async(dispatch_get_main_queue(), ^{
         result(nil);
       });
@@ -1857,6 +1868,7 @@ static FlutterWebRTCPlugin* sharedSingleton;
       dispatch_async(nf.admQueue, ^{
         nf.wasPlayingBeforeSuspend = NO;
         nf.wasRecordingBeforeSuspend = NO;
+        nf.audioSuspended = NO;
         dispatch_async(dispatch_get_main_queue(), ^{
           result(nil);
         });
@@ -1864,18 +1876,21 @@ static FlutterWebRTCPlugin* sharedSingleton;
       return;
     }
     dispatch_async(nf.admQueue, ^{
-      BOOL restorePlaying = nf.wasPlayingBeforeSuspend;
-      BOOL restoreRecording = nf.wasRecordingBeforeSuspend;
-      if (restorePlaying) {
-        [adm initPlayout];
-        [adm startPlayout];
+      if (nf.audioSuspended) {
+        BOOL restorePlaying = nf.wasPlayingBeforeSuspend;
+        BOOL restoreRecording = nf.wasRecordingBeforeSuspend;
+        if (restorePlaying) {
+          [adm initPlayout];
+          [adm startPlayout];
+        }
+        if (restoreRecording) {
+          [adm initRecording];
+          [adm startRecording];
+        }
+        nf.wasPlayingBeforeSuspend = NO;
+        nf.wasRecordingBeforeSuspend = NO;
+        nf.audioSuspended = NO;
       }
-      if (restoreRecording) {
-        [adm initRecording];
-        [adm startRecording];
-      }
-      nf.wasPlayingBeforeSuspend = NO;
-      nf.wasRecordingBeforeSuspend = NO;
       dispatch_async(dispatch_get_main_queue(), ^{
         result(nil);
       });

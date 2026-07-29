@@ -203,13 +203,22 @@ class NativePeerConnectionFactory {
     }
   }
 
-  /// Mutes / unmutes microphone capture at the audio-device-module level,
-  /// keeping the audio engine capturing.
+  /// Whether ADM-level microphone mute is available on the current platform.
+  ///
+  /// iOS and macOS only — see [setMicrophoneMuted].
+  static bool get isAdmMicrophoneMuteSupported =>
+      WebRTC.platformIsIOS || WebRTC.platformIsMacOS;
+
+  /// Mutes/unmutes mic at the ADM level (**iOS/macOS only**), allowing detection of "speaking while muted."
+  /// No Android support: mute the local audio track there instead.
+  /// Throws [UnsupportedError] elsewhere; guard with [isAdmMicrophoneMuteSupported].
+  /// [isAdmMicrophoneMuteSupported].
   Future<void> setMicrophoneMuted(bool muted) async {
+    _checkAdmMuteSupported('setMicrophoneMuted');
     _checkDisposed('setMicrophoneMuted');
     try {
       await WebRTC.invokeMethod(
-        'admSetMicrophoneMuted',
+        'appleAdmSetMicrophoneMuted',
         <String, dynamic>{
           'factoryId': factoryId,
           'muted': muted,
@@ -221,11 +230,19 @@ class NativePeerConnectionFactory {
   }
 
   /// Reads back the audio-device-module microphone mute state.
+  ///
+  /// **iOS / macOS only**, same rationale as [setMicrophoneMuted]. Throws
+  /// [UnsupportedError] elsewhere.
+  ///
+  /// Note that the native readback cannot distinguish "not muted" from "the
+  /// ADM could not be queried": both surface as `false`. Treat a `false` here
+  /// as "not known to be muted" rather than proof that capture is live.
   Future<bool> isMicrophoneMuted() async {
+    _checkAdmMuteSupported('isMicrophoneMuted');
     _checkDisposed('isMicrophoneMuted');
     try {
       final response = await WebRTC.invokeMethod(
-        'admIsMicrophoneMuted',
+        'appleAdmIsMicrophoneMuted',
         <String, dynamic>{
           'factoryId': factoryId,
         },
@@ -233,6 +250,15 @@ class NativePeerConnectionFactory {
       return response == true;
     } on PlatformException catch (e) {
       throw 'Unable to read microphone muted: ${e.message}';
+    }
+  }
+
+  void _checkAdmMuteSupported(String method) {
+    if (!isAdmMicrophoneMuteSupported) {
+      throw UnsupportedError(
+        'NativePeerConnectionFactory.$method is only supported on iOS and '
+        'macOS. Mute the local audio track instead.',
+      );
     }
   }
 
