@@ -1,7 +1,7 @@
 
 # Changelog
 
-Upcoming
+[3.0.2] - 2026.07.29
 
 * [iOS] fix: trigger the screen-share broadcast picker (`RPSystemBroadcastPickerView`) via public APIs instead of the private `buttonPressed:` selector.
 
