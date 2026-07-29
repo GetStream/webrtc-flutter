@@ -211,7 +211,7 @@ class NativePeerConnectionFactory {
 
   /// Mutes/unmutes mic at the ADM level (**iOS/macOS only**), allowing detection of "speaking while muted."
   /// No Android support: mute the local audio track there instead.
-  /// Throws [UnsupportedError] elsewhere; guard with [isAdmMicrophoneMuteSupported].
+  /// Throws [UnsupportedError] elsewhere; guard with
   /// [isAdmMicrophoneMuteSupported].
   Future<void> setMicrophoneMuted(bool muted) async {
     _checkAdmMuteSupported('setMicrophoneMuted');
