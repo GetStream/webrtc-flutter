@@ -1,7 +1,7 @@
 
 # Changelog
 
-Upcoming
+[3.0.2] - 2026.07.29
 
 * [iOS/macOS] Added `NativePeerConnectionFactory.setMicrophoneMuted` (`appleAdmSetMicrophoneMuted` method channel): mutes microphone capture at the audio-device-module level while the audio engine keeps running. Mutes inside the Voice-Processing I/O unit, arming Apple's muted-talker detection so the plugin emits `onSpeechActivityChanged` events while the user speaks muted.
 * [iOS/macOS] Added `NativePeerConnectionFactory.isMicrophoneMuted` (`appleAdmIsMicrophoneMuted` method channel): reads the ADM's own mute state. 
