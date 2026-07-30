@@ -24,6 +24,11 @@
     _ownedTrackIds = [NSMutableSet new];
     _ownedStreamIds = [NSMutableSet new];
     _disposed = NO;
+    // Ensure ADM operations are executed sequentially in order of invocation.
+    _admQueue = dispatch_queue_create(
+        [[NSString stringWithFormat:@"io.getstream.webrtc.adm.%@", factoryId] UTF8String],
+        dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED,
+                                                0));
 
     if (appleAudioConfiguration != nil) {
       [AudioUtils setAppleAudioConfiguration:appleAudioConfiguration];
@@ -81,19 +86,35 @@
   }
   _disposed = YES;
 
-  if (_audioDeviceModule != nil) {
-    @try {
-      [_audioDeviceModule stopRecording];
-      [_audioDeviceModule stopPlayout];
-    } @catch (NSException* e) {
-      NSLog(@"[NativePeerConnectionFactory] stopRecording/stopPlayout failed: %@", e);
-    }
-    _audioDeviceModule.observer = nil;
-    _audioDeviceModule = nil;
-  }
-  _factory = nil;
+  RTCAudioDeviceModule* adm = _audioDeviceModule;
+  _audioDeviceModule = nil;
 
-  NSLog(@"[NativePeerConnectionFactory] disposed id: %@", _factoryId);
+  RTCPeerConnectionFactory* factory = _factory;
+  _factory = nil;
+  NSString* factoryId = _factoryId;
+
+  if (adm != nil) {
+    // No further events should reach a factory that is going away.
+    adm.observer = nil;
+    // Stop through the ADM queue rather than inline: operations enqueued before
+    // dispose (start recording, mute, resume, ...) captured the ADM strongly and
+    // would otherwise run after these stops and leave capture running on a
+    // disposed factory. Tailing the queue makes the stops the last ADM calls.
+    // Enqueued asynchronously so dispose never blocks its caller and can never
+    // deadlock when invoked from the ADM queue itself; the block holds the last
+    // references to the ADM and the factory, so both outlive the queued work.
+    dispatch_async(_admQueue, ^{
+      @try {
+        [adm stopRecording];
+        [adm stopPlayout];
+      } @catch (NSException* e) {
+        NSLog(@"[NativePeerConnectionFactory] stopRecording/stopPlayout failed: %@", e);
+      }
+      NSLog(@"[NativePeerConnectionFactory] ADM stopped id: %@ (factory %p)", factoryId, factory);
+    });
+  }
+
+  NSLog(@"[NativePeerConnectionFactory] disposed id: %@", factoryId);
 }
 
 - (BOOL)isDisposed {

@@ -15,6 +15,10 @@ class IosAudioManagement {
   /// When enabled, the native layer sets `prefersStereoPlayout` on the ADM,
   /// bypasses voice processing, sets mute mode to input mixer, and monitors
   /// audio route changes to refresh stereo playout state.
+  ///
+  /// Because this bypasses VPIO and moves the ADM's mute to the input mixer, it
+  /// disables "speaking while muted" detection: `setMicrophoneMuted` still mutes
+  /// capture, but no `onSpeechActivityChanged` events are emitted while muted.
   static Future<void> setStereoPlayoutPreferred(bool preferred) async {
     if (kIsWeb || !WebRTC.platformIsIOS) return;
 
