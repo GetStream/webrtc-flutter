@@ -1902,7 +1902,19 @@ static FlutterWebRTCPlugin* sharedSingleton;
       result(@(NO));
       return;
     }
-    result(@(nf.audioDeviceModule.isVoiceProcessingEnabled));
+    RTCAudioDeviceModule* adm = nf.audioDeviceModule;
+    if (adm == nil) {
+      result(@(NO));
+      return;
+    }
+    dispatch_async(nf.admQueue, ^{
+      BOOL enabled = adm.isVoiceProcessingEnabled;
+
+      // Return to main queue
+      dispatch_async(dispatch_get_main_queue(), ^{
+        result(@(enabled));
+      });
+    });
   } else if ([@"isVoiceProcessingBypassed" isEqualToString:call.method]) {
     NSString* factoryId = call.arguments[@"factoryId"];
     NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
@@ -1910,7 +1922,19 @@ static FlutterWebRTCPlugin* sharedSingleton;
       result(@(NO));
       return;
     }
-    result(@(nf.audioDeviceModule.isVoiceProcessingBypassed));
+    RTCAudioDeviceModule* adm = nf.audioDeviceModule;
+    if (adm == nil) {
+      result(@(NO));
+      return;
+    }
+    dispatch_async(nf.admQueue, ^{
+      BOOL bypassed = adm.isVoiceProcessingBypassed;
+
+      // Return to main queue
+      dispatch_async(dispatch_get_main_queue(), ^{
+        result(@(bypassed));
+      });
+    });
   } else if ([@"setIsVoiceProcessingBypassed" isEqualToString:call.method]) {
     NSString* factoryId = call.arguments[@"factoryId"];
     NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
@@ -1977,11 +2001,19 @@ static FlutterWebRTCPlugin* sharedSingleton;
     @synchronized(self) {
       nf = self.factories.allValues.firstObject;
     }
-    if (nf == nil || nf.audioDeviceModule == nil) {
+    RTCAudioDeviceModule* adm = nf.audioDeviceModule;
+    if (nf == nil || adm == nil) {
       result(@(NO));
       return;
     }
-    result(@(nf.audioDeviceModule.isStereoPlayoutEnabled));
+    dispatch_async(nf.admQueue, ^{
+      BOOL enabled = adm.isStereoPlayoutEnabled;
+
+      // Return to main queue
+      dispatch_async(dispatch_get_main_queue(), ^{
+        result(@(enabled));
+      });
+    });
   } else if ([@"refreshStereoPlayoutState" isEqualToString:call.method]) {
     // Broadcast across every factory's ADM (stereo preference is
     // process-wide).

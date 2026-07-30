@@ -89,26 +89,32 @@
   RTCAudioDeviceModule* adm = _audioDeviceModule;
   _audioDeviceModule = nil;
 
+  RTCPeerConnectionFactory* factory = _factory;
+  _factory = nil;
+  NSString* factoryId = _factoryId;
+
   if (adm != nil) {
     // No further events should reach a factory that is going away.
     adm.observer = nil;
     // Stop through the ADM queue rather than inline: operations enqueued before
     // dispose (start recording, mute, resume, ...) captured the ADM strongly and
     // would otherwise run after these stops and leave capture running on a
-    // disposed factory. Tailing the queue makes the stops the last ADM calls,
-    // and keeps _factory alive until that queued work has drained.
-    dispatch_sync(_admQueue, ^{
+    // disposed factory. Tailing the queue makes the stops the last ADM calls.
+    // Enqueued asynchronously so dispose never blocks its caller and can never
+    // deadlock when invoked from the ADM queue itself; the block holds the last
+    // references to the ADM and the factory, so both outlive the queued work.
+    dispatch_async(_admQueue, ^{
       @try {
         [adm stopRecording];
         [adm stopPlayout];
       } @catch (NSException* e) {
         NSLog(@"[NativePeerConnectionFactory] stopRecording/stopPlayout failed: %@", e);
       }
+      NSLog(@"[NativePeerConnectionFactory] ADM stopped id: %@ (factory %p)", factoryId, factory);
     });
   }
-  _factory = nil;
 
-  NSLog(@"[NativePeerConnectionFactory] disposed id: %@", _factoryId);
+  NSLog(@"[NativePeerConnectionFactory] disposed id: %@", factoryId);
 }
 
 - (BOOL)isDisposed {
