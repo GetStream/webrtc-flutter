@@ -304,7 +304,10 @@ static FlutterWebRTCPlugin* sharedSingleton;
       for (NativePeerConnectionFactory* nf in snapshot) {
         RTCAudioDeviceModule* adm = nf.audioDeviceModule;
         if (adm != nil) {
-          [adm refreshStereoPlayoutState];
+          // Run on the factory's serial ADM queue
+          dispatch_async(nf.admQueue, ^{
+            [adm refreshStereoPlayoutState];
+          });
         }
       }
       strongSelf->_stereoRefreshDebounceBlock = nil;
@@ -2157,8 +2160,22 @@ static FlutterWebRTCPlugin* sharedSingleton;
       return;
     }
     NSNumber* value = call.arguments[@"value"];
-    nf.audioDeviceModule.voiceProcessingBypassed = value.boolValue;
-    result(nil);
+    RTCAudioDeviceModule* adm = nf.audioDeviceModule;
+    if (adm == nil) {
+      // Factory already released its ADM: nothing to bypass.
+      result(nil);
+      return;
+    }
+    BOOL bypassed = value.boolValue;
+    // Run on the factory's serial ADM queue
+    dispatch_async(nf.admQueue, ^{
+      adm.voiceProcessingBypassed = bypassed;
+
+      // Return to main queue
+      dispatch_async(dispatch_get_main_queue(), ^{
+        result(nil);
+      });
+    });
   } else if ([@"setStereoPlayoutPreferred" isEqualToString:call.method]) {
     NSNumber* value = call.arguments[@"preferred"];
     BOOL preferred = value.boolValue;
@@ -2173,16 +2190,23 @@ static FlutterWebRTCPlugin* sharedSingleton;
       result(nil);
       return;
     }
+    dispatch_group_t group = dispatch_group_create();
     for (NativePeerConnectionFactory* nf in snapshot) {
       RTCAudioDeviceModule* adm = nf.audioDeviceModule;
       if (adm == nil)
         continue;
-      adm.prefersStereoPlayout = preferred;
-      adm.voiceProcessingBypassed = preferred;
-      [adm setMuteMode:preferred ? RTCAudioEngineMuteModeInputMixer
-                                 : RTCAudioEngineMuteModeVoiceProcessing];
+      dispatch_group_async(group, nf.admQueue, ^{
+        adm.prefersStereoPlayout = preferred;
+        adm.voiceProcessingBypassed = preferred;
+        [adm setMuteMode:preferred ? RTCAudioEngineMuteModeInputMixer
+                                   : RTCAudioEngineMuteModeVoiceProcessing];
+      });
     }
-    result(nil);
+
+    // Return to main queue
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+      result(nil);
+    });
   } else if ([@"isStereoPlayoutEnabled" isEqualToString:call.method]) {
     // Sample any active factory's ADM. Stereo preference is process-wide
     // so the value is consistent across factories; use the implicit one
@@ -2203,13 +2227,21 @@ static FlutterWebRTCPlugin* sharedSingleton;
     @synchronized(self) {
       snapshot = [self.factories.allValues copy];
     }
+    dispatch_group_t group = dispatch_group_create();
     for (NativePeerConnectionFactory* nf in snapshot) {
       RTCAudioDeviceModule* adm = nf.audioDeviceModule;
       if (adm != nil) {
-        [adm refreshStereoPlayoutState];
+        // Run on the factory's serial ADM queue
+        dispatch_group_async(group, nf.admQueue, ^{
+          [adm refreshStereoPlayoutState];
+        });
       }
     }
-    result(nil);
+
+    // Return to main queue
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+      result(nil);
+    });
   } else {
     // Frame cryptor was deactivated alongside the iOS ambient-factory removal —
     // it routed factory creation through the ambient ADM and Stream SDK does
@@ -2306,9 +2338,14 @@ static FlutterWebRTCPlugin* sharedSingleton;
   if (adm == nil) {
     return;
   }
-  adm.prefersStereoPlayout = YES;
-  adm.voiceProcessingBypassed = YES;
-  [adm setMuteMode:RTCAudioEngineMuteModeInputMixer];
+  // Serialize with the factory's ADM queue like every other ADM mutation. The
+  // queue is empty at this point — the factory was just built and its id has
+  // not reached Dart yet — so this does not block meaningfully.
+  dispatch_sync(factory.admQueue, ^{
+    adm.prefersStereoPlayout = YES;
+    adm.voiceProcessingBypassed = YES;
+    [adm setMuteMode:RTCAudioEngineMuteModeInputMixer];
+  });
 }
 #endif
 
