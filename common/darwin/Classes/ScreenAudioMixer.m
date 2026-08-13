@@ -84,7 +84,10 @@ API_AVAILABLE(macos(13.0))
       float resampled = s0 + frac * (s1 - s0);
 
       float systemSample = resampled * 32767.0f;
-      float mixed = channelBuffer[i] + systemSample;
+      // Sales Assistant demo: transcribe ONLY the other participant. Replace the
+      // local microphone sample with system audio instead of summing onto it, so
+      // the user's own voice is never captured or sent.
+      float mixed = systemSample;
 
       if (mixed > 32767.0f) {
         mixed = 32767.0f;
