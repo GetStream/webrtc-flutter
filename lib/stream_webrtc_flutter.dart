@@ -3,6 +3,8 @@ library flutter_webrtc;
 export 'package:webrtc_interface/webrtc_interface.dart'
     hide MediaDevices, MediaRecorder, Navigator;
 
+export 'src/e2ee/encryption_manager.dart';
+export 'src/e2ee/encryption_types.dart';
 export 'src/helper.dart';
 export 'src/desktop_capturer.dart';
 export 'src/media_devices.dart';
@@ -27,8 +29,8 @@ export 'src/native/ios/audio_management.dart';
 export 'src/native/rtc_video_platform_view_controller.dart';
 export 'src/native/rtc_video_platform_view.dart';
 
-const String androidWebRTCVersion = '145.9.0';
-const String iosWebRTCVersion = '145.9.0';
-const String macOsWebRTCVersion = '145.9.0';
+const String androidWebRTCVersion = '145.16.0';
+const String iosWebRTCVersion = '145.16.0';
+const String macOsWebRTCVersion = '145.16.0';
 const String windowsWebRTCVersion = '144.7559.09';
 const String linuxWebRTCVersion = '144.7559.09';

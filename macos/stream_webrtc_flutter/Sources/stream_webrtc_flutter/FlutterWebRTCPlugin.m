@@ -5,6 +5,7 @@
 #import "include/stream_webrtc_flutter/FlutterDataPacketCryptor.h"
 #import "include/stream_webrtc_flutter/FlutterRTCDataChannel.h"
 #import "include/stream_webrtc_flutter/FlutterRTCDesktopCapturer.h"
+#import "include/stream_webrtc_flutter/FlutterRTCEncryptionManager.h"
 #import "include/stream_webrtc_flutter/FlutterRTCMediaStream.h"
 #import "include/stream_webrtc_flutter/FlutterRTCPeerConnection.h"
 #import "include/stream_webrtc_flutter/FlutterRTCVideoRenderer.h"
@@ -153,7 +154,6 @@ static FlutterWebRTCPlugin* sharedSingleton;
                       registrar:(NSObject<FlutterPluginRegistrar>*)registrar
                       messenger:(NSObject<FlutterBinaryMessenger>*)messenger
                    withTextures:(NSObject<FlutterTextureRegistry>*)textures {
-
   self = [super init];
   sharedSingleton = self;
 
@@ -170,7 +170,6 @@ static FlutterWebRTCPlugin* sharedSingleton;
     _speakerOnButPreferBluetooth = NO;
     _eventChannel = eventChannel;
     _audioManager = AudioManager.sharedInstance;
-
   }
 
   NSDictionary* fieldTrials = @{kRTCFieldTrialUseNWPathMonitor : kRTCFieldTrialEnabledValue};
@@ -193,6 +192,8 @@ static FlutterWebRTCPlugin* sharedSingleton;
 }
 
 - (void)detachFromEngineForRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
+  [self disposeAllEncryptionManagers];
+
   for (RTCPeerConnection* peerConnection in _peerConnections.allValues) {
     for (RTCDataChannel* dataChannel in peerConnection.dataChannels) {
       dataChannel.eventSink = nil;
@@ -1858,18 +1859,9 @@ static FlutterWebRTCPlugin* sharedSingleton;
     }
     result(nil);
   } else {
-    // Frame cryptor was deactivated alongside the iOS ambient-factory removal —
-    // it routed factory creation through the ambient ADM and Stream SDK does
-    // not use it. Reviving requires wiring a per-PC factoryId through every
-    // FlutterRTCFrameCryptor entry point. Until then frame-cryptor calls bubble
-    // through data-packet cryptor (which does not recognize them) and
-    // ultimately receive FlutterMethodNotImplemented.
-
-    // if ([self handleFrameCryptorMethodCall:call result:result]) {
-    //   return;
-    // } else {
-    //   [self handleDataPacketCryptorMethodCall:call result:result];
-    // }
+    if ([self handleEncryptionManagerMethodCall:call result:result]) {
+      return;
+    }
 
     [self handleDataPacketCryptorMethodCall:call result:result];
   }
