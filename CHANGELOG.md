@@ -1,6 +1,10 @@
 
 # Changelog
 
+[3.0.2] - 2026.07.29
+
+* [iOS] fix: trigger the screen-share broadcast picker (`RPSystemBroadcastPickerView`) via public APIs instead of the private `buttonPressed:` selector.
+
 [3.0.1] - 2026.07.10
 
 * [iOS] Added an onAudioRouteChangeEvent that fires whenever audio output route changes.
