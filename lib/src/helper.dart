@@ -232,6 +232,11 @@ class Helper {
   ///
   /// When enabled, the native layer configures the ADM for stereo playout,
   /// bypasses voice processing, and monitors audio route changes.
+  ///
+  /// Mutually exclusive with "speaking while muted" detection: bypassing voice
+  /// processing moves the ADM's mute to the input mixer, so
+  /// `NativePeerConnectionFactory.setMicrophoneMuted` still mutes capture but
+  /// emits no `onSpeechActivityChanged` events while muted.
   static Future<void> setiOSStereoPlayoutPreferred(bool preferred) =>
       IosAudioManagement.setStereoPlayoutPreferred(preferred);
 

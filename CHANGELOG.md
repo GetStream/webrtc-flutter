@@ -3,6 +3,10 @@
 
 [3.0.2] - 2026.07.29
 
+* [iOS/macOS] Added `NativePeerConnectionFactory.setMicrophoneMuted` (`appleAdmSetMicrophoneMuted` method channel): mutes microphone capture at the audio-device-module level while the audio engine keeps running. Mutes inside the Voice-Processing I/O unit, arming Apple's muted-talker detection so the plugin emits `onSpeechActivityChanged` events while the user speaks muted.
+* [iOS/macOS] Added `NativePeerConnectionFactory.isMicrophoneMuted` (`appleAdmIsMicrophoneMuted` method channel): reads the ADM's own mute state. 
+* [iOS/macOS] ADM operations (start/stop recording, microphone mute, suspend/resume) now run on a per-factory serial queue instead of the global concurrent queue. Two rapid `setMicrophoneMuted` calls could previously be applied out of order, leaving the microphone in the wrong state indefinitely.
+* [iOS/macOS] `suspendAudioPeerConnectionFactory` / `resumeAudioPeerConnectionFactory` are now idempotent. A second suspend used to re-snapshot the already-stopped ADM as "was neither playing nor recording", so the following resume restored nothing and audio stayed dead.
 * [iOS] fix: trigger the screen-share broadcast picker (`RPSystemBroadcastPickerView`) via public APIs instead of the private `buttonPressed:` selector.
 
 [3.0.1] - 2026.07.10
