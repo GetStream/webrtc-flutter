@@ -254,7 +254,8 @@
 
     // hardware-decoded, upright frames are already NV12 in an IOSurface.
     // Hand that to Flutter with no color conversion — zero-copy when the buffer
-    // is unpadded, otherwise a single crop-copy into a reused NV12 buffer.
+    // already matches the frame's adapted size, otherwise a single crop-and-scale
+    // copy into a reused NV12 buffer.
     if (frame.rotation == RTCVideoRotation_0 &&
         [frame.buffer isKindOfClass:[RTCCVPixelBuffer class]]) {
       RTCCVPixelBuffer* cvBuffer = (RTCCVPixelBuffer*)frame.buffer;
@@ -262,24 +263,34 @@
       const OSType fmt = CVPixelBufferGetPixelFormatType(src);
       if (fmt == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange ||
           fmt == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) {
-        if (![cvBuffer requiresCropping] && CVPixelBufferGetIOSurface(src) != NULL) {
+        // frame.width/height are the adapted dimensions — what we report to Dart via
+        // didTextureChangeVideoSize, and what the I420 fallback path below produces.
+        // Target them here too so every path emits a texture of the same size.
+        // requiresCropping only compares the crop rect against the backing buffer, so
+        // a frame that needs pure downscaling also has to be checked explicitly.
+        if (![cvBuffer requiresCropping] &&
+            ![cvBuffer requiresScalingToWidth:frame.width height:frame.height] &&
+            CVPixelBufferGetIOSurface(src) != NULL) {
           output = src;  // true zero-copy
         } else {
-          [self ensureNV12BuffersWithWidth:cvBuffer.cropWidth
-                                    height:cvBuffer.cropHeight
-                               pixelFormat:fmt];
-          int tmpSize = [cvBuffer bufferSizeForCroppingAndScalingToWidth:cvBuffer.cropWidth
-                                                                  height:cvBuffer.cropHeight];
+          [self ensureNV12BuffersWithWidth:frame.width height:frame.height pixelFormat:fmt];
+          int tmpSize = [cvBuffer bufferSizeForCroppingAndScalingToWidth:frame.width
+                                                                  height:frame.height];
+          BOOL tempBufferReady = YES;
           if (tmpSize > 0 && (_cropTempBuffer == NULL || _cropTempSize < (size_t)tmpSize)) {
             free(_cropTempBuffer);
             _cropTempBuffer = malloc((size_t)tmpSize);
-            _cropTempSize = (size_t)tmpSize;
+            // Only claim the size on success: NV12Scale reads through this pointer
+            // whenever the frame actually needs scaling.
+            _cropTempSize = (_cropTempBuffer != NULL) ? (size_t)tmpSize : 0;
+            tempBufferReady = (_cropTempBuffer != NULL);
           }
           // Pick the buffer not currently published to Flutter, so the crop never
           // overwrites the frame the compositor may still be reading.
           CVPixelBufferRef dst =
               (_nv12Buffers[0] != _currentBuffer) ? _nv12Buffers[0] : _nv12Buffers[1];
-          if (dst != nil && [cvBuffer cropAndScaleTo:dst withTempBuffer:_cropTempBuffer]) {
+          if (tempBufferReady && dst != nil &&
+              [cvBuffer cropAndScaleTo:dst withTempBuffer:_cropTempBuffer]) {
             output = dst;
           }
         }
