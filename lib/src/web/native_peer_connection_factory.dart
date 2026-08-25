@@ -48,6 +48,15 @@ class NativePeerConnectionFactory {
   Future<void> startLocalRecording() async => throw UnimplementedError();
   Future<void> stopLocalRecording() async => throw UnimplementedError();
 
+  /// ADM-level microphone mute is iOS / macOS only.
+  static bool get isAdmMicrophoneMuteSupported => false;
+
+  Future<void> setMicrophoneMuted(bool muted) async => throw UnsupportedError(
+      'ADM-level microphone mute is not supported on web');
+
+  Future<bool> isMicrophoneMuted() async => throw UnsupportedError(
+      'ADM-level microphone mute is not supported on web');
+
   Future<void> suspendAudio() async {}
   Future<void> resumeAudio() async {}
 

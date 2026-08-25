@@ -20,6 +20,12 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @property(nonatomic, strong, readonly, nullable) RTCAudioDeviceModule* audioDeviceModule;
 
+/**
+ * Serial queue for every ADM operation issued against this factory: start /
+ * stop recording, microphone mute, suspend / resume.
+ */
+@property(nonatomic, strong, readonly) dispatch_queue_t admQueue;
+
 /** Snapshot of the appleAudioConfiguration used to build this factory. */
 @property(nonatomic, copy, readonly, nullable) NSDictionary* audioConfigSnapshot;
 
@@ -50,6 +56,11 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @property(nonatomic, assign) BOOL wasPlayingBeforeSuspend;
 @property(nonatomic, assign) BOOL wasRecordingBeforeSuspend;
+
+/**
+ * Whether audio is currently suspended.
+ */
+@property(nonatomic, assign) BOOL audioSuspended;
 
 - (instancetype)initWithFactoryId:(NSString*)factoryId
             bypassVoiceProcessing:(BOOL)bypassVoiceProcessing

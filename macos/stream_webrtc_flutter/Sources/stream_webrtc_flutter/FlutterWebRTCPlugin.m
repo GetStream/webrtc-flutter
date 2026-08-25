@@ -1681,8 +1681,16 @@ static FlutterWebRTCPlugin* sharedSingleton;
       return;
     }
     RTCAudioDeviceModule* adm = nf.audioDeviceModule;
-    // Run on background queue
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+    if (adm == nil) {
+      result([FlutterError
+          errorWithCode:@"startLocalRecording"
+                message:[NSString
+                            stringWithFormat:@"factory %@ has no audio device module", factoryId]
+                details:nil]);
+      return;
+    }
+    // Run on the factory's serial ADM queue
+    dispatch_async(nf.admQueue, ^{
       NSInteger admResult = [adm initAndStartRecording];
 
       // Return to main queue
@@ -1709,8 +1717,16 @@ static FlutterWebRTCPlugin* sharedSingleton;
       return;
     }
     RTCAudioDeviceModule* adm = nf.audioDeviceModule;
-    // Run on background queue
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+    if (adm == nil) {
+      result([FlutterError
+          errorWithCode:@"stopLocalRecording"
+                message:[NSString
+                            stringWithFormat:@"factory %@ has no audio device module", factoryId]
+                details:nil]);
+      return;
+    }
+    // Run on the factory's serial ADM queue
+    dispatch_async(nf.admQueue, ^{
       NSInteger admResult = [adm stopRecording];
 
       // Return to main queue
@@ -1726,6 +1742,79 @@ static FlutterWebRTCPlugin* sharedSingleton;
         }
       });
     });
+  } else if ([@"appleAdmSetMicrophoneMuted" isEqualToString:call.method]) {
+    NSString* factoryId = call.arguments[@"factoryId"];
+    NSNumber* muted = call.arguments[@"muted"];
+    NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+    if (nf == nil) {
+      result([FlutterError
+          errorWithCode:@"appleAdmSetMicrophoneMuted"
+                message:[NSString stringWithFormat:@"unknown factoryId %@", factoryId]
+                details:nil]);
+      return;
+    }
+    if (![muted isKindOfClass:[NSNumber class]]) {
+      result([FlutterError errorWithCode:@"appleAdmSetMicrophoneMuted"
+                                 message:@"missing or non-boolean 'muted' argument"
+                                 details:nil]);
+      return;
+    }
+    RTCAudioDeviceModule* adm = nf.audioDeviceModule;
+    if (adm == nil) {
+      result([FlutterError
+          errorWithCode:@"appleAdmSetMicrophoneMuted"
+                message:[NSString
+                            stringWithFormat:@"factory %@ has no audio device module", factoryId]
+                details:nil]);
+      return;
+    }
+    // Run on the factory's serial ADM queue: mute is an absolute set, so two
+    // rapid toggles must not be reordered.
+    dispatch_async(nf.admQueue, ^{
+      // Mutes capture inside the Voice-Processing I/O unit while the audio
+      // engine keeps running, so Apple's muted-talker detection stays armed
+      // and the ADM keeps delivering didReceiveSpeechActivityEvent while the
+      // user speaks muted.
+      NSInteger admResult = [adm setMicrophoneMuted:muted.boolValue];
+
+      // Return to main queue
+      dispatch_async(dispatch_get_main_queue(), ^{
+        if (admResult == 0) {
+          result(nil);
+        } else {
+          result([FlutterError
+              errorWithCode:[NSString stringWithFormat:@"%@ failed", call.method]
+                    message:[NSString stringWithFormat:@"Error: adm api failed with code: %ld",
+                                                       (long)admResult]
+                    details:nil]);
+        }
+      });
+    });
+  } else if ([@"appleAdmIsMicrophoneMuted" isEqualToString:call.method]) {
+    NSString* factoryId = call.arguments[@"factoryId"];
+    NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+    if (nf == nil) {
+      result([FlutterError
+          errorWithCode:@"appleAdmIsMicrophoneMuted"
+                message:[NSString stringWithFormat:@"unknown factoryId %@", factoryId]
+                details:nil]);
+      return;
+    }
+    RTCAudioDeviceModule* adm = nf.audioDeviceModule;
+    if (adm == nil) {
+      result([FlutterError
+          errorWithCode:@"appleAdmIsMicrophoneMuted"
+                message:[NSString
+                            stringWithFormat:@"factory %@ has no audio device module", factoryId]
+                details:nil]);
+      return;
+    }
+    dispatch_async(nf.admQueue, ^{
+      BOOL muted = adm.isMicrophoneMuted;
+      dispatch_async(dispatch_get_main_queue(), ^{
+        result(@(muted));
+      });
+    });
   } else if ([@"suspendAudioPeerConnectionFactory" isEqualToString:call.method]) {
     NSString* factoryId = call.arguments[@"factoryId"];
     NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
@@ -1737,15 +1826,31 @@ static FlutterWebRTCPlugin* sharedSingleton;
       return;
     }
     RTCAudioDeviceModule* adm = nf.audioDeviceModule;
-    BOOL wasPlaying = adm.isPlaying;
-    BOOL wasRecording = adm.isRecording;
-    nf.wasPlayingBeforeSuspend = wasPlaying;
-    nf.wasRecordingBeforeSuspend = wasRecording;
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-      if (wasRecording)
-        [adm stopRecording];
-      if (wasPlaying)
-        [adm stopPlayout];
+    if (adm == nil) {
+      // Nothing to suspend: the factory already released its ADM.
+      dispatch_async(nf.admQueue, ^{
+        nf.wasPlayingBeforeSuspend = NO;
+        nf.wasRecordingBeforeSuspend = NO;
+        nf.audioSuspended = NO;
+        dispatch_async(dispatch_get_main_queue(), ^{
+          result(nil);
+        });
+      });
+      return;
+    }
+    dispatch_async(nf.admQueue, ^{
+      // Idempotent: only the first suspend snapshots and stops.
+      if (!nf.audioSuspended) {
+        BOOL wasPlaying = adm.isPlaying;
+        BOOL wasRecording = adm.isRecording;
+        nf.wasPlayingBeforeSuspend = wasPlaying;
+        nf.wasRecordingBeforeSuspend = wasRecording;
+        nf.audioSuspended = YES;
+        if (wasRecording)
+          [adm stopRecording];
+        if (wasPlaying)
+          [adm stopPlayout];
+      }
       dispatch_async(dispatch_get_main_queue(), ^{
         result(nil);
       });
@@ -1761,20 +1866,35 @@ static FlutterWebRTCPlugin* sharedSingleton;
       return;
     }
     RTCAudioDeviceModule* adm = nf.audioDeviceModule;
-    BOOL restorePlaying = nf.wasPlayingBeforeSuspend;
-    BOOL restoreRecording = nf.wasRecordingBeforeSuspend;
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-      if (restorePlaying) {
-        [adm initPlayout];
-        [adm startPlayout];
-      }
-      if (restoreRecording) {
-        [adm initRecording];
-        [adm startRecording];
-      }
-      dispatch_async(dispatch_get_main_queue(), ^{
+    if (adm == nil) {
+      // Nothing to restore: the factory already released its ADM.
+      dispatch_async(nf.admQueue, ^{
         nf.wasPlayingBeforeSuspend = NO;
         nf.wasRecordingBeforeSuspend = NO;
+        nf.audioSuspended = NO;
+        dispatch_async(dispatch_get_main_queue(), ^{
+          result(nil);
+        });
+      });
+      return;
+    }
+    dispatch_async(nf.admQueue, ^{
+      if (nf.audioSuspended) {
+        BOOL restorePlaying = nf.wasPlayingBeforeSuspend;
+        BOOL restoreRecording = nf.wasRecordingBeforeSuspend;
+        if (restorePlaying) {
+          [adm initPlayout];
+          [adm startPlayout];
+        }
+        if (restoreRecording) {
+          [adm initRecording];
+          [adm startRecording];
+        }
+        nf.wasPlayingBeforeSuspend = NO;
+        nf.wasRecordingBeforeSuspend = NO;
+        nf.audioSuspended = NO;
+      }
+      dispatch_async(dispatch_get_main_queue(), ^{
         result(nil);
       });
     });
@@ -1785,7 +1905,19 @@ static FlutterWebRTCPlugin* sharedSingleton;
       result(@(NO));
       return;
     }
-    result(@(nf.audioDeviceModule.isVoiceProcessingEnabled));
+    RTCAudioDeviceModule* adm = nf.audioDeviceModule;
+    if (adm == nil) {
+      result(@(NO));
+      return;
+    }
+    dispatch_async(nf.admQueue, ^{
+      BOOL enabled = adm.isVoiceProcessingEnabled;
+
+      // Return to main queue
+      dispatch_async(dispatch_get_main_queue(), ^{
+        result(@(enabled));
+      });
+    });
   } else if ([@"isVoiceProcessingBypassed" isEqualToString:call.method]) {
     NSString* factoryId = call.arguments[@"factoryId"];
     NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
@@ -1793,7 +1925,19 @@ static FlutterWebRTCPlugin* sharedSingleton;
       result(@(NO));
       return;
     }
-    result(@(nf.audioDeviceModule.isVoiceProcessingBypassed));
+    RTCAudioDeviceModule* adm = nf.audioDeviceModule;
+    if (adm == nil) {
+      result(@(NO));
+      return;
+    }
+    dispatch_async(nf.admQueue, ^{
+      BOOL bypassed = adm.isVoiceProcessingBypassed;
+
+      // Return to main queue
+      dispatch_async(dispatch_get_main_queue(), ^{
+        result(@(bypassed));
+      });
+    });
   } else if ([@"setIsVoiceProcessingBypassed" isEqualToString:call.method]) {
     NSString* factoryId = call.arguments[@"factoryId"];
     NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
@@ -1805,8 +1949,22 @@ static FlutterWebRTCPlugin* sharedSingleton;
       return;
     }
     NSNumber* value = call.arguments[@"value"];
-    nf.audioDeviceModule.voiceProcessingBypassed = value.boolValue;
-    result(nil);
+    RTCAudioDeviceModule* adm = nf.audioDeviceModule;
+    if (adm == nil) {
+      // Factory already released its ADM: nothing to bypass.
+      result(nil);
+      return;
+    }
+    BOOL bypassed = value.boolValue;
+    // Run on the factory's serial ADM queue
+    dispatch_async(nf.admQueue, ^{
+      adm.voiceProcessingBypassed = bypassed;
+
+      // Return to main queue
+      dispatch_async(dispatch_get_main_queue(), ^{
+        result(nil);
+      });
+    });
   } else if ([@"setStereoPlayoutPreferred" isEqualToString:call.method]) {
     NSNumber* value = call.arguments[@"preferred"];
     BOOL preferred = value.boolValue;
@@ -1821,16 +1979,23 @@ static FlutterWebRTCPlugin* sharedSingleton;
       result(nil);
       return;
     }
+    dispatch_group_t group = dispatch_group_create();
     for (NativePeerConnectionFactory* nf in snapshot) {
       RTCAudioDeviceModule* adm = nf.audioDeviceModule;
       if (adm == nil)
         continue;
-      adm.prefersStereoPlayout = preferred;
-      adm.voiceProcessingBypassed = preferred;
-      [adm setMuteMode:preferred ? RTCAudioEngineMuteModeInputMixer
-                                 : RTCAudioEngineMuteModeVoiceProcessing];
+      dispatch_group_async(group, nf.admQueue, ^{
+        adm.prefersStereoPlayout = preferred;
+        adm.voiceProcessingBypassed = preferred;
+        [adm setMuteMode:preferred ? RTCAudioEngineMuteModeInputMixer
+                                   : RTCAudioEngineMuteModeVoiceProcessing];
+      });
     }
-    result(nil);
+
+    // Return to main queue
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+      result(nil);
+    });
   } else if ([@"isStereoPlayoutEnabled" isEqualToString:call.method]) {
     // Sample any active factory's ADM. Stereo preference is process-wide
     // so the value is consistent across factories; use the implicit one
@@ -1839,11 +2004,19 @@ static FlutterWebRTCPlugin* sharedSingleton;
     @synchronized(self) {
       nf = self.factories.allValues.firstObject;
     }
-    if (nf == nil || nf.audioDeviceModule == nil) {
+    RTCAudioDeviceModule* adm = nf.audioDeviceModule;
+    if (nf == nil || adm == nil) {
       result(@(NO));
       return;
     }
-    result(@(nf.audioDeviceModule.isStereoPlayoutEnabled));
+    dispatch_async(nf.admQueue, ^{
+      BOOL enabled = adm.isStereoPlayoutEnabled;
+
+      // Return to main queue
+      dispatch_async(dispatch_get_main_queue(), ^{
+        result(@(enabled));
+      });
+    });
   } else if ([@"refreshStereoPlayoutState" isEqualToString:call.method]) {
     // Broadcast across every factory's ADM (stereo preference is
     // process-wide).
@@ -1851,13 +2024,21 @@ static FlutterWebRTCPlugin* sharedSingleton;
     @synchronized(self) {
       snapshot = [self.factories.allValues copy];
     }
+    dispatch_group_t group = dispatch_group_create();
     for (NativePeerConnectionFactory* nf in snapshot) {
       RTCAudioDeviceModule* adm = nf.audioDeviceModule;
       if (adm != nil) {
-        [adm refreshStereoPlayoutState];
+        // Run on the factory's serial ADM queue
+        dispatch_group_async(group, nf.admQueue, ^{
+          [adm refreshStereoPlayoutState];
+        });
       }
     }
-    result(nil);
+
+    // Return to main queue
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+      result(nil);
+    });
   } else {
     if ([self handleEncryptionManagerMethodCall:call result:result]) {
       return;
