@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "stream_webrtc_flutter",
     platforms: [
-        .macOS("11.0")
+        .macOS("12.0")
     ],
     products: [
         .library(name: "stream-webrtc-flutter", targets: ["stream_webrtc_flutter"])
