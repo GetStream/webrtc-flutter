@@ -21,6 +21,21 @@ static NSMutableDictionary<NSString*, FlutterRTCEncryptionManagerHandle*>* handl
   return gHandles;
 }
 
+#pragma mark - Argument coercion
+
+/**
+ * Method-channel arguments are untrusted: Dart's `null` arrives as `NSNull`,
+ * which raises on `integerValue`/`boolValue`. Returns nil unless the value is
+ * a real number, so callers can reject or default without converting first.
+ */
+static NSNumber* _Nullable numberArg(id args, NSString* key) {
+  if (![args isKindOfClass:[NSDictionary class]]) {
+    return nil;
+  }
+  id value = ((NSDictionary*)args)[key];
+  return [value isKindOfClass:[NSNumber class]] ? (NSNumber*)value : nil;
+}
+
 #pragma mark - Event serialization
 
 static NSDictionary* userKeyToMap(RTCEncryptionUserKey* key) {
@@ -210,10 +225,17 @@ static NSDictionary* eventToMap(RTCE2eeEvent* event) {
     return;
   }
 
-  NSNumber* algorithmValue = args[@"algorithm"];
-  RTCEncryptionAlgorithm algorithm = algorithmValue.integerValue == RTCEncryptionAlgorithmAes256Gcm
-                                         ? RTCEncryptionAlgorithmAes256Gcm
-                                         : RTCEncryptionAlgorithmAes128Gcm;
+  // A missing algorithm keeps the AES-128 default; a malformed one is rejected
+  // rather than silently downgraded.
+  id algorithmValue = [args isKindOfClass:[NSDictionary class]] ? args[@"algorithm"] : nil;
+  if (algorithmValue != nil && ![algorithmValue isKindOfClass:[NSNumber class]]) {
+    [self failCall:call result:result message:@"algorithm must be a number"];
+    return;
+  }
+  RTCEncryptionAlgorithm algorithm =
+      [algorithmValue integerValue] == RTCEncryptionAlgorithmAes256Gcm
+          ? RTCEncryptionAlgorithmAes256Gcm
+          : RTCEncryptionAlgorithmAes128Gcm;
 
   NSError* error = nil;
   RTCEncryptionManager* manager = [RTCEncryptionManager createWithUserId:userId
@@ -251,7 +273,7 @@ static NSDictionary* eventToMap(RTCE2eeEvent* event) {
 
   NSDictionary* args = call.arguments;
   NSString* userId = args[@"userId"];
-  NSNumber* keyIndex = args[@"keyIndex"];
+  NSNumber* keyIndex = numberArg(args, @"keyIndex");
   FlutterStandardTypedData* rawKey = args[@"rawKey"];
   if (userId == nil || keyIndex == nil || rawKey == nil) {
     [self failCall:call result:result message:@"userId, keyIndex and rawKey are required"];
@@ -273,7 +295,7 @@ static NSDictionary* eventToMap(RTCE2eeEvent* event) {
   }
 
   NSDictionary* args = call.arguments;
-  NSNumber* keyIndex = args[@"keyIndex"];
+  NSNumber* keyIndex = numberArg(args, @"keyIndex");
   FlutterStandardTypedData* rawKey = args[@"rawKey"];
   if (keyIndex == nil || rawKey == nil) {
     [self failCall:call result:result message:@"keyIndex and rawKey are required"];
@@ -296,7 +318,7 @@ static NSDictionary* eventToMap(RTCE2eeEvent* event) {
 
   NSDictionary* args = call.arguments;
   NSString* userId = args[@"userId"];
-  NSNumber* keyIndex = args[@"keyIndex"];
+  NSNumber* keyIndex = numberArg(args, @"keyIndex");
   if (userId == nil || keyIndex == nil) {
     [self failCall:call result:result message:@"userId and keyIndex are required"];
     return;
@@ -338,7 +360,7 @@ static NSDictionary* eventToMap(RTCE2eeEvent* event) {
     return;
   }
 
-  NSNumber* keyIndex = call.arguments[@"keyIndex"];
+  NSNumber* keyIndex = numberArg(call.arguments, @"keyIndex");
   if (keyIndex == nil) {
     [self failCall:call result:result message:@"keyIndex is required"];
     return;
@@ -437,7 +459,12 @@ static NSDictionary* eventToMap(RTCE2eeEvent* event) {
     return;
   }
 
-  NSNumber* enabled = call.arguments[@"enabled"];
+  NSNumber* enabled = numberArg(call.arguments, @"enabled");
+  if (enabled == nil) {
+    [self failCall:call result:result message:@"enabled is required"];
+    return;
+  }
+
   NSError* error = nil;
   if (![manager enablePerformanceReporting:enabled.boolValue error:&error]) {
     [self failCall:call
@@ -521,7 +548,7 @@ static NSDictionary* eventToMap(RTCE2eeEvent* event) {
 
 /** Maps Dart's `trackType` to a boxed enum, or nil to let RTP decide. */
 - (nullable NSNumber*)trackTypeForCall:(FlutterMethodCall*)call {
-  NSNumber* value = call.arguments[@"trackType"];
+  NSNumber* value = numberArg(call.arguments, @"trackType");
   if (value == nil || value.integerValue == kTrackTypeUnspecified) {
     return nil;
   }

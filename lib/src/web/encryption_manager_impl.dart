@@ -30,8 +30,10 @@ class EncryptionManagerWeb implements EncryptionManager {
   @override
   final EncryptionAlgorithm algorithm;
 
+  bool _disposed = false;
+
   @override
-  bool get isDisposed => false;
+  bool get isDisposed => _disposed;
 
   @override
   Stream<E2eeEvent> get events => const Stream<E2eeEvent>.empty();
@@ -82,5 +84,7 @@ class EncryptionManagerWeb implements EncryptionManager {
   Future<void> requestKeyState() => _unsupported();
 
   @override
-  Future<void> dispose() async {}
+  Future<void> dispose() async {
+    _disposed = true;
+  }
 }
