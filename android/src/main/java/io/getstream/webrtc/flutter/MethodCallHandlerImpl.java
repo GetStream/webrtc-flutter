@@ -83,8 +83,10 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -912,7 +914,14 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       case "getStats": {
         String peerConnectionId = call.argument("peerConnectionId");
         String trackId = call.argument("trackId");
-        peerConnectionGetStats(trackId, peerConnectionId, result);
+        // Optional allowlist of stat types. Building the full report costs
+        // thousands of boxed values and map entries per call, most of which the
+        // caller usually throws away.
+        List<String> requestedTypes = call.argument("statTypes");
+        Set<String> statTypes = (requestedTypes == null || requestedTypes.isEmpty())
+            ? null
+            : new HashSet<>(requestedTypes);
+        peerConnectionGetStats(trackId, peerConnectionId, result, statTypes);
         break;
       }
       case "createDataChannel": {
@@ -2721,14 +2730,19 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   }
 
   public void peerConnectionGetStats(String trackId, String id, final Result result) {
+    peerConnectionGetStats(trackId, id, result, null);
+  }
+
+  public void peerConnectionGetStats(String trackId, String id, final Result result,
+                                     @Nullable Set<String> statTypes) {
     PeerConnectionObserver pco = mPeerConnectionObservers.get(id);
     if (pco == null || pco.getPeerConnection() == null) {
       resultError("peerConnectionGetStats", "peerConnection is null", result);
     } else {
       if(trackId == null || trackId.isEmpty()) {
-        pco.getStats(result);
+        pco.getStats(result, statTypes);
       } else {
-        pco.getStatsForTrack(trackId, result);
+        pco.getStatsForTrack(trackId, result, statTypes);
       }
     }
   }

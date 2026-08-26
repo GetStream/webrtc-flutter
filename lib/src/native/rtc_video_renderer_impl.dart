@@ -105,7 +105,8 @@ class RTCVideoRenderer extends ValueNotifier<RTCVideoValue>
     if (!WebRTC.platformIsAndroid) return;
 
     try {
-      await WebRTC.invokeMethod('videoRendererSetFpsReduction', <String, dynamic>{
+      await WebRTC.invokeMethod(
+          'videoRendererSetFpsReduction', <String, dynamic>{
         'textureId': _textureId,
         'fps': fps ?? -1.0,
       });

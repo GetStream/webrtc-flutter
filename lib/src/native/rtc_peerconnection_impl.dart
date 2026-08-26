@@ -450,11 +450,27 @@ class RTCPeerConnectionNative extends RTCPeerConnection {
   }
 
   @override
-  Future<List<StatsReport>> getStats([MediaStreamTrack? track]) async {
+  Future<List<StatsReport>> getStats([MediaStreamTrack? track]) =>
+      getFilteredStats(null, track);
+
+  /// [getStats], restricted to the given stat types.
+  ///
+  /// Building a full report means boxing every member of every report — usually
+  /// thousands of objects — serializing the whole tree across the platform
+  /// channel, and decoding it again in Dart. Passing the handful of types the
+  /// caller actually reads skips the rest before any of that happens.
+  ///
+  /// Pass null or an empty list for the unfiltered report. Android only; other
+  /// platforms ignore the filter and return everything.
+  Future<List<StatsReport>> getFilteredStats(
+    List<String>? statTypes, [
+    MediaStreamTrack? track,
+  ]) async {
     try {
       final response = await WebRTC.invokeMethod('getStats', <String, dynamic>{
         'peerConnectionId': _peerConnectionId,
-        'trackId': track?.id
+        'trackId': track?.id,
+        if (statTypes != null && statTypes.isNotEmpty) 'statTypes': statTypes,
       });
 
       var stats = <StatsReport>[];

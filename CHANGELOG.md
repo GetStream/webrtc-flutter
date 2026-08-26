@@ -33,6 +33,11 @@
 * [Android] Fixed the lifecycle observer being asymmetric: it implemented `Application.ActivityLifecycleCallbacks` and restarted the camera from `onActivityResumed` as well as `onResume`, but was never registered as an activity callback (the static `application` field was never assigned) while `onDetachedFromActivity` still unregistered it. The activity-callback half is removed, and camera restarts are now idempotent, so a foreground event cannot restart an already-running capturer.
 * [Android] `GetUserMediaImpl`'s capturer/source/helper maps are now concurrent; they are mutated from the platform thread and read from lifecycle callbacks.
 
+### Android getStats
+
+* [Android] Added an optional stat-type allowlist to `getStats`, exposed in Dart as `RTCPeerConnection.getFilteredStats`. A full report boxes every member of every report — typically thousands of objects per call — which `StandardMessageCodec` then re-serializes on the main thread and Dart decodes into a third representation, several times a second for the whole call. Callers that only read a few stat types can now skip the rest before any of that happens. Unfiltered by default; the filter is ignored on platforms that build the report themselves.
+* [Android] `getStats` iterates report members with `entrySet()` instead of `keySet()` plus a lookup per key, which hashed every member name twice.
+
 ### Fixes
 
 * [iOS/macOS] Capture format selection now considers the requested frame rate and prefers a format at least as large as the target. The previous nearest-match on `|dw| + |dh|` was frame-rate blind and could settle on a format *smaller* than requested, so the encoder silently received less than it asked for; it could also pick a high-speed sensor mode that runs a hotter readout even when clocked down to 30 fps by frame duration. Selection now follows the same tiered rules as the native SDK: preferred pixel format + area >= target + fps in range, falling back through area + fps, then area, then closest area.

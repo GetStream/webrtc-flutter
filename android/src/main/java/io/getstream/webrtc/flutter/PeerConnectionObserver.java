@@ -25,6 +25,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.webrtc.AudioTrack;
@@ -214,11 +215,30 @@ class PeerConnectionObserver implements PeerConnection.Observer, EventChannel.St
   }
 
   void handleStatsReport(RTCStatsReport rtcStatsReport, Result result) {
+      handleStatsReport(rtcStatsReport, result, null);
+  }
+
+  /**
+   * Converts a stats report into the nested maps the platform channel carries.
+   *
+   * <p>A full report is typically 50-200 entries, each contributing a map plus
+   * a boxed value per member — thousands of objects per call, re-serialized by
+   * StandardMessageCodec and then decoded into a third representation on the
+   * Dart side, several times a second for the whole call. [statTypes], when
+   * non-null, restricts the output to those stat types so callers only pay for
+   * what they actually read.
+   */
+  void handleStatsReport(RTCStatsReport rtcStatsReport, Result result,
+                         @Nullable Set<String> statTypes) {
       Map<String, RTCStats>    reports = rtcStatsReport.getStatsMap();
       ConstraintsMap params = new ConstraintsMap();
       ConstraintsArray stats = new ConstraintsArray();
 
       for (RTCStats report : reports.values()) {
+          if (statTypes != null && !statTypes.contains(report.getType())) {
+              continue;
+          }
+
           ConstraintsMap report_map = new ConstraintsMap();
 
           report_map.putString("id", report.getId());
@@ -227,8 +247,11 @@ class PeerConnectionObserver implements PeerConnection.Observer, EventChannel.St
 
           Map<String, Object> values = report.getMembers();
           ConstraintsMap v_map = new ConstraintsMap();
-          for (String key : values.keySet()) {
-              Object v = values.get(key);
+          // entrySet() rather than keySet() + get(key): the latter hashes every
+          // member name twice.
+          for (Map.Entry<String, Object> member : values.entrySet()) {
+              String key = member.getKey();
+              Object v = member.getValue();
               if(v instanceof String) {
                   v_map.putString(key, (String)v);
               } else if(v instanceof String[]) {
@@ -281,6 +304,10 @@ class PeerConnectionObserver implements PeerConnection.Observer, EventChannel.St
   }
 
   void getStatsForTrack(String trackId, Result result) {
+    getStatsForTrack(trackId, result, null);
+  }
+
+  void getStatsForTrack(String trackId, Result result, @Nullable Set<String> statTypes) {
     if (trackId == null || trackId.isEmpty()) {
       resultError("peerConnectionGetStats", "MediaStreamTrack not found for id: " + trackId, result);
       return;
@@ -301,17 +328,23 @@ class PeerConnectionObserver implements PeerConnection.Observer, EventChannel.St
       }
     }
     if (sender != null) {
-      peerConnection.getStats(sender, rtcStatsReport -> handleStatsReport(rtcStatsReport, result));
+      peerConnection.getStats(
+          sender, rtcStatsReport -> handleStatsReport(rtcStatsReport, result, statTypes));
     } else if (receiver != null) {
-      peerConnection.getStats(receiver, rtcStatsReport -> handleStatsReport(rtcStatsReport, result));
+      peerConnection.getStats(
+          receiver, rtcStatsReport -> handleStatsReport(rtcStatsReport, result, statTypes));
     } else {
       resultError("peerConnectionGetStats", "MediaStreamTrack not found for id: " + trackId, result);
     }
   }
 
   void getStats(final Result result) {
+    getStats(result, null);
+  }
+
+  void getStats(final Result result, @Nullable Set<String> statTypes) {
     peerConnection.getStats(
-        rtcStatsReport -> handleStatsReport(rtcStatsReport, result));
+        rtcStatsReport -> handleStatsReport(rtcStatsReport, result, statTypes));
   }
 
   @Override
