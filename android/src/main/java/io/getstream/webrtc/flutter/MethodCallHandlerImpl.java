@@ -143,10 +143,95 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
 
   public static LogSink logSink = new LogSink();
 
+  /**
+   * Steps camera capture down as the device heats up.
+   *
+   * <p>Disabled until Dart turns it on; see
+   * `setCameraSystemPressureMonitoringEnabled`.
+   */
+  private final CameraThermalThrottle cameraThermalThrottle;
+
   MethodCallHandlerImpl(Context context, BinaryMessenger messenger, TextureRegistry textureRegistry) {
     this.context = context;
     this.textures = textureRegistry;
     this.messenger = messenger;
+    this.cameraThermalThrottle = new CameraThermalThrottle(context);
+    this.cameraThermalThrottle.setListener(new CameraThermalThrottle.Listener() {
+      @Override
+      public void onThermalCaptureTarget(int width, int height, int fps, String status) {
+        applyThermalCaptureTarget(width, height, fps, status);
+      }
+
+      @Override
+      public int[] currentCaptureConfiguration() {
+        return activeCameraConfiguration();
+      }
+    });
+  }
+
+  /**
+   * The configuration the running camera was opened with, as
+   * {@code {width, height, fps}}, or null when no camera is running.
+   */
+  @Nullable
+  private int[] activeCameraConfiguration() {
+    final NativePeerConnectionFactory nf = findFactoryWithActiveCamera();
+    if (nf == null || nf.getUserMediaImpl == null) {
+      return null;
+    }
+
+    final String trackId = nf.getUserMediaImpl.getActiveCameraTrackId();
+    if (trackId == null) {
+      return null;
+    }
+
+    final GetUserMediaImpl.VideoCapturerInfoEx info =
+        nf.getUserMediaImpl.getCapturerInfo(trackId);
+    if (info == null) {
+      return null;
+    }
+
+    return new int[] {info.width, info.height, info.fps};
+  }
+
+  /**
+   * Applies a capture target the thermal throttle asked for, to whichever
+   * camera is currently running.
+   */
+  private void applyThermalCaptureTarget(int width, int height, int fps, String status) {
+    final NativePeerConnectionFactory nf = findFactoryWithActiveCamera();
+    if (nf == null || nf.getUserMediaImpl == null) {
+      return;
+    }
+
+    final String trackId = nf.getUserMediaImpl.getActiveCameraTrackId();
+    if (trackId == null) {
+      return;
+    }
+
+    Log.d(TAG, "Thermal status " + status + ": capture -> "
+        + width + "x" + height + "@" + fps);
+    nf.getUserMediaImpl.setCaptureFormat(trackId, width, height, fps);
+
+    ConstraintsMap params = new ConstraintsMap();
+    params.putString("event", "onCameraSystemPressureChanged");
+    params.putString("level", status);
+    params.putInt("width", width);
+    params.putInt("height", height);
+    params.putInt("fps", fps);
+    params.putString("trackId", trackId);
+    FlutterWebRTCPlugin.sharedSingleton.sendEvent(params.toMap());
+  }
+
+  @Nullable
+  private NativePeerConnectionFactory findFactoryWithActiveCamera() {
+    for (NativePeerConnectionFactory nf : factories.values()) {
+      if (nf.getUserMediaImpl != null
+          && nf.getUserMediaImpl.getActiveCameraTrackId() != null) {
+        return nf;
+      }
+    }
+    return null;
   }
 
   static private void resultError(String method, String error, Result result) {
@@ -162,6 +247,9 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
    * otherwise libwebrtc native state crashes when the factory's ADM is already disposed.
    */
   void dispose() {
+    cameraThermalThrottle.setListener(null);
+    cameraThermalThrottle.stop();
+
     if (AudioSwitchManager.instance != null) {
       AudioSwitchManager.instance.setAudioFocusChangeListener(null);
     }
@@ -1112,6 +1200,37 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         }
         render.setViewSize(width, height);
         result.success(null);
+        break;
+      }
+      case "mediaStreamTrackSetCaptureFormat": {
+        String trackId = call.argument("trackId");
+        int width = call.argument("width");
+        int height = call.argument("height");
+        int fps = call.argument("fps");
+        final NativePeerConnectionFactory nf = resolveFactoryForTrack(trackId);
+        if (nf == null || nf.getUserMediaImpl == null) {
+          resultError("mediaStreamTrackSetCaptureFormat", "Track is nil", result);
+          return;
+        }
+        ConstraintsMap applied = nf.getUserMediaImpl.setCaptureFormat(trackId, width, height, fps);
+        if (applied == null) {
+          resultError("mediaStreamTrackSetCaptureFormat",
+              "no camera capturer for track " + trackId, result);
+          return;
+        }
+        // Later thermal step-downs scale from the new target, not the one the
+        // camera was originally opened with.
+        cameraThermalThrottle.setBaseline(width, height, fps);
+        result.success(applied.toMap());
+        break;
+      }
+      case "setCameraSystemPressureMonitoringEnabled": {
+        boolean enabled = call.argument("enabled");
+        result.success(cameraThermalThrottle.setEnabled(enabled));
+        break;
+      }
+      case "isCameraSystemPressureMonitoringEnabled": {
+        result.success(cameraThermalThrottle.isEnabled());
         break;
       }
       case "mediaStreamTrackHasTorch": {

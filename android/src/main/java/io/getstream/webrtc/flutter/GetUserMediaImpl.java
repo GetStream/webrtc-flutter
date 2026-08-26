@@ -1357,6 +1357,60 @@ public class GetUserMediaImpl {
     }
 
     /**
+     * Reconfigures the running capture session for a video track.
+     *
+     * <p>Uses {@link CameraVideoCapturer#changeCaptureFormat}, so the camera
+     * keeps running: no track is recreated and no getUserMedia round trip
+     * happens. The video source is capped to the same target, so the encoder
+     * never receives more than was asked for regardless of which format the
+     * camera settles on.
+     *
+     * @return the applied configuration, or null when the track has no camera.
+     */
+    @Nullable
+    ConstraintsMap setCaptureFormat(String trackId, int width, int height, int fps) {
+        VideoCapturerInfoEx info = mVideoCapturers.get(trackId);
+        if (info == null || info.capturer == null || info.isScreenCapture) {
+            return null;
+        }
+        if (width <= 0 || height <= 0 || fps <= 0) {
+            return null;
+        }
+        if (!(info.capturer instanceof CameraVideoCapturer)) {
+            return null;
+        }
+
+        ((CameraVideoCapturer) info.capturer).changeCaptureFormat(width, height, fps);
+
+        VideoSource videoSource = mVideoSources.get(trackId);
+        if (videoSource != null) {
+            videoSource.adaptOutputFormat(width, height, fps);
+        }
+
+        info.width = width;
+        info.height = height;
+        info.fps = fps;
+
+        ConstraintsMap applied = new ConstraintsMap();
+        applied.putInt("width", width);
+        applied.putInt("height", height);
+        applied.putInt("fps", fps);
+        return applied;
+    }
+
+    /** The trackId of the first running camera capturer, or null when none is. */
+    @Nullable
+    String getActiveCameraTrackId() {
+        for (Map.Entry<String, VideoCapturerInfoEx> item : mVideoCapturers.entrySet()) {
+            VideoCapturerInfoEx info = item.getValue();
+            if (!info.isScreenCapture && info.isCapturing) {
+                return item.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
      * Stops or restarts the camera behind a video track.
      *
      * <p>Flipping the track's `enabled` flag alone only blanks the frames: the

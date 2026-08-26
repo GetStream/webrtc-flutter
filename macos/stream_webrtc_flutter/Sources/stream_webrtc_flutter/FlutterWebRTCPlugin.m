@@ -1034,6 +1034,11 @@ static FlutterWebRTCPlugin* sharedSingleton;
     id<LocalTrack> track = self.localTracks[trackId];
     if (track != nil && [track isKindOfClass:[LocalVideoTrack class]]) {
       [self setCaptureFormatForTrack:trackId width:width height:height fps:fps result:result];
+      // Re-base the thermal throttle so later step-downs scale from the new
+      // target. Only done for caller-initiated reconfigurations: doing it for
+      // the throttle's own changes would make each step-down the new baseline,
+      // so capture could never be restored as the device cools.
+      [self updateCameraSystemPressureBaselineWidth:width height:height fps:fps];
     } else {
       if (track == nil) {
         result([FlutterError errorWithCode:@"Track is nil" message:nil details:nil]);
