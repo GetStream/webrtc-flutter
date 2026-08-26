@@ -1,7 +1,8 @@
 #import <StreamWebRTC/RTCVideoSource.h>
 #import "VideoFrameProcessor.h"
+#import "VideoProcessingAdapter.h"
 
-@interface VideoEffectProcessor : NSObject <RTCVideoCapturerDelegate>
+@interface VideoEffectProcessor : NSObject <RTCVideoCapturerDelegate, ExternalVideoProcessingDelegate>
 
 @property(nonatomic, strong) NSArray<NSObject<VideoFrameProcessorDelegate>*>* videoFrameProcessors;
 @property(nonatomic, strong) RTCVideoSource* videoSource;

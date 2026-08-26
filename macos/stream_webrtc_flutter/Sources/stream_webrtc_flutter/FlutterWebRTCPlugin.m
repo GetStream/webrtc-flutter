@@ -2127,29 +2127,50 @@ static FlutterWebRTCPlugin* sharedSingleton;
 
 - (void)mediaStreamTrackSetVideoEffects:(nonnull NSString*)trackId
                                   names:(nonnull NSArray<NSString*>*)names {
-  RTCMediaStreamTrack* track = [self trackForId:trackId peerConnectionId:nil];
+  id<LocalTrack> localTrack = self.localTracks[trackId];
 
-  if (track) {
-    NSLog(@"mediaStreamTrackSetVideoEffects: track found");
-
-    RTCVideoTrack* videoTrack = (RTCVideoTrack*)track;
-    RTCVideoSource* videoSource = videoTrack.source;
-
-    NSMutableArray* processors = [[NSMutableArray alloc] init];
-    for (NSString* name in names) {
-      NSObject<VideoFrameProcessorDelegate>* processor = [ProcessorProvider getProcessor:name];
-      if (processor != nil) {
-        [processors addObject:processor];
-      }
-    }
-
-    self.videoEffectProcessor = [[VideoEffectProcessor alloc] initWithProcessors:processors
-                                                                     videoSource:videoSource];
-
-    self.videoCapturer.delegate = self.videoEffectProcessor;
-  } else {
-    NSLog(@"mediaStreamTrackSetVideoEffects: track not found");
+  if (localTrack == nil || ![localTrack isKindOfClass:[LocalVideoTrack class]]) {
+    NSLog(@"mediaStreamTrackSetVideoEffects: local video track not found");
+    return;
   }
+
+  LocalVideoTrack* localVideoTrack = (LocalVideoTrack*)localTrack;
+  VideoProcessingAdapter* processing = localVideoTrack.processing;
+
+  if (processing == nil) {
+    NSLog(@"mediaStreamTrackSetVideoEffects: track has no video processing adapter");
+    return;
+  }
+
+  // Drop the previous effect chain rather than leaving it stacked on the track.
+  VideoEffectProcessor* previous = self.videoEffectProcessor;
+  if (previous != nil) {
+    [processing removeProcessing:previous];
+    self.videoEffectProcessor = nil;
+  }
+
+  NSMutableArray* processors = [[NSMutableArray alloc] init];
+  for (NSString* name in names) {
+    NSObject<VideoFrameProcessorDelegate>* processor = [ProcessorProvider getProcessor:name];
+    if (processor != nil) {
+      [processors addObject:processor];
+    }
+  }
+
+  if (processors.count == 0) {
+    return;
+  }
+
+  VideoEffectProcessor* effectProcessor =
+      [[VideoEffectProcessor alloc] initWithProcessors:processors
+                                           videoSource:processing.source];
+  self.videoEffectProcessor = effectProcessor;
+
+  // Register into the adapter chain instead of taking over the capturer's
+  // delegate. Assigning `videoCapturer.delegate` used to evict the
+  // VideoProcessingAdapter outright, permanently orphaning every processor
+  // registered through `addProcessing:` with no path to restore it.
+  [processing addProcessing:effectProcessor];
 }
 
 - (void)enableMultitaskingCameraAccess:(BOOL)enable result:(FlutterResult)result {

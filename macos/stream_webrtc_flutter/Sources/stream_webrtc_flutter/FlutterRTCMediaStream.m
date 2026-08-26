@@ -585,7 +585,12 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 
     AVCaptureDeviceFormat* selectedFormat = [self selectFormatForDevice:videoDevice
                                                             targetWidth:targetWidth
-                                                           targetHeight:targetHeight];
+                                                           targetHeight:targetHeight
+                                                              targetFps:targetFps];
+    if (selectedFormat == nil) {
+      errorCallback(@"OverconstrainedError", @"No capture format available for the constraints");
+      return;
+    }
 
     CMVideoDimensions selectedDimension =
         CMVideoFormatDescriptionGetDimensions(selectedFormat.formatDescription);
@@ -596,15 +601,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     NSLog(@"target format %ldx%ld, targetFps: %ld, selected format: %ldx%ld, selected fps %ld",
           targetWidth, targetHeight, targetFps, selectedWidth, selectedHeight, selectedFps);
 
-    if ([videoDevice lockForConfiguration:NULL]) {
-      @try {
-        videoDevice.activeVideoMaxFrameDuration = CMTimeMake(1, (int32_t)selectedFps);
-        videoDevice.activeVideoMinFrameDuration = CMTimeMake(1, (int32_t)selectedFps);
-      } @catch (NSException* exception) {
-        NSLog(@"Failed to set active frame rate!\n User info:%@", exception.userInfo);
-      }
-      [videoDevice unlockForConfiguration];
-    }
+    [self applyFixedFrameRate:selectedFps toDevice:videoDevice];
 
     [self.videoCapturer startCaptureWithDevice:videoDevice
                                         format:selectedFormat
@@ -917,60 +914,6 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
   }
 }
 
-- (void)mediaStreamTrackHasTorch:(RTCMediaStreamTrack*)track result:(FlutterResult)result {
-  if (!self.videoCapturer) {
-    result(@NO);
-    return;
-  }
-  if (self.videoCapturer.captureSession.inputs.count == 0) {
-    result(@NO);
-    return;
-  }
-
-  AVCaptureDeviceInput* deviceInput = [self.videoCapturer.captureSession.inputs objectAtIndex:0];
-  AVCaptureDevice* device = deviceInput.device;
-
-  result(@([device isTorchModeSupported:AVCaptureTorchModeOn]));
-}
-
-- (void)mediaStreamTrackSetTorch:(RTCMediaStreamTrack*)track
-                           torch:(BOOL)torch
-                          result:(FlutterResult)result {
-  if (!self.videoCapturer) {
-    NSLog(@"Video capturer is null. Can't set torch");
-    return;
-  }
-  if (self.videoCapturer.captureSession.inputs.count == 0) {
-    NSLog(@"Video capturer is missing an input. Can't set torch");
-    return;
-  }
-
-  AVCaptureDeviceInput* deviceInput = [self.videoCapturer.captureSession.inputs objectAtIndex:0];
-  AVCaptureDevice* device = deviceInput.device;
-
-  if (![device isTorchModeSupported:AVCaptureTorchModeOn]) {
-    NSLog(@"Current capture device does not support torch. Can't set torch");
-    return;
-  }
-
-  NSError* error;
-  if ([device lockForConfiguration:&error] == NO) {
-    NSLog(@"Failed to aquire configuration lock. %@", error.localizedDescription);
-    return;
-  }
-
-  device.torchMode = torch ? AVCaptureTorchModeOn : AVCaptureTorchModeOff;
-  [device unlockForConfiguration];
-
-  result(nil);
-}
-
-- (void)mediaStreamTrackSetZoom:(RTCMediaStreamTrack*)track
-                      zoomLevel:(double)zoomLevel
-                         result:(FlutterResult)result {
-  NSLog(@"Not supported on macOS. Can't set zoom");
-}
-
 - (void)mediaStreamTrackCaptureFrame:(RTCVideoTrack*)track
                               toPath:(NSString*)path
                               result:(FlutterResult)result {
@@ -984,54 +927,6 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     track.isEnabled = NO;
     [self.localTracks removeObjectForKey:track.trackId];
   }
-}
-
-- (AVCaptureDevice*)findDeviceForPosition:(AVCaptureDevicePosition)position {
-  if (position == AVCaptureDevicePositionUnspecified) {
-    return [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
-  }
-  NSArray<AVCaptureDevice*>* captureDevices = [RTCCameraVideoCapturer captureDevices];
-  for (AVCaptureDevice* device in captureDevices) {
-    if (device.position == position) {
-      return device;
-    }
-  }
-  if (captureDevices.count > 0) {
-    return captureDevices[0];
-  }
-  return nil;
-}
-
-- (AVCaptureDeviceFormat*)selectFormatForDevice:(AVCaptureDevice*)device
-                                    targetWidth:(NSInteger)targetWidth
-                                   targetHeight:(NSInteger)targetHeight {
-  NSArray<AVCaptureDeviceFormat*>* formats =
-      [RTCCameraVideoCapturer supportedFormatsForDevice:device];
-  AVCaptureDeviceFormat* selectedFormat = nil;
-  long currentDiff = INT_MAX;
-  for (AVCaptureDeviceFormat* format in formats) {
-    CMVideoDimensions dimension = CMVideoFormatDescriptionGetDimensions(format.formatDescription);
-    FourCharCode pixelFormat = CMFormatDescriptionGetMediaSubType(format.formatDescription);
-    // NSLog(@"AVCaptureDeviceFormats,fps %d, dimension: %dx%d",
-    // format.videoSupportedFrameRateRanges, dimension.width, dimension.height);
-    long diff = labs(targetWidth - dimension.width) + labs(targetHeight - dimension.height);
-    if (diff < currentDiff) {
-      selectedFormat = format;
-      currentDiff = diff;
-    } else if (diff == currentDiff &&
-               pixelFormat == [self.videoCapturer preferredOutputPixelFormat]) {
-      selectedFormat = format;
-    }
-  }
-  return selectedFormat;
-}
-
-- (NSInteger)selectFpsForFormat:(AVCaptureDeviceFormat*)format targetFps:(NSInteger)targetFps {
-  Float64 maxSupportedFramerate = 0;
-  for (AVFrameRateRange* fpsRange in format.videoSupportedFrameRateRanges) {
-    maxSupportedFramerate = fmax(maxSupportedFramerate, fpsRange.maxFrameRate);
-  }
-  return fmin(maxSupportedFramerate, targetFps);
 }
 
 @end

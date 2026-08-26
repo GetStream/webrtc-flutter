@@ -31,11 +31,18 @@
 
 - (void)mediaStreamTrackSwitchCamera:(nonnull RTCMediaStreamTrack*)track result:(nonnull FlutterResult)result;
 
-- (NSInteger)selectFpsForFormat:(nonnull AVCaptureDeviceFormat*)format targetFps:(NSInteger)targetFps;
+- (NSInteger)selectFpsForFormat:(nullable AVCaptureDeviceFormat*)format targetFps:(NSInteger)targetFps;
 
-- (nullable AVCaptureDeviceFormat*)selectFormatForDevice:(nonnull AVCaptureDevice*)device
+- (nullable AVCaptureDeviceFormat*)selectFormatForDevice:(nullable AVCaptureDevice*)device
                                     targetWidth:(NSInteger)targetWidth
                                    targetHeight:(NSInteger)targetHeight;
+
+- (nullable AVCaptureDeviceFormat*)selectFormatForDevice:(nullable AVCaptureDevice*)device
+                                    targetWidth:(NSInteger)targetWidth
+                                   targetHeight:(NSInteger)targetHeight
+                                       targetFps:(NSInteger)targetFps;
+
+- (void)applyFixedFrameRate:(NSInteger)fps toDevice:(nullable AVCaptureDevice*)device;
 
 - (nullable AVCaptureDevice*)findDeviceForPosition:(AVCaptureDevicePosition)position;
 

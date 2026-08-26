@@ -1,6 +1,17 @@
 
 # Changelog
 
+## Upcoming
+
+* [iOS/macOS] Capture format selection now considers the requested frame rate and prefers a format at least as large as the target. The previous nearest-match on `|dw| + |dh|` was frame-rate blind and could settle on a format *smaller* than requested, so the encoder silently received less than it asked for; it could also pick a high-speed sensor mode that runs a hotter readout even when clocked down to 30 fps by frame duration. Selection now follows the same tiered rules as the native SDK: preferred pixel format + area >= target + fps in range, falling back through area + fps, then area, then closest area.
+* [iOS/macOS] Fixed `selectFormatForDevice:`, `selectFpsForFormat:`, `findDeviceForPosition:`, `mediaStreamTrackHasTorch:`, `mediaStreamTrackSetTorch:` and `mediaStreamTrackSetZoom:` each being defined twice on `FlutterWebRTCPlugin`, in two different categories. Which copy ran was link-order dependent. The duplicate `findDeviceForPosition:` raised `NSRangeException` on an empty device list, and the duplicate torch/zoom methods returned without ever calling `result(...)`, leaving the Dart future hanging forever.
+* [iOS] `getUserMedia` now stops a previous capturer before starting a new one. This was macOS-only, so on iOS a camera re-acquire race could leave two `AVCaptureSession`s running at once — double capture, double thermal load.
+* [iOS/macOS] Fixed an invalid `CMTimeMake(1, 0)` frame duration whenever `getUserMedia` was called without a `frameRate` constraint. `AVCaptureDevice` accepts a zero timescale silently and then ignores it, so the capture rate was left to whatever the format defaulted to. The requested rate is now clamped into the selected format's supported ranges, with 30 fps used when no rate is requested.
+* [iOS/macOS] `switchCamera` now re-applies the frame-rate cap to the new device. The flipped-to camera started at its format default, discarding whatever cap `getUserMedia` had put in place.
+* [macOS] `switchCamera` now stops the running capture session before reconfiguring it, matching iOS.
+* [iOS/macOS] Fixed `mediaStreamTrackSetVideoEffects` permanently orphaning the video processing chain. It assigned `videoCapturer.delegate` directly, evicting the `VideoProcessingAdapter` along with every processor registered through `addProcessing:`, with no path to restore them. The effect chain is now registered into the adapter instead. Calling it again replaces the previous chain rather than stacking on it.
+* [iOS/macOS] `getUserMedia` now fails with an `OverconstrainedError` when no capture format matches, instead of dereferencing nil.
+
 [3.0.2] - 2026.07.29
 
 * [iOS/macOS] Added `NativePeerConnectionFactory.setMicrophoneMuted` (`appleAdmSetMicrophoneMuted` method channel): mutes microphone capture at the audio-device-module level while the audio engine keeps running. Mutes inside the Voice-Processing I/O unit, arming Apple's muted-talker detection so the plugin emits `onSpeechActivityChanged` events while the user speaks muted.

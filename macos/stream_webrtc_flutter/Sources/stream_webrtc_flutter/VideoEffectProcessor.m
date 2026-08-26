@@ -18,4 +18,14 @@
   }
   [self.videoSource capturer:capturer didCaptureVideoFrame:processedFrame];
 }
+
+/// Runs the effect chain as one link of a VideoProcessingAdapter, which owns
+/// forwarding to the source.
+- (nonnull RTCVideoFrame*)onFrame:(nonnull RTCVideoFrame*)frame {
+  RTCVideoFrame* processedFrame = frame;
+  for (NSObject<VideoFrameProcessorDelegate>* processor in _videoFrameProcessors) {
+    processedFrame = [processor capturer:nil didCaptureVideoFrame:processedFrame];
+  }
+  return processedFrame;
+}
 @end
