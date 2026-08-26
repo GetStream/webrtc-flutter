@@ -66,6 +66,14 @@ class WebRTC {
   /// "audioOutputSampleRate": (Android only) Sets only output sample rate in Hz (e.g., 48000).
   ///                          Takes precedence over audioSampleRate for output.
   ///                          If not specified, uses audioSampleRate or native default.
+  ///
+  /// "useAlphaEglConfig": (Android only) a boolean selecting an EGL config with
+  ///                      an alpha channel for the renderer surfaces. Defaults
+  ///                      to false, i.e. opaque, which lets the system
+  ///                      compositor overwrite instead of blend on every frame
+  ///                      of every video tile. Enable it if Impeller blends the
+  ///                      background into the video texture on a given device.
+  ///                      Must be set before the first renderer is created.
   static Future<void> initialize({
     Map<String, dynamic>? options,
     bool refresh = false,

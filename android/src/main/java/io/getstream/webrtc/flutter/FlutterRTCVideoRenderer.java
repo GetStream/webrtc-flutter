@@ -31,6 +31,7 @@ public class FlutterRTCVideoRenderer implements EventChannel.StreamHandler {
         //destroy
         if (surfaceTextureRenderer != null) {
             surfaceTextureRenderer.release();
+            rendererInitialized = false;
         }
         if (eventChannel != null)
             eventChannel.setStreamHandler(null);
@@ -100,15 +101,52 @@ public class FlutterRTCVideoRenderer implements EventChannel.StreamHandler {
     EventChannel eventChannel;
     EventChannel.EventSink eventSink;
 
+    /**
+     * Whether {@link #surfaceTextureRenderer} currently holds an initialized
+     * render thread and EGL surface.
+     *
+     * <p>Tracked so a track assignment does not blindly tear the renderer down
+     * and build it back up: {@code release()} joins the render thread and
+     * destroys the EGL surface, and {@code init()} spawns and creates them
+     * again. The constructor already initializes, so without this the very
+     * first {@code srcObject} assignment always paid a destroy/create, and a
+     * grid re-sorting its tracks churned render threads for no reason.
+     */
+    private boolean rendererInitialized;
+
     public FlutterRTCVideoRenderer(TextureRegistry.SurfaceProducer producer) {
         this.surfaceTextureRenderer = new SurfaceTextureRenderer("");
         listenRendererEvents();
         surfaceTextureRenderer.init(EglUtils.getRootEglBaseContext(), rendererEvents);
         surfaceTextureRenderer.surfaceCreated(producer);
+        this.rendererInitialized = true;
 
         this.eventSink = null;
         this.producer = producer;
         this.ownerTag = null;
+    }
+
+    /**
+     * Limits how often this renderer draws, or stops it entirely.
+     *
+     * @param fps frames per second, or a negative value to remove the limit.
+     *            Zero pauses rendering.
+     */
+    public void setFpsReduction(float fps) {
+        if (fps < 0) {
+            surfaceTextureRenderer.disableFpsReduction();
+        } else {
+            surfaceTextureRenderer.setFpsReduction(fps);
+        }
+    }
+
+    /**
+     * Tells the renderer how large the widget drawing it is, in physical
+     * pixels, so the texture can be capped at that size instead of the
+     * stream's.
+     */
+    public void setViewSize(int width, int height) {
+        surfaceTextureRenderer.setViewSize(width, height);
     }
 
     public void setEventChannel(EventChannel eventChannel) {
@@ -265,10 +303,17 @@ public class FlutterRTCVideoRenderer implements EventChannel.StreamHandler {
                 return;
             }
 
-            surfaceTextureRenderer.release();
-            listenRendererEvents();
-            surfaceTextureRenderer.init(sharedContext, rendererEvents);
-            surfaceTextureRenderer.surfaceCreated(producer);
+            // Only rebuild the renderer when it does not already have a live
+            // render thread and EGL surface. Re-initializing an initialized
+            // renderer joins and respawns the render thread and destroys and
+            // recreates the EGL surface, which is pure churn when all that
+            // changed is which track feeds it.
+            if (!rendererInitialized) {
+                listenRendererEvents();
+                surfaceTextureRenderer.init(sharedContext, rendererEvents);
+                surfaceTextureRenderer.surfaceCreated(producer);
+                rendererInitialized = true;
+            }
 
             videoTrack.addSink(surfaceTextureRenderer);
         }

@@ -93,6 +93,51 @@ class RTCVideoRenderer extends ValueNotifier<RTCVideoValue>
     }
   }
 
+  /// Limits how often the native renderer draws this texture.
+  ///
+  /// Pass `0` to stop drawing entirely — useful for tiles that have scrolled
+  /// offscreen, which otherwise keep costing a full GPU draw per frame — and
+  /// `null` to remove the limit.
+  ///
+  /// Android only; a no-op elsewhere.
+  Future<void> setFpsReduction(double? fps) async {
+    if (_disposed || _textureId == null) return;
+    if (!WebRTC.platformIsAndroid) return;
+
+    try {
+      await WebRTC.invokeMethod('videoRendererSetFpsReduction', <String, dynamic>{
+        'textureId': _textureId,
+        'fps': fps ?? -1.0,
+      });
+    } on PlatformException catch (e) {
+      throw 'Failed to RTCVideoRenderer::setFpsReduction: ${e.message}';
+    }
+  }
+
+  /// Tells the native renderer how large the widget drawing this texture is, in
+  /// physical pixels, so the texture can be capped at that size.
+  ///
+  /// Without this the texture is sized to the incoming stream, so a 1080p
+  /// remote shown in a small thumbnail allocates a full 1080p texture, pays a
+  /// full-resolution draw every frame, and leaves the downscale to Flutter's
+  /// compositor. Pass zeroes to go back to stream-sized textures.
+  ///
+  /// Android only; a no-op elsewhere.
+  Future<void> setViewSize(int width, int height) async {
+    if (_disposed || _textureId == null) return;
+    if (!WebRTC.platformIsAndroid) return;
+
+    try {
+      await WebRTC.invokeMethod('videoRendererSetViewSize', <String, dynamic>{
+        'textureId': _textureId,
+        'width': width,
+        'height': height,
+      });
+    } on PlatformException catch (e) {
+      throw 'Failed to RTCVideoRenderer::setViewSize: ${e.message}';
+    }
+  }
+
   @override
   Future<void> dispose() async {
     if (_disposed) return;

@@ -34,6 +34,7 @@ import io.getstream.webrtc.flutter.utils.AnyThreadResult;
 import io.getstream.webrtc.flutter.utils.Callback;
 import io.getstream.webrtc.flutter.utils.ConstraintsArray;
 import io.getstream.webrtc.flutter.utils.ConstraintsMap;
+import io.getstream.webrtc.flutter.utils.EglUtils;
 import io.getstream.webrtc.flutter.utils.ObjectType;
 import io.getstream.webrtc.flutter.utils.PermissionUtils;
 import io.getstream.webrtc.flutter.utils.Utils;
@@ -601,6 +602,12 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         int networkIgnoreMask = Options.ADAPTER_TYPE_UNKNOWN;
         Map<String, Object> options = call.argument("options");
         ConstraintsMap constraintsMap = new ConstraintsMap(options);
+        // Has to be applied before the first renderer creates the root EGL
+        // context; it has no effect on already-created contexts.
+        if (constraintsMap.hasKey("useAlphaEglConfig")
+                && constraintsMap.getType("useAlphaEglConfig") == ObjectType.Boolean) {
+          EglUtils.setUseAlphaConfig(constraintsMap.getBoolean("useAlphaEglConfig"));
+        }
         if (constraintsMap.hasKey("networkIgnoreMask")
                 && constraintsMap.getType("networkIgnoreMask") == ObjectType.Array) {
           final ConstraintsArray ignoredAdapters = constraintsMap.getArray("networkIgnoreMask");
@@ -1070,6 +1077,31 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         } else {
           render.setStream(stream, ownerTag);
         }
+        result.success(null);
+        break;
+      }
+      case "videoRendererSetFpsReduction": {
+        int textureId = call.argument("textureId");
+        double fps = call.argument("fps");
+        FlutterRTCVideoRenderer render = renders.get(textureId);
+        if (render == null) {
+          resultError("videoRendererSetFpsReduction", "render [" + textureId + "] not found !", result);
+          return;
+        }
+        render.setFpsReduction((float) fps);
+        result.success(null);
+        break;
+      }
+      case "videoRendererSetViewSize": {
+        int textureId = call.argument("textureId");
+        int width = call.argument("width");
+        int height = call.argument("height");
+        FlutterRTCVideoRenderer render = renders.get(textureId);
+        if (render == null) {
+          resultError("videoRendererSetViewSize", "render [" + textureId + "] not found !", result);
+          return;
+        }
+        render.setViewSize(width, height);
         result.success(null);
         break;
       }
