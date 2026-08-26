@@ -1,9 +1,6 @@
 package io.getstream.webrtc.flutter
 
 import org.webrtc.*
-import java.util.concurrent.Callable
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
 
 /*
 Copyright 2017, Lyo Kato <lyo.kato at gmail.com> (Original Author)
@@ -75,15 +72,20 @@ internal class SimulcastVideoEncoderFactoryWrapper(
     }
 
     /**
-     * Wraps each stream encoder and performs the following:
-     * - Starts up a single thread
-     * - When the width/height from [initEncode] doesn't match the frame buffer's,
-     *   scales the frame prior to encoding.
-     * - Always calls the encoder on the thread.
+     * Wraps each stream encoder and scales the frame when the resolution from
+     * [initEncode] doesn't match the incoming buffer.
+     *
+     * Every method used to be routed through a dedicated single-thread executor
+     * and then immediately blocked on with `future.get()`, which bought no
+     * parallelism at all — the calling encoder thread just waited. With three
+     * simulcast layers that was three extra threads, three
+     * `Callable`+`FutureTask` allocations and six context switches per captured
+     * frame at 30 fps, plus the same round trip for the `getEncoderInfo()` and
+     * `getScalingSettings()` calls libwebrtc makes constantly. Calls now go
+     * straight through to the wrapped encoder on the caller's thread.
      */
     private class StreamEncoderWrapper(private val encoder: VideoEncoder) : VideoEncoder {
 
-        val executor: ExecutorService = Executors.newSingleThreadExecutor()
         var streamSettings: VideoEncoder.Settings? = null
 
         override fun initEncode(
@@ -91,107 +93,53 @@ internal class SimulcastVideoEncoderFactoryWrapper(
             callback: VideoEncoder.Callback?
         ): VideoCodecStatus {
             streamSettings = settings
-            val future = executor.submit(Callable {
-            //     LKLog.i {
-            //         """initEncode() thread=${Thread.currentThread().name} [${Thread.currentThread().id}]
-            //     |  encoder=${encoder.implementationName}
-            //     |  streamSettings:
-            //     |    numberOfCores=${settings.numberOfCores}
-            //     |    width=${settings.width}
-            //     |    height=${settings.height}
-            //     |    startBitrate=${settings.startBitrate}
-            //     |    maxFramerate=${settings.maxFramerate}
-            //     |    automaticResizeOn=${settings.automaticResizeOn}
-            //     |    numberOfSimulcastStreams=${settings.numberOfSimulcastStreams}
-            //     |    lossNotification=${settings.capabilities.lossNotification}
-            // """.trimMargin()
-            //     }
-                return@Callable encoder.initEncode(settings, callback)
-            })
-            return future.get()
+            return encoder.initEncode(settings, callback)
         }
 
-        override fun release(): VideoCodecStatus {
-            val future = executor.submit(Callable { return@Callable encoder.release() })
-            return future.get()
-        }
+        override fun release(): VideoCodecStatus = encoder.release()
 
         override fun encode(
             frame: VideoFrame,
             encodeInfo: VideoEncoder.EncodeInfo?
         ): VideoCodecStatus {
-            val future = executor.submit(Callable {
-                //LKLog.d { "encode() buffer=${frame.buffer}, thread=${Thread.currentThread().name} " +
-                //        "[${Thread.currentThread().id}]" }
-                if (streamSettings == null) {
-                    return@Callable encoder.encode(frame, encodeInfo)
-                } else if (frame.buffer.width == streamSettings!!.width) {
-                    return@Callable encoder.encode(frame, encodeInfo)
-                } else {
-                    // The incoming buffer is different than the streamSettings received in initEncode()
-                    // Need to scale.
-                    val originalBuffer = frame.buffer
-                    // TODO: Do we need to handle when the scale factor is weird?
-                    val adaptedBuffer = originalBuffer.cropAndScale(
-                        0, 0, originalBuffer.width, originalBuffer.height,
-                        streamSettings!!.width, streamSettings!!.height
-                    )
-                    val adaptedFrame = VideoFrame(adaptedBuffer, frame.rotation, frame.timestampNs)
-                    val result = encoder.encode(adaptedFrame, encodeInfo)
-                    adaptedBuffer.release()
-                    return@Callable result
-                }
-            })
-            return future.get()
+            val settings = streamSettings
+            if (settings == null || frame.buffer.width == settings.width) {
+                return encoder.encode(frame, encodeInfo)
+            }
+
+            // The incoming buffer differs from the streamSettings received in
+            // initEncode(), so scale before handing it over.
+            val originalBuffer = frame.buffer
+            val adaptedBuffer = originalBuffer.cropAndScale(
+                0, 0, originalBuffer.width, originalBuffer.height,
+                settings.width, settings.height
+            )
+            val adaptedFrame = VideoFrame(adaptedBuffer, frame.rotation, frame.timestampNs)
+            val result = encoder.encode(adaptedFrame, encodeInfo)
+            adaptedBuffer.release()
+            return result
         }
 
         override fun setRateAllocation(
             allocation: VideoEncoder.BitrateAllocation?,
             frameRate: Int
-        ): VideoCodecStatus {
-            val future = executor.submit(Callable {
-                return@Callable encoder.setRateAllocation(
-                    allocation,
-                    frameRate
-                )
-            })
-            return future.get()
-        }
+        ): VideoCodecStatus = encoder.setRateAllocation(allocation, frameRate)
 
-        override fun getScalingSettings(): VideoEncoder.ScalingSettings {
-            val future = executor.submit(Callable { return@Callable encoder.scalingSettings })
-            return future.get()
-        }
+        override fun getScalingSettings(): VideoEncoder.ScalingSettings = encoder.scalingSettings
 
-        override fun getImplementationName(): String {
-            val future = executor.submit(Callable { return@Callable encoder.implementationName })
-            return future.get()
-        }
+        override fun getImplementationName(): String = encoder.implementationName
 
-        override fun createNative(webrtcEnvRef: Long): Long {
-            val future = executor.submit(Callable { return@Callable encoder.createNative(webrtcEnvRef) })
-            return future.get()
-        }
+        override fun createNative(webrtcEnvRef: Long): Long = encoder.createNative(webrtcEnvRef)
 
-        override fun isHardwareEncoder(): Boolean {
-            val future = executor.submit(Callable { return@Callable encoder.isHardwareEncoder })
-            return future.get()
-        }
+        override fun isHardwareEncoder(): Boolean = encoder.isHardwareEncoder
 
-        override fun setRates(rcParameters: VideoEncoder.RateControlParameters?): VideoCodecStatus {
-            val future = executor.submit(Callable { return@Callable encoder.setRates(rcParameters) })
-            return future.get()
-        }
+        override fun setRates(rcParameters: VideoEncoder.RateControlParameters?): VideoCodecStatus =
+            encoder.setRates(rcParameters)
 
-        override fun getResolutionBitrateLimits(): Array<VideoEncoder.ResolutionBitrateLimits> {
-            val future = executor.submit(Callable { return@Callable encoder.resolutionBitrateLimits })
-            return future.get()
-        }
+        override fun getResolutionBitrateLimits(): Array<VideoEncoder.ResolutionBitrateLimits> =
+            encoder.resolutionBitrateLimits
 
-        override fun getEncoderInfo(): VideoEncoder.EncoderInfo {
-            val future = executor.submit(Callable { return@Callable encoder.encoderInfo })
-            return future.get()
-        }
+        override fun getEncoderInfo(): VideoEncoder.EncoderInfo = encoder.encoderInfo
     }
 
     private class StreamEncoderWrapperFactory(private val factory: VideoEncoderFactory) :
@@ -222,7 +170,10 @@ internal class SimulcastVideoEncoderFactoryWrapper(
             sharedContext, enableIntelVp8Encoder, enableH264HighProfile
         )
         primary = StreamEncoderWrapperFactory(hardwareVideoEncoderFactory)
-        fallback = StreamEncoderWrapperFactory(FallbackFactory(primary))
+        // Wrap the raw hardware factory, not `primary`: passing the already
+        // wrapped factory here nested one StreamEncoderWrapper inside another,
+        // so every fallback encoder paid the wrapper twice per call.
+        fallback = StreamEncoderWrapperFactory(FallbackFactory(hardwareVideoEncoderFactory))
         native = SimulcastVideoEncoderFactory(primary, fallback)
     }
 
