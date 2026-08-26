@@ -9,8 +9,8 @@ import org.webrtc.VideoProcessor;
 import org.webrtc.VideoSink;
 import org.webrtc.VideoTrack;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class LocalVideoTrack extends LocalTrack implements VideoProcessor {
     public interface ExternalVideoFrameProcessing {
@@ -26,21 +26,20 @@ public class LocalVideoTrack extends LocalTrack implements VideoProcessor {
         super(videoTrack);
     }
 
-    List<ExternalVideoFrameProcessing> processors = new ArrayList<>();
+    // Copy-on-write so onFrameCaptured, which runs for every captured frame, does
+    // not have to take a monitor to read the list.
+    private final List<ExternalVideoFrameProcessing> processors = new CopyOnWriteArrayList<>();
 
     public void addProcessor(ExternalVideoFrameProcessing processor) {
-        synchronized (processors) {
-            processors.add(processor);
-        }
+        processors.add(processor);
     }
 
     public void removeProcessor(ExternalVideoFrameProcessing processor) {
-        synchronized (processors) {
-            processors.remove(processor);
-        }
+        processors.remove(processor);
     }
 
-    private VideoSink sink = null;
+    // Written from the platform thread, read on the capture thread.
+    private volatile VideoSink sink = null;
 
     @Override
     public void setSink(@Nullable VideoSink videoSink) {
@@ -55,13 +54,19 @@ public class LocalVideoTrack extends LocalTrack implements VideoProcessor {
 
     @Override
     public void onFrameCaptured(VideoFrame videoFrame) {
-        if (sink != null) {
-            synchronized (processors) {
-                for (ExternalVideoFrameProcessing processor : processors) {
-                    videoFrame = processor.onFrame(videoFrame);
-                }
-            }
-            sink.onFrame(videoFrame);
+        final VideoSink sink = this.sink;
+        if (sink == null) {
+            return;
         }
+
+        // The common case by far is an empty processor list. Skipping the loop
+        // avoids allocating an iterator for every captured frame.
+        if (!processors.isEmpty()) {
+            for (ExternalVideoFrameProcessing processor : processors) {
+                videoFrame = processor.onFrame(videoFrame);
+            }
+        }
+
+        sink.onFrame(videoFrame);
     }
 }

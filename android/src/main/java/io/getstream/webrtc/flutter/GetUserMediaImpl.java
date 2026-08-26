@@ -85,6 +85,9 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -115,10 +118,25 @@ public class GetUserMediaImpl {
 
     static final String TAG = FlutterWebRTCPlugin.TAG;
 
-    private final Map<String, VideoCapturerInfoEx> mVideoCapturers = new HashMap<>();
-    private final Map<String, SurfaceTextureHelper> mSurfaceTextureHelpers = new HashMap<>();
-    private final Map<String, VideoSource> mVideoSources = new HashMap<>();
-    private final Map<String, AudioSource> mAudioSources = new HashMap<>();
+    /**
+     * Serializes media acquisition off the platform thread.
+     *
+     * <p>Single-threaded on purpose: two concurrent camera acquisitions would
+     * race for the device, and this keeps them ordered without any locking.
+     */
+    private final ExecutorService mediaAcquisitionExecutor =
+            Executors.newSingleThreadExecutor(r -> {
+                Thread thread = new Thread(r, "WebRTC-MediaAcquisition");
+                thread.setDaemon(true);
+                return thread;
+            });
+
+    // Concurrent because they are mutated from the platform thread (getUserMedia,
+    // getDisplayMedia, removeVideoCapturer) and read from lifecycle callbacks.
+    private final Map<String, VideoCapturerInfoEx> mVideoCapturers = new ConcurrentHashMap<>();
+    private final Map<String, SurfaceTextureHelper> mSurfaceTextureHelpers = new ConcurrentHashMap<>();
+    private final Map<String, VideoSource> mVideoSources = new ConcurrentHashMap<>();
+    private final Map<String, AudioSource> mAudioSources = new ConcurrentHashMap<>();
     
     private final StateProvider stateProvider;
     private final Context applicationContext;
@@ -694,6 +712,10 @@ public class GetUserMediaImpl {
                 ", includeAudio: " + includeAudio);
 
         mVideoCapturers.put(trackId, info);
+        // Registered so removeVideoCapturer can dispose it. Without this the
+        // helper's GL thread and EGL surface leaked once per screen-share
+        // session, and the mVideoSources entry leaked with it.
+        mSurfaceTextureHelpers.put(trackId, surfaceTextureHelper);
         mVideoSources.put(trackId, videoSource);
 
         displayTrack = pcFactory.createVideoTrack(trackId, videoSource);
@@ -790,6 +812,22 @@ public class GetUserMediaImpl {
      * requested.
      */
     private void getUserMedia(
+            final ConstraintsMap constraints,
+            final Result result,
+            final MediaStream mediaStream,
+            final List<String> grantedPermissions) {
+        // Acquiring media blocks: three camera enumerations, capturer creation,
+        // startCapture, and then a wait of up to two seconds for the first frame
+        // (see CameraEventsHandler.waitForCameraOpen). Running that inline on
+        // the platform thread stalls every other method channel call, and the
+        // UI with it. `Result` here is an AnyThreadResult, so replying from a
+        // worker is safe. A single-threaded executor also serializes concurrent
+        // getUserMedia calls, which is what we want for camera acquisition.
+        mediaAcquisitionExecutor.execute(
+                () -> acquireUserMedia(constraints, result, mediaStream, grantedPermissions));
+    }
+
+    private void acquireUserMedia(
             ConstraintsMap constraints,
             Result result,
             MediaStream mediaStream,
@@ -1034,7 +1072,16 @@ public class GetUserMediaImpl {
         }
 
         info.cameraEventsHandler = cameraEventsHandler;
-        videoCapturer.startCapture(targetWidth, targetHeight, targetFps);
+        // Start with the resolved size, not the requested one. `info` already
+        // reports the resolved size to Dart, and the background-resume path
+        // restarts from `info` too — starting from the request here meant the
+        // pre- and post-background capture formats could disagree.
+        videoCapturer.startCapture(info.width, info.height, info.fps);
+        info.isCapturing = true;
+
+        // Cap the source as well, so the encoder never receives more than was
+        // asked for regardless of what the camera actually delivers.
+        videoSource.adaptOutputFormat(info.width, info.height, info.fps);
 
         cameraEventsHandler.waitForCameraOpen();
 
@@ -1098,6 +1145,7 @@ public class GetUserMediaImpl {
         if (info != null) {
             try {
                 info.capturer.stopCapture();
+                info.isCapturing = false;
                 if (info.cameraEventsHandler != null) {
                     info.cameraEventsHandler.waitForCameraClosed();
                 }
@@ -1111,8 +1159,11 @@ public class GetUserMediaImpl {
                     helper.stopListening();
                     helper.dispose();
                     mSurfaceTextureHelpers.remove(id);
-                    mVideoSources.remove(id);
                 }
+                // Outside the helper check: a capturer without a registered
+                // helper still owns a video source, and leaving the entry
+                // behind leaked it.
+                mVideoSources.remove(id);
             }
         }
     }
@@ -1278,13 +1329,17 @@ public class GetUserMediaImpl {
 
     public void reStartCamera(IsCameraEnabled getCameraId) {
         for (Map.Entry<String, VideoCapturerInfoEx> item : mVideoCapturers.entrySet()) {
-            if (!item.getValue().isScreenCapture && getCameraId.isEnabled(item.getKey())) {
-                item.getValue().capturer.startCapture(
-                        item.getValue().width,
-                        item.getValue().height,
-                        item.getValue().fps
-                );
+            final VideoCapturerInfoEx info = item.getValue();
+            // Already capturing means this foreground event has been handled —
+            // restarting again just churns the camera.
+            if (info.isScreenCapture || info.isCapturing) {
+                continue;
             }
+            if (!getCameraId.isEnabled(item.getKey())) {
+                continue;
+            }
+            info.capturer.startCapture(info.width, info.height, info.fps);
+            info.isCapturing = true;
         }
     }
 
@@ -1299,6 +1354,43 @@ public class GetUserMediaImpl {
 
     public VideoCapturerInfoEx getCapturerInfo(String trackId) {
         return mVideoCapturers.get(trackId);
+    }
+
+    /**
+     * Stops or restarts the camera behind a video track.
+     *
+     * <p>Flipping the track's `enabled` flag alone only blanks the frames: the
+     * camera hardware, the SurfaceTextureHelper's GL thread and the local
+     * preview all keep running at full rate while "muted", with the capture
+     * indicator still lit.
+     *
+     * @return true when the capturer state was changed.
+     */
+    boolean setVideoCapturerEnabled(String trackId, boolean enabled) {
+        VideoCapturerInfoEx info = mVideoCapturers.get(trackId);
+        if (info == null || info.capturer == null || info.isScreenCapture) {
+            return false;
+        }
+
+        try {
+            if (enabled) {
+                info.capturer.startCapture(info.width, info.height, info.fps);
+            } else {
+                info.capturer.stopCapture();
+                if (info.cameraEventsHandler != null) {
+                    info.cameraEventsHandler.waitForCameraClosed();
+                }
+            }
+            info.isCapturing = enabled;
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            Log.e(TAG, "setVideoCapturerEnabled() interrupted for " + trackId);
+            return false;
+        } catch (RuntimeException e) {
+            Log.w(TAG, "setVideoCapturerEnabled() failed for " + trackId + ": " + e);
+            return false;
+        }
     }
 
     @RequiresApi(api = VERSION_CODES.M)

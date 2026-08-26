@@ -2389,6 +2389,17 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         return;
       }
       track.setEnabled(enabled);
+
+      // Stop the camera as well, not just the track. Disabling a video track
+      // only blanks the frames — the camera hardware, the capture GL thread and
+      // the local preview keep running at full rate, and the platform capture
+      // indicator stays lit.
+      if (track instanceof VideoTrack) {
+        final NativePeerConnectionFactory nf = resolveFactoryForTrack(id);
+        if (nf != null && nf.getUserMediaImpl != null) {
+          nf.getUserMediaImpl.setVideoCapturerEnabled(id, enabled);
+        }
+      }
     } catch (Throwable t) {
       Log.w(TAG, "mediaStreamTrackSetEnabled() track " + id + " stale: " + t);
     }

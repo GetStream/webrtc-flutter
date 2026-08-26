@@ -1,9 +1,6 @@
 package io.getstream.webrtc.flutter;
 
-import android.app.Activity;
-import android.app.Application;
 import android.content.Context;
-import android.os.Bundle;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -35,7 +32,6 @@ import io.flutter.view.TextureRegistry;
 public class FlutterWebRTCPlugin implements FlutterPlugin, ActivityAware, EventChannel.StreamHandler {
 
     static public final String TAG = "FlutterWebRTCPlugin";
-    private static Application application;
 
     private MethodChannel methodChannel;
     private MethodCallHandlerImpl methodCallHandler;
@@ -123,12 +119,10 @@ public class FlutterWebRTCPlugin implements FlutterPlugin, ActivityAware, EventC
         if (AudioSwitchManager.instance != null) {
             AudioSwitchManager.instance.setActivity(null);
         }
-        if (this.observer != null) {
+        if (this.observer != null && this.lifecycle != null) {
             this.lifecycle.removeObserver(this.observer);
-            if (application!=null) {
-                application.unregisterActivityLifecycleCallbacks(this.observer);
-            }
         }
+        this.observer = null;
         this.lifecycle = null;
     }
 
@@ -178,50 +172,24 @@ public class FlutterWebRTCPlugin implements FlutterPlugin, ActivityAware, EventC
         }
     }
 
-    private class LifeCycleObserver implements Application.ActivityLifecycleCallbacks, DefaultLifecycleObserver {
-
-        @Override
-        public void onActivityCreated(Activity activity, Bundle savedInstanceState) {
-
-        }
-
-        @Override
-        public void onActivityStarted(Activity activity) {
-
-        }
-
-        @Override
-        public void onActivityResumed(Activity activity) {
-            if (null != methodCallHandler) {
-                methodCallHandler.reStartCamera();
-            }
-        }
+    /**
+     * Restarts the camera when the host activity comes back to the foreground.
+     *
+     * <p>This used to also implement {@link Application.ActivityLifecycleCallbacks}
+     * and restart the camera from {@code onActivityResumed} as well. Nothing
+     * ever registered it as an activity callback — the static {@code
+     * application} field was never assigned — yet {@code onDetachedFromActivity}
+     * unregistered it, so the two halves were asymmetric and the class was one
+     * line away from restarting the camera twice per foreground. Only the
+     * lifecycle-observer half is kept.
+     */
+    private class LifeCycleObserver implements DefaultLifecycleObserver {
 
         @Override
         public void onResume(LifecycleOwner owner) {
             if (null != methodCallHandler) {
                 methodCallHandler.reStartCamera();
             }
-        }
-
-        @Override
-        public void onActivityPaused(Activity activity) {
-
-        }
-
-        @Override
-        public void onActivityStopped(Activity activity) {
-
-        }
-
-        @Override
-        public void onActivitySaveInstanceState(Activity activity, Bundle outState) {
-
-        }
-
-        @Override
-        public void onActivityDestroyed(Activity activity) {
-
         }
     }
 }

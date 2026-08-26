@@ -23,6 +23,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.view.Display;
 import android.util.Log;
+import android.content.ComponentCallbacks;
 import android.content.Context;
 import android.content.res.Configuration;
 
@@ -94,16 +95,64 @@ public class OrientationAwareScreenCapturer implements VideoCapturer, VideoSink 
         }
 
         checkNotDisposed();
-        this.isPortrait = isDeviceOrientationPortrait();
+        capturerObserver.onFrameCaptured(frame);
+    }
+
+    /**
+     * Cached device orientation, refreshed from a configuration-change callback
+     * rather than read per frame.
+     *
+     * <p>`getResources().getConfiguration()` is a Resources round trip, and
+     * `changeCaptureFormat` is `synchronized` — doing both for every frame of a
+     * screen share meant acquiring a monitor on the capture thread 15-30 times a
+     * second, contending with startCapture/stopCapture/dispose, to answer a
+     * question that only changes when the user rotates the device.
+     */
+    private final ComponentCallbacks orientationCallbacks = new ComponentCallbacks() {
+        @Override
+        public void onConfigurationChanged(Configuration newConfig) {
+            applyOrientation(newConfig.orientation == Configuration.ORIENTATION_PORTRAIT);
+        }
+
+        @Override
+        public void onLowMemory() {}
+    };
+
+    private boolean orientationCallbacksRegistered;
+
+    private void registerOrientationCallbacks() {
+        if (orientationCallbacksRegistered || context == null) {
+            return;
+        }
+        context.registerComponentCallbacks(orientationCallbacks);
+        orientationCallbacksRegistered = true;
+    }
+
+    private void unregisterOrientationCallbacks() {
+        if (!orientationCallbacksRegistered || context == null) {
+            return;
+        }
+        try {
+            context.unregisterComponentCallbacks(orientationCallbacks);
+        } catch (IllegalArgumentException ignored) {
+            // Not registered.
+        }
+        orientationCallbacksRegistered = false;
+    }
+
+    private void applyOrientation(boolean portrait) {
+        if (isStopping || isDisposed) {
+            return;
+        }
+
+        this.isPortrait = portrait;
         final int max = Math.max(this.height, this.width);
         final int min = Math.min(this.height, this.width);
-        if (this.isPortrait) {
+        if (portrait) {
             changeCaptureFormat(min, max, 15);
         } else {
             changeCaptureFormat(max, min, 15);
         }
-
-        capturerObserver.onFrameCaptured(frame);
     }
 
     private boolean isDeviceOrientationPortrait() {
@@ -159,6 +208,8 @@ public class OrientationAwareScreenCapturer implements VideoCapturer, VideoSink 
         capturerObserver.onCapturerStarted(true);
         surfaceTextureHelper.startListening(this);
 
+        registerOrientationCallbacks();
+
         // Notify listener that MediaProjection is ready (for screen audio capture)
         if (mediaProjectionReadyListener != null) {
             mediaProjectionReadyListener.onMediaProjectionReady(mediaProjection);
@@ -168,6 +219,7 @@ public class OrientationAwareScreenCapturer implements VideoCapturer, VideoSink 
     @Override
     public synchronized void stopCapture() {
         isStopping = true;
+        unregisterOrientationCallbacks();
 
         if (isDisposed) {
             return;
@@ -220,6 +272,7 @@ public class OrientationAwareScreenCapturer implements VideoCapturer, VideoSink 
     public synchronized void dispose() {
         isStopping = true;
         isDisposed = true;
+        unregisterOrientationCallbacks();
     }
 
     /**
