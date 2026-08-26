@@ -3,6 +3,14 @@
 
 ## Upcoming
 
+### Adaptive capture (iOS)
+
+* [iOS/macOS] Added `Helper.setCaptureFormat` / `CameraUtils.setCaptureFormat`, which reconfigures the running capture session to a new resolution and frame rate **without recreating the track**. No `getUserMedia` round trip and no camera warm-up, so it is cheap enough to call whenever the needed resolution changes mid-call. Returns the format the device actually settled on.
+* [iOS/macOS] The camera video source is now capped with `adaptOutputFormatToWidth:height:fps:` once capture starts. Previously the only caller in the whole darwin tree was the ReplayKit screen-share path, so the camera source was never capped and the encoder received the full sensor output and downscaled every frame itself.
+* [iOS] Added camera throttling under thermal pressure, via `Helper.setCameraSystemPressureMonitoringEnabled`. The plugin observes `AVCaptureDevice.systemPressureState` and steps capture down as the device heats up — frame rate to 24/15/10/5 fps for fair/serious/critical/shutdown, resolution to x1.0/x0.75/x0.5 — restoring it as pressure recovers. Transitions are debounced (3 s down, 1 s when already critical, 10 s up) so pressure hovering at a boundary cannot flap the capture format. Applied changes are reported on the `FlutterWebRTC.Event` channel as `onCameraSystemPressureChanged`, exposed in Dart as `MediaDeviceNative.instance.onCameraSystemPressureChanged`. Disabled by default; a no-op on macOS, where `systemPressureState` does not exist.
+
+### Fixes
+
 * [iOS/macOS] Capture format selection now considers the requested frame rate and prefers a format at least as large as the target. The previous nearest-match on `|dw| + |dh|` was frame-rate blind and could settle on a format *smaller* than requested, so the encoder silently received less than it asked for; it could also pick a high-speed sensor mode that runs a hotter readout even when clocked down to 30 fps by frame duration. Selection now follows the same tiered rules as the native SDK: preferred pixel format + area >= target + fps in range, falling back through area + fps, then area, then closest area.
 * [iOS/macOS] Fixed `selectFormatForDevice:`, `selectFpsForFormat:`, `findDeviceForPosition:`, `mediaStreamTrackHasTorch:`, `mediaStreamTrackSetTorch:` and `mediaStreamTrackSetZoom:` each being defined twice on `FlutterWebRTCPlugin`, in two different categories. Which copy ran was link-order dependent. The duplicate `findDeviceForPosition:` raised `NSRangeException` on an empty device list, and the duplicate torch/zoom methods returned without ever calling `result(...)`, leaving the Dart future hanging forever.
 * [iOS] `getUserMedia` now stops a previous capturer before starting a new one. This was macOS-only, so on iOS a camera re-acquire race could leave two `AVCaptureSession`s running at once — double capture, double thermal load.

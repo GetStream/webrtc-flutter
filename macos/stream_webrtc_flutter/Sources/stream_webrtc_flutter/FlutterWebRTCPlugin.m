@@ -1025,6 +1025,32 @@ static FlutterWebRTCPlugin* sharedSingleton;
                                    details:nil]);
       }
     }
+  } else if ([@"mediaStreamTrackSetCaptureFormat" isEqualToString:call.method]) {
+    NSDictionary* argsMap = call.arguments;
+    NSString* trackId = argsMap[@"trackId"];
+    NSInteger width = [argsMap[@"width"] integerValue];
+    NSInteger height = [argsMap[@"height"] integerValue];
+    NSInteger fps = [argsMap[@"fps"] integerValue];
+    id<LocalTrack> track = self.localTracks[trackId];
+    if (track != nil && [track isKindOfClass:[LocalVideoTrack class]]) {
+      [self setCaptureFormatForTrack:trackId width:width height:height fps:fps result:result];
+    } else {
+      if (track == nil) {
+        result([FlutterError errorWithCode:@"Track is nil" message:nil details:nil]);
+      } else {
+        result([FlutterError errorWithCode:[@"Track is class of "
+                                               stringByAppendingString:[[track class] description]]
+                                   message:nil
+                                   details:nil]);
+      }
+    }
+  } else if ([@"setCameraSystemPressureMonitoringEnabled" isEqualToString:call.method]) {
+    NSDictionary* argsMap = call.arguments;
+    BOOL enabled = [argsMap[@"enabled"] boolValue];
+    [self setCameraSystemPressureMonitoringEnabled:enabled];
+    result(@([self isCameraSystemPressureMonitoringEnabled]));
+  } else if ([@"isCameraSystemPressureMonitoringEnabled" isEqualToString:call.method]) {
+    result(@([self isCameraSystemPressureMonitoringEnabled]));
   } else if ([@"mediaStreamTrackSetFocusMode" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* trackId = argsMap[@"trackId"];

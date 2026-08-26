@@ -690,6 +690,23 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 
     [self.localTracks setObject:localVideoTrack forKey:trackUUID];
 
+    // Cap the source at what was actually requested. The selected format is
+    // usually larger than the target, and without this the encoder receives the
+    // full sensor output and has to downscale every frame itself. This was only
+    // ever done for the ReplayKit screen-share path; the camera source was never
+    // capped.
+    [self adaptOutputFormatForTrack:trackUUID
+                              width:targetWidth > 0 ? targetWidth : selectedWidth
+                             height:targetHeight > 0 ? targetHeight : selectedHeight
+                                fps:selectedFps];
+
+    [self startCameraSystemPressureMonitoringForDevice:videoDevice
+                                               trackId:trackUUID
+                                                 width:targetWidth > 0 ? targetWidth : selectedWidth
+                                                height:targetHeight > 0 ? targetHeight
+                                                                        : selectedHeight
+                                                   fps:selectedFps];
+
     successCallback(mediaStream);
   } else {
     // According to step 6.2.3 of the getUserMedia() algorithm, if there is no

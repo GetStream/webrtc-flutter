@@ -83,6 +83,32 @@ class Helper {
   static Future<void> setZoom(MediaStreamTrack videoTrack, double zoomLevel) =>
       CameraUtils.setZoom(videoTrack, zoomLevel);
 
+  /// Reconfigures the running capture session without recreating the track.
+  ///
+  /// See [CameraUtils.setCaptureFormat].
+  static Future<CameraCaptureFormat?> setCaptureFormat(
+    MediaStreamTrack videoTrack, {
+    required int width,
+    required int height,
+    required int fps,
+  }) =>
+      CameraUtils.setCaptureFormat(
+        videoTrack,
+        width: width,
+        height: height,
+        fps: fps,
+      );
+
+  /// Enables or disables throttling the camera as the device heats up.
+  ///
+  /// See [CameraUtils.setSystemPressureMonitoringEnabled].
+  static Future<bool> setCameraSystemPressureMonitoringEnabled(bool enabled) =>
+      CameraUtils.setSystemPressureMonitoringEnabled(enabled);
+
+  /// Whether camera thermal throttling is currently active.
+  static Future<bool> isCameraSystemPressureMonitoringEnabled() =>
+      CameraUtils.isSystemPressureMonitoringEnabled();
+
   static Future<void> setFocusMode(
           MediaStreamTrack videoTrack, CameraFocusMode focusMode) =>
       CameraUtils.setFocusMode(videoTrack, focusMode);

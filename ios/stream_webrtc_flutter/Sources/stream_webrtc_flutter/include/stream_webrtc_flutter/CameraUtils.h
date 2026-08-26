@@ -44,6 +44,38 @@
 
 - (void)applyFixedFrameRate:(NSInteger)fps toDevice:(nullable AVCaptureDevice*)device;
 
+- (void)setCaptureFormatForTrack:(nullable NSString*)trackId
+                           width:(NSInteger)width
+                          height:(NSInteger)height
+                             fps:(NSInteger)fps
+                          result:(nullable FlutterResult)result;
+
+- (void)adaptOutputFormatForTrack:(nullable NSString*)trackId
+                            width:(NSInteger)width
+                           height:(NSInteger)height
+                              fps:(NSInteger)fps;
+
+/// Enables or disables camera throttling under device thermal pressure.
+///
+/// A no-op on macOS, where `AVCaptureDevice.systemPressureState` does not exist.
+- (void)setCameraSystemPressureMonitoringEnabled:(BOOL)enabled;
+
+- (BOOL)isCameraSystemPressureMonitoringEnabled;
+
+- (void)startCameraSystemPressureMonitoringForDevice:(nullable AVCaptureDevice*)device
+                                             trackId:(nullable NSString*)trackId
+                                               width:(NSInteger)width
+                                              height:(NSInteger)height
+                                                 fps:(NSInteger)fps;
+
+/// Re-bases the throttle after capture was reconfigured for an unrelated reason
+/// (an SFU quality change, say), so later step-downs scale from the new target.
+- (void)updateCameraSystemPressureBaselineWidth:(NSInteger)width
+                                         height:(NSInteger)height
+                                            fps:(NSInteger)fps;
+
+- (void)stopCameraSystemPressureMonitoring;
+
 - (nullable AVCaptureDevice*)findDeviceForPosition:(AVCaptureDevicePosition)position;
 
 

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import 'package:webrtc_interface/webrtc_interface.dart';
 
+import 'camera_utils.dart';
 import 'event_channel.dart';
 import 'media_stream_impl.dart';
 import 'utils.dart';
@@ -33,11 +34,24 @@ class MediaDeviceNative extends MediaDevices {
       case 'onInterruptionEnd':
         onInterruptionEnd?.call();
         break;
+      case 'onCameraSystemPressureChanged':
+        _cameraSystemPressure.add(CameraSystemPressureEvent.fromMap(map));
+        break;
     }
   }
 
   Function()? onInterruptionStart;
   Function()? onInterruptionEnd;
+
+  final _cameraSystemPressure =
+      StreamController<CameraSystemPressureEvent>.broadcast();
+
+  /// Fires whenever thermal pressure causes the camera to be reconfigured.
+  ///
+  /// Only emits while camera system-pressure monitoring is enabled; see
+  /// [CameraUtils.setSystemPressureMonitoringEnabled].
+  Stream<CameraSystemPressureEvent> get onCameraSystemPressureChanged =>
+      _cameraSystemPressure.stream;
 
   @override
   Future<MediaStream> getUserMedia(

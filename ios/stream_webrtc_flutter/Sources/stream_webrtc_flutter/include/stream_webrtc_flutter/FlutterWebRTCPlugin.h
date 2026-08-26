@@ -1,6 +1,7 @@
 #import <Flutter/Flutter.h>
 #import <Foundation/Foundation.h>
 #import <StreamWebRTC/StreamWebRTC.h>
+#import "CameraSystemPressureObserver.h"
 #import "LocalTrack.h"
 
 @class VideoEffectProcessor;
@@ -20,6 +21,10 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
                                            RTCPeerConnectionDelegate,
                                            RTCAudioDeviceModuleDelegate,
                                            FlutterStreamHandler
+#if TARGET_OS_IPHONE
+                                           ,
+                                           CameraSystemPressureObserverDelegate
+#endif
 #if TARGET_OS_OSX
                                            ,
                                            RTCDesktopMediaListDelegate,
@@ -75,6 +80,13 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 @property(nonatomic, strong) AVAudioSessionPort _Nullable preferredInput;
 #endif
 @property(nonatomic, strong) VideoEffectProcessor* _Nullable videoEffectProcessor;
+
+#if TARGET_OS_IPHONE
+/// Whether the camera should be throttled as `systemPressureState` rises.
+@property(nonatomic, assign) BOOL cameraSystemPressureMonitoringEnabled;
+@property(nonatomic, strong) CameraSystemPressureObserver* _Nullable cameraSystemPressureObserver;
+@property(nonatomic, strong) NSString* _Nullable cameraSystemPressureTrackId;
+#endif
 
 @property(nonatomic, strong) NSString* _Nonnull focusMode;
 @property(nonatomic, strong) NSString* _Nonnull exposureMode;

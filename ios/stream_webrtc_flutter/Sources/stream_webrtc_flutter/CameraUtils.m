@@ -1,4 +1,6 @@
 #import "include/stream_webrtc_flutter/CameraUtils.h"
+#import "include/stream_webrtc_flutter/CameraSystemPressureObserver.h"
+#import "include/stream_webrtc_flutter/LocalVideoTrack.h"
 
 /// The frame rate used when a caller supplies no `frameRate` constraint.
 ///
@@ -414,6 +416,198 @@ static BOOL FormatSupportsFrameRate(AVCaptureDeviceFormat* format, NSInteger fps
                                result([NSNumber numberWithBool:usingFrontCamera]);
                              }
                            }];
+}
+
+/// Reconfigures the running capture session to a new format.
+///
+/// Deliberately does not stop the capturer first: `startCaptureWithDevice:` on
+/// a live `RTCCameraVideoCapturer` reconfigures the existing `AVCaptureSession`
+/// in place. Stopping and restarting would pay a full camera warm-up on every
+/// adaptation, which is what this is trying to avoid in the first place.
+- (void)setCaptureFormatForTrack:(nullable NSString*)trackId
+                           width:(NSInteger)width
+                          height:(NSInteger)height
+                             fps:(NSInteger)fps
+                          result:(nullable FlutterResult)result {
+  if (!self.videoCapturer) {
+    NSLog(@"Video capturer is null. Can't set capture format");
+    if (result) {
+      result([FlutterError errorWithCode:@"setCaptureFormatFailed"
+                                 message:@"Video capturer not found"
+                                 details:nil]);
+    }
+    return;
+  }
+
+  AVCaptureDevice* device = [self currentDevice];
+  if (device == nil) {
+    NSLog(@"No active capture device. Can't set capture format");
+    if (result) {
+      result([FlutterError errorWithCode:@"setCaptureFormatFailed"
+                                 message:@"No active capture device"
+                                 details:nil]);
+    }
+    return;
+  }
+
+  AVCaptureDeviceFormat* selectedFormat = [self selectFormatForDevice:device
+                                                          targetWidth:width
+                                                         targetHeight:height
+                                                            targetFps:fps];
+  if (selectedFormat == nil) {
+    NSLog(@"No capture format found. Can't set capture format");
+    if (result) {
+      result([FlutterError errorWithCode:@"setCaptureFormatFailed"
+                                 message:@"No capture format found"
+                                 details:nil]);
+    }
+    return;
+  }
+
+  NSInteger selectedFps = [self selectFpsForFormat:selectedFormat targetFps:fps];
+
+  [self applyFixedFrameRate:selectedFps toDevice:device];
+
+  [self.videoCapturer startCaptureWithDevice:device
+                                      format:selectedFormat
+                                         fps:selectedFps
+                           completionHandler:^(NSError* error) {
+                             if (error != nil) {
+                               NSLog(@"setCaptureFormat error: %@", [error localizedDescription]);
+                             }
+                           }];
+
+  // Cap the source as well as the device. The selected format is often larger
+  // than what was asked for, and without this the encoder would receive the
+  // full sensor output and downscale every frame itself.
+  [self adaptOutputFormatForTrack:trackId
+                            width:width
+                           height:height
+                              fps:selectedFps];
+
+  CMVideoDimensions selectedDimension =
+      CMVideoFormatDescriptionGetDimensions(selectedFormat.formatDescription);
+
+  NSMutableDictionary* captureState = trackId != nil ? self.videoCaptureState[trackId] : nil;
+  if (captureState) {
+    captureState[@"targetWidth"] = @(width);
+    captureState[@"targetHeight"] = @(height);
+    captureState[@"targetFps"] = @(selectedFps);
+  }
+  self._lastTargetWidth = width;
+  self._lastTargetHeight = height;
+  self._lastTargetFps = selectedFps;
+
+  NSLog(@"setCaptureFormat requested %ldx%ld@%ld, selected format %dx%d@%ld", (long)width,
+        (long)height, (long)fps, selectedDimension.width, selectedDimension.height,
+        (long)selectedFps);
+
+  if (result) {
+    result(@{
+      @"width" : @(selectedDimension.width),
+      @"height" : @(selectedDimension.height),
+      @"fps" : @(selectedFps),
+    });
+  }
+}
+
+/// Caps the video source so it never hands the encoder more than [width] x
+/// [height] at [fps].
+///
+/// Skipped when the source is already producing the requested area, matching
+/// the native SDK, which avoids re-running the adaptation for a no-op.
+- (void)adaptOutputFormatForTrack:(nullable NSString*)trackId
+                            width:(NSInteger)width
+                           height:(NSInteger)height
+                              fps:(NSInteger)fps {
+  if (trackId == nil || width <= 0 || height <= 0 || fps <= 0) {
+    return;
+  }
+
+  id<LocalTrack> localTrack = self.localTracks[trackId];
+  if (localTrack == nil || ![localTrack isKindOfClass:[LocalVideoTrack class]]) {
+    return;
+  }
+
+  RTCVideoSource* source = ((LocalVideoTrack*)localTrack).processing.source;
+  if (source == nil) {
+    return;
+  }
+
+  [source adaptOutputFormatToWidth:(int)width height:(int)height fps:(int)fps];
+}
+
+#pragma mark - Camera system pressure
+
+- (void)setCameraSystemPressureMonitoringEnabled:(BOOL)enabled {
+  self.cameraSystemPressureMonitoringEnabled = enabled;
+  if (!enabled) {
+    [self.cameraSystemPressureObserver stop];
+    self.cameraSystemPressureObserver = nil;
+  }
+}
+
+- (BOOL)isCameraSystemPressureMonitoringEnabled {
+  return self.cameraSystemPressureMonitoringEnabled;
+}
+
+- (void)startCameraSystemPressureMonitoringForDevice:(AVCaptureDevice*)device
+                                             trackId:(NSString*)trackId
+                                               width:(NSInteger)width
+                                              height:(NSInteger)height
+                                                 fps:(NSInteger)fps {
+  if (!self.cameraSystemPressureMonitoringEnabled || device == nil) {
+    return;
+  }
+
+  self.cameraSystemPressureTrackId = trackId;
+
+  if (self.cameraSystemPressureObserver == nil) {
+    self.cameraSystemPressureObserver = [[CameraSystemPressureObserver alloc] init];
+    self.cameraSystemPressureObserver.delegate = self;
+  }
+
+  [self.cameraSystemPressureObserver startObservingDevice:device
+                                            baselineWidth:width
+                                           baselineHeight:height
+                                              baselineFps:fps];
+}
+
+- (void)updateCameraSystemPressureBaselineWidth:(NSInteger)width
+                                         height:(NSInteger)height
+                                            fps:(NSInteger)fps {
+  [self.cameraSystemPressureObserver updateBaselineWidth:width height:height fps:fps];
+}
+
+- (void)stopCameraSystemPressureMonitoring {
+  [self.cameraSystemPressureObserver stop];
+  self.cameraSystemPressureObserver = nil;
+  self.cameraSystemPressureTrackId = nil;
+}
+
+#pragma mark - CameraSystemPressureObserverDelegate
+
+- (void)systemPressureRequestsCaptureWidth:(NSInteger)width
+                                    height:(NSInteger)height
+                                       fps:(NSInteger)fps
+                             pressureLevel:(NSString*)pressureLevel {
+  NSLog(@"System pressure %@: capture -> %ldx%ld@%ld", pressureLevel, (long)width, (long)height,
+        (long)fps);
+
+  [self setCaptureFormatForTrack:self.cameraSystemPressureTrackId
+                           width:width
+                          height:height
+                             fps:fps
+                          result:nil];
+
+  [self postEventWithName:@"onCameraSystemPressureChanged"
+                     data:@{
+                       @"level" : pressureLevel,
+                       @"width" : @(width),
+                       @"height" : @(height),
+                       @"fps" : @(fps),
+                       @"trackId" : self.cameraSystemPressureTrackId ?: [NSNull null],
+                     }];
 }
 
 - (AVCaptureDevice*)findDeviceForPosition:(AVCaptureDevicePosition)position {
