@@ -540,7 +540,7 @@ static BOOL FormatSupportsFrameRate(AVCaptureDeviceFormat* format, NSInteger fps
 #pragma mark - Camera system pressure
 
 - (void)setCameraSystemPressureMonitoringEnabled:(BOOL)enabled {
-  self.cameraSystemPressureMonitoringEnabled = enabled;
+  self.cameraSystemPressureMonitoringActive = enabled;
   if (!enabled) {
     [self.cameraSystemPressureObserver stop];
     self.cameraSystemPressureObserver = nil;
@@ -548,7 +548,7 @@ static BOOL FormatSupportsFrameRate(AVCaptureDeviceFormat* format, NSInteger fps
 }
 
 - (BOOL)isCameraSystemPressureMonitoringEnabled {
-  return self.cameraSystemPressureMonitoringEnabled;
+  return self.cameraSystemPressureMonitoringActive;
 }
 
 - (void)startCameraSystemPressureMonitoringForDevice:(AVCaptureDevice*)device
@@ -556,7 +556,7 @@ static BOOL FormatSupportsFrameRate(AVCaptureDeviceFormat* format, NSInteger fps
                                                width:(NSInteger)width
                                               height:(NSInteger)height
                                                  fps:(NSInteger)fps {
-  if (!self.cameraSystemPressureMonitoringEnabled || device == nil) {
+  if (!self.cameraSystemPressureMonitoringActive || device == nil) {
     return;
   }
 

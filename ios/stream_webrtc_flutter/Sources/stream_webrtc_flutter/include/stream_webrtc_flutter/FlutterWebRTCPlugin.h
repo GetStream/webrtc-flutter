@@ -83,7 +83,12 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 
 #if TARGET_OS_IPHONE
 /// Whether the camera should be throttled as `systemPressureState` rises.
-@property(nonatomic, assign) BOOL cameraSystemPressureMonitoringEnabled;
+///
+/// Deliberately not named `...MonitoringEnabled`: that would synthesize a
+/// setter whose selector is `setCameraSystemPressureMonitoringEnabled:`, which
+/// is also the name of the CameraUtils method that writes this flag — so the
+/// method would silently override the accessor and recurse into itself.
+@property(nonatomic, assign) BOOL cameraSystemPressureMonitoringActive;
 @property(nonatomic, strong) CameraSystemPressureObserver* _Nullable cameraSystemPressureObserver;
 @property(nonatomic, strong) NSString* _Nullable cameraSystemPressureTrackId;
 #endif

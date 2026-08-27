@@ -40,6 +40,8 @@
 
 ### Adaptive capture (Android)
 
+* [iOS] Fixed a crash on every camera enable, introduced with the system-pressure throttle in this same unreleased block. `setCameraSystemPressureMonitoringEnabled:` is the selector the `cameraSystemPressureMonitoringEnabled` property synthesizes for its setter, so the CameraUtils method of that name silently replaced the accessor and `self.cameraSystemPressureMonitoringEnabled = enabled` recursed into itself until the stack overflowed. The backing property is renamed to `cameraSystemPressureMonitoringActive`.
+
 * [Android] `Helper.setCaptureFormat` is now implemented on Android too, via `CameraVideoCapturer.changeCaptureFormat` plus `videoSource.adaptOutputFormat`. Same method-channel name as iOS, so callers do not branch on platform.
 * [Android] `getUserMedia` now calls `videoSource.adaptOutputFormat` once capture starts, so the encoder never receives more than was requested regardless of which format the camera settles on. There were previously zero calls to it anywhere in the Android source.
 * [Android] Added camera throttling under thermal pressure, behind the same `Helper.setCameraSystemPressureMonitoringEnabled` toggle as iOS. Registers a `PowerManager` thermal status listener (API 29+) and steps capture down as the device heats up — 24 fps at MODERATE, 15 fps and x0.75 resolution at SEVERE, 10 fps and x0.5 at CRITICAL — restoring it as the device cools, with the same debounce as iOS (3 s down, 1 s when already critical, 10 s up). Applied changes are reported as `onCameraSystemPressureChanged`. Disabled by default; a no-op below API 29.
