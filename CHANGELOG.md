@@ -1,12 +1,19 @@
 
 # Changelog
 
-[3.0.2] - 2026.07.29
+[3.1.0] - 2026.08.27
 
 * [iOS/macOS] Added `NativePeerConnectionFactory.setMicrophoneMuted` (`appleAdmSetMicrophoneMuted` method channel): mutes microphone capture at the audio-device-module level while the audio engine keeps running. Mutes inside the Voice-Processing I/O unit, arming Apple's muted-talker detection so the plugin emits `onSpeechActivityChanged` events while the user speaks muted.
-* [iOS/macOS] Added `NativePeerConnectionFactory.isMicrophoneMuted` (`appleAdmIsMicrophoneMuted` method channel): reads the ADM's own mute state. 
+* [iOS/macOS] Added `NativePeerConnectionFactory.isMicrophoneMuted` (`appleAdmIsMicrophoneMuted` method channel): reads the ADM's own mute state.
 * [iOS/macOS] ADM operations (start/stop recording, microphone mute, suspend/resume) now run on a per-factory serial queue instead of the global concurrent queue. Two rapid `setMicrophoneMuted` calls could previously be applied out of order, leaving the microphone in the wrong state indefinitely.
 * [iOS/macOS] `suspendAudioPeerConnectionFactory` / `resumeAudioPeerConnectionFactory` are now idempotent. A second suspend used to re-snapshot the already-stopped ADM as "was neither playing nor recording", so the following resume restored nothing and audio stayed dead.
+* [iOS] `RTCVideoPlatformView` now renders through `RTCVideoRenderingView` on the shared-Metal backend, mirroring the Swift SDK's `VideoRenderer` configuration, instead of converting frames and enqueuing them onto an `AVSampleBufferDisplayLayer` by hand. This also drops the hand-rolled rotation transform, whose 270° case divided by zero and produced an invalid transform.
+* [iOS] fix: `FlutterRTCVideoPlatformViewController.setVideoTrack` had its detach condition inverted, so it removed the renderer only when there was *no* previous track - switching tracks left the old one still rendering into the view.
+* [iOS/macOS] Texture renderer: upright hardware-decoded NV12 frames are now handed to Flutter without color conversion - zero-copy when the source buffer already matches the frame's adapted size, otherwise a single crop-and-scale into a reused, double-buffered NV12 target. Software-decoded (I420) and rotated frames keep the existing BGRA conversion path.
+* [iOS/macOS] Texture renderer: the I420 rotation buffer and the crop scratch buffer are now reused across frames instead of being allocated per frame, and unrotated frames skip the rotation pass entirely.
+
+[3.0.2] - 2026.07.29
+
 * [iOS] fix: trigger the screen-share broadcast picker (`RPSystemBroadcastPickerView`) via public APIs instead of the private `buttonPressed:` selector.
 
 [3.0.1] - 2026.07.10
