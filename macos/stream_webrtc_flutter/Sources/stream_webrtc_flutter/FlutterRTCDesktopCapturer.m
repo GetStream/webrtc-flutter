@@ -2,13 +2,20 @@
 
 #import "include/stream_webrtc_flutter/FlutterRTCDesktopCapturer.h"
 
+#if TARGET_OS_IPHONE
+#import <ReplayKit/ReplayKit.h>
+#import "include/stream_webrtc_flutter/Broadcast/FlutterBroadcastScreenCapturer.h"
+#import "include/stream_webrtc_flutter/FlutterRPScreenRecorder.h"
+#endif
 #import "include/stream_webrtc_flutter/LocalVideoTrack.h"
 #import "include/stream_webrtc_flutter/NativePeerConnectionFactory.h"
 #import "include/stream_webrtc_flutter/VideoProcessingAdapter.h"
 
+#if TARGET_OS_OSX
 RTCDesktopMediaList* _screen = nil;
 RTCDesktopMediaList* _window = nil;
 NSArray<RTCDesktopSource*>* _captureSources;
+#endif
 
 @implementation FlutterWebRTCPlugin (DesktopCapturer)
 
@@ -30,6 +37,67 @@ NSArray<RTCDesktopSource*>* _captureSources;
   VideoProcessingAdapter* videoProcessingAdapter =
       [[VideoProcessingAdapter alloc] initWithRTCVideoSource:videoSource];
 
+#if TARGET_OS_IPHONE
+  BOOL useBroadcastExtension = false;
+  BOOL presentBroadcastPicker = false;
+
+  id videoConstraints = constraints[@"video"];
+  if ([videoConstraints isKindOfClass:[NSDictionary class]]) {
+    // constraints.video.deviceId
+    useBroadcastExtension = [((NSDictionary*)videoConstraints)[@"deviceId"] hasPrefix:@"broadcast"];
+    presentBroadcastPicker = useBroadcastExtension &&
+                             ![((NSDictionary*)videoConstraints)[@"deviceId"] hasSuffix:@"-manual"];
+  }
+
+  id screenCapturer;
+
+  if (useBroadcastExtension) {
+    screenCapturer =
+        [[FlutterBroadcastScreenCapturer alloc] initWithDelegate:videoProcessingAdapter];
+  } else {
+    screenCapturer =
+        [[FlutterRPScreenRecorder alloc] initWithDelegate:[videoProcessingAdapter source]];
+  }
+
+  [screenCapturer startCapture];
+  NSLog(@"start %@ capture", useBroadcastExtension ? @"broadcast" : @"replykit");
+
+  self.videoCapturerStopHandlers[trackUUID] = ^(CompletionHandler handler) {
+    NSLog(@"stop %@ capture, trackID %@", useBroadcastExtension ? @"broadcast" : @"replykit",
+          trackUUID);
+    [screenCapturer stopCaptureWithCompletionHandler:handler];
+  };
+
+  if (presentBroadcastPicker) {
+    NSString* extension =
+        [[[NSBundle mainBundle] infoDictionary] valueForKey:kRTCScreenSharingExtension];
+
+    RPSystemBroadcastPickerView* picker = [[RPSystemBroadcastPickerView alloc] init];
+    picker.showsMicrophoneButton = false;
+    if (extension) {
+      picker.preferredExtension = extension;
+    } else {
+      NSLog(@"Not able to find the %@ key", kRTCScreenSharingExtension);
+    }
+    // Trigger the picker's internal button via public UIControl APIs only.
+    // Calling the private buttonPressed: selector gets apps rejected under
+    // App Store Guideline 2.5.1 (non-public API).
+    UIButton* pickerButton = nil;
+    for (UIView* subview in picker.subviews) {
+      if ([subview isKindOfClass:[UIButton class]]) {
+        pickerButton = (UIButton*)subview;
+        break;
+      }
+    }
+    if (pickerButton != nil) {
+      [pickerButton sendActionsForControlEvents:UIControlEventTouchUpInside];
+    } else {
+      NSLog(@"RPSystemBroadcastPickerView button not found, broadcast picker was not presented");
+    }
+  }
+#endif
+
+#if TARGET_OS_OSX
   /* example for constraints:
       {
           'audio': false,
@@ -95,16 +163,16 @@ NSArray<RTCDesktopSource*>* _captureSources;
     [desktopCapturer stopCapture];
     handler();
   };
+#endif
 
-  RTCVideoTrack* videoTrack = [nf.factory videoTrackWithSource:videoSource
-                                                       trackId:trackUUID];
+  RTCVideoTrack* videoTrack = [nf.factory videoTrackWithSource:videoSource trackId:trackUUID];
   [mediaStream addVideoTrack:videoTrack];
 
   LocalVideoTrack* localVideoTrack = [[LocalVideoTrack alloc] initWithTrack:videoTrack
                                                             videoProcessing:videoProcessingAdapter];
 
   [self.localTracks setObject:localVideoTrack forKey:trackUUID];
-  
+
   if (nf.factoryId != nil) {
     self.trackFactoryId[trackUUID] = nf.factoryId;
   }
@@ -129,6 +197,7 @@ NSArray<RTCDesktopSource*>* _captureSources;
 }
 
 - (void)getDesktopSources:(NSDictionary*)argsMap result:(FlutterResult)result {
+#if TARGET_OS_OSX
   NSLog(@"getDesktopSources");
 
   NSArray* types = [argsMap objectForKey:@"types"];
@@ -161,9 +230,13 @@ NSArray<RTCDesktopSource*>* _captureSources;
     }];
   }
   result(@{@"sources" : sources});
+#else
+  result([FlutterError errorWithCode:@"ERROR" message:@"Not supported on iOS" details:nil]);
+#endif
 }
 
 - (void)getDesktopSourceThumbnail:(NSDictionary*)argsMap result:(FlutterResult)result {
+#if TARGET_OS_OSX
   NSLog(@"getDesktopSourceThumbnail");
   NSString* sourceId = argsMap[@"sourceId"];
   RTCDesktopSource* object = [self getSourceById:sourceId];
@@ -179,9 +252,14 @@ NSArray<RTCDesktopSource*>* _captureSources;
   } else {
     result(@{@"error" : @"No thumbnail found"});
   }
+
+#else
+  result([FlutterError errorWithCode:@"ERROR" message:@"Not supported on iOS" details:nil]);
+#endif
 }
 
 - (void)updateDesktopSources:(NSDictionary*)argsMap result:(FlutterResult)result {
+#if TARGET_OS_OSX
   NSLog(@"updateDesktopSources");
   NSArray* types = [argsMap objectForKey:@"types"];
   if (types == nil) {
@@ -193,8 +271,12 @@ NSArray<RTCDesktopSource*>* _captureSources;
     return;
   }
   result(@{@"result" : @YES});
+#else
+  result([FlutterError errorWithCode:@"ERROR" message:@"Not supported on iOS" details:nil]);
+#endif
 }
 
+#if TARGET_OS_OSX
 - (NSImage*)resizeImage:(NSImage*)sourceImage forSize:(CGSize)targetSize {
   CGSize imageSize = sourceImage.size;
   CGFloat width = imageSize.width;
@@ -370,5 +452,7 @@ NSArray<RTCDesktopSource*>* _captureSources;
 - (void)didSourceCaptureError:(RTCDesktopCapturer*)capturer {
   NSLog(@"didSourceCaptureError");
 }
+
+#endif
 
 @end

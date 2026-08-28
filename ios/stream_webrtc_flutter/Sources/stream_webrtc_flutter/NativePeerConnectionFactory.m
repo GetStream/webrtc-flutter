@@ -1,5 +1,7 @@
 #import "include/stream_webrtc_flutter/NativePeerConnectionFactory.h"
+#if TARGET_OS_IPHONE
 #import "include/stream_webrtc_flutter/AudioUtils.h"
+#endif
 #import "include/stream_webrtc_flutter/VideoFactoriesPrivate.h"
 
 #import <StreamWebRTC/StreamWebRTC.h>
@@ -30,9 +32,11 @@
         dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED,
                                                 0));
 
+#if TARGET_OS_IPHONE
     if (appleAudioConfiguration != nil) {
       [AudioUtils setAppleAudioConfiguration:appleAudioConfiguration];
     }
+#endif
 
     VideoDecoderFactory* decoderFactory = [[VideoDecoderFactory alloc] init];
     VideoEncoderFactory* encoderFactory = [[VideoEncoderFactory alloc] init];
