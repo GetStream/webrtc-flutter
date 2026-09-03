@@ -113,9 +113,13 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
 
   private AudioFocusManager audioFocusManager;
 
-  // Frame cryptor + data packet cryptor deactivated until per-call factory wiring lands.
-  // private FlutterRTCFrameCryptor frameCryptor;
-  // private FlutterDataPacketCryptor dataPacketCryptor;
+  /**
+   * Common Stream implementation for AES-GCM end-to-end encryption,
+   * used across all Stream SDKs (JS, iOS, Android, Flutter).
+   * This is independent of per-call factories: the manager owns keys,
+   * not media.
+   */
+  private final FlutterRTCEncryptionManager encryptionManager;
 
   private Activity activity;
 
@@ -144,6 +148,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     this.context = context;
     this.textures = textureRegistry;
     this.messenger = messenger;
+    this.encryptionManager = new FlutterRTCEncryptionManager(this);
   }
 
   static private void resultError(String method, String error, Result result) {
@@ -159,6 +164,8 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
    * otherwise libwebrtc native state crashes when the factory's ADM is already disposed.
    */
   void dispose() {
+    encryptionManager.disposeAll();
+
     if (AudioSwitchManager.instance != null) {
       AudioSwitchManager.instance.setAudioFocusChangeListener(null);
     }
@@ -1628,12 +1635,9 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         break;
       }
       default:
-        // Frame cryptor + data packet cryptor deactivated until per-call factory wiring lands.
-        // if(frameCryptor.handleMethodCall(call, result)) {
-        //   break;
-        // } else if(dataPacketCryptor.handleMethodCall(call, result)) {
-        //   break;
-        // }
+        if (encryptionManager.handleMethodCall(call, result)) {
+          break;
+        }
         result.notImplemented();
         break;
     }
