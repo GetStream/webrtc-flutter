@@ -12,7 +12,7 @@ let package = Package(
     dependencies: [
         .package(name: "FlutterFramework", path: "../FlutterFramework"),
         .package(
-            url: "https://github.com/GetStream/stream-video-swift-webrtc.git", exact: "145.9.0"
+            url: "https://github.com/GetStream/stream-video-swift-webrtc.git", exact: "148.0.0"
         )
     ],
     targets: [
