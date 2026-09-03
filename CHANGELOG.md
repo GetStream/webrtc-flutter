@@ -1,6 +1,10 @@
 
 # Changelog
 
+[3.2.0] - 2026.09.03
+
+* Exposed webrtc's EncryptionManager to Dart, so the video SDK can implement E2EE on Android and iOS.
+
 [3.1.0] - 2026.08.27
 
 * [iOS/macOS] Added `NativePeerConnectionFactory.setMicrophoneMuted` (`appleAdmSetMicrophoneMuted` method channel): mutes microphone capture at the audio-device-module level while the audio engine keeps running. Mutes inside the Voice-Processing I/O unit, arming Apple's muted-talker detection so the plugin emits `onSpeechActivityChanged` events while the user speaks muted.
