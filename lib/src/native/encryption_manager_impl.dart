@@ -40,7 +40,10 @@ EncryptionManager createEncryptionManager({
 /// without explicit awaits.
 class EncryptionManagerNative implements EncryptionManager {
   EncryptionManagerNative._(this.userId, this.algorithm) {
-    _queue = _create();
+    // `ignore()` marks a failed create as handled so it is not reported as an
+    // unhandled zone error when no operation is ever queued behind it. The
+    // error still reaches the `onError` handlers in [_enqueue] and [dispose].
+    _queue = _create()..ignore();
   }
 
   @override
