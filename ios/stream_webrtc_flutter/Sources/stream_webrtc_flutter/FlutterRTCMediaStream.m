@@ -1,7 +1,9 @@
 #import "include/stream_webrtc_flutter/FlutterRTCMediaStream.h"
 #import <objc/runtime.h>
 #import "AVKit/AVKit.h"
+#if TARGET_OS_IPHONE
 #import "include/stream_webrtc_flutter/AudioUtils.h"
+#endif
 #import "include/stream_webrtc_flutter/CameraUtils.h"
 #import "include/stream_webrtc_flutter/FlutterRTCFrameCapturer.h"
 #import "include/stream_webrtc_flutter/FlutterRTCPeerConnection.h"
@@ -10,9 +12,7 @@
 #import "include/stream_webrtc_flutter/NativePeerConnectionFactory.h"
 #import "include/stream_webrtc_flutter/VideoProcessingAdapter.h"
 #if TARGET_OS_OSX
-// Only present in the common/darwin Classes (macOS-only). The iOS tree is
-// iOS-only at deploy-target level so this import is a no-op there.
-#import "StreamMacAudioDevices.h"
+#import "include/stream_webrtc_flutter/StreamMacAudioDevices.h"
 #endif
 
 @implementation RTCMediaStreamTrack (Flutter)
@@ -84,7 +84,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 #endif
     ];
 
-#if !defined(TARGET_OS_IPHONE)
+#if TARGET_OS_OSX
     if (@available(macOS 13.0, *)) {
       deviceTypes = [deviceTypes arrayByAddingObject:AVCaptureDeviceTypeDeskViewCamera];
     }
@@ -157,7 +157,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     rtcConstraints = [self parseMediaConstraints:[self defaultAudioConstraints]];
   }
 
-#if !defined(TARGET_OS_IPHONE)
+#if TARGET_OS_OSX
   if (audioDeviceId != nil) {
     [self selectAudioInput:audioDeviceId result:nil];
   }

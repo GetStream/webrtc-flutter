@@ -1,11 +1,18 @@
-#import <Foundation/Foundation.h>
+#if TARGET_OS_IPHONE
+#import <Flutter/Flutter.h>
+#else
 #import <FlutterMacOS/FlutterMacOS.h>
+#endif
+#import <Foundation/Foundation.h>
 #import <StreamWebRTC/StreamWebRTC.h>
 #import "LocalTrack.h"
 
 @class VideoEffectProcessor;
 @class FlutterRTCVideoRenderer;
 @class FlutterRTCFrameCapturer;
+#if TARGET_OS_IPHONE
+@class FlutterRTCMediaRecorder;
+#endif
 @class AudioManager;
 @class NativePeerConnectionFactory;
 
@@ -18,9 +25,11 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 @interface FlutterWebRTCPlugin : NSObject <FlutterPlugin,
                                            RTCPeerConnectionDelegate,
                                            RTCAudioDeviceModuleDelegate,
-                                           FlutterStreamHandler,
+#if TARGET_OS_OSX
                                            RTCDesktopMediaListDelegate,
-                                           RTCDesktopCapturerDelegate>
+                                           RTCDesktopCapturerDelegate,
+#endif
+                                           FlutterStreamHandler>
 
 /**
  * Per-call factory registry, keyed by factoryId.
@@ -50,15 +59,27 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 @property(nonatomic, strong) NSMutableDictionary<NSString*, id<LocalTrack>>* _Nullable localTracks;
 @property(nonatomic, strong)
     NSMutableDictionary<NSNumber*, FlutterRTCVideoRenderer*>* _Nullable renders;
+#if TARGET_OS_IPHONE
+@property(nonatomic, strong)
+    NSMutableDictionary<NSNumber*, FlutterRTCMediaRecorder*>* _Nonnull recorders;
+#endif
 @property(nonatomic, strong)
     NSMutableDictionary<NSString*, CapturerStopHandler>* _Nullable videoCapturerStopHandlers;
 @property(nonatomic, strong)
     NSMutableDictionary<NSString*, NSMutableDictionary*>* _Nullable videoCaptureState;
 
+#if TARGET_OS_IPHONE
+@property(nonatomic, retain)
+    UIViewController* _Nullable viewController; /*for broadcast or ReplayKit */
+#endif
+
 @property(nonatomic, strong) FlutterEventSink _Nullable eventSink;
 @property(nonatomic, strong) NSObject<FlutterBinaryMessenger>* _Nonnull messenger;
 @property(nonatomic, strong) RTCCameraVideoCapturer* _Nullable videoCapturer;
 @property(nonatomic, strong) FlutterRTCFrameCapturer* _Nullable frameCapturer;
+#if TARGET_OS_IPHONE
+@property(nonatomic, strong) AVAudioSessionPort _Nullable preferredInput;
+#endif
 @property(nonatomic, strong) VideoEffectProcessor* _Nullable videoEffectProcessor;
 
 @property(nonatomic, strong) NSString* _Nonnull focusMode;

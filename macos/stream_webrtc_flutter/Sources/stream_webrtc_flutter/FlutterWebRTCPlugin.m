@@ -1,4 +1,7 @@
 #import "include/stream_webrtc_flutter/FlutterWebRTCPlugin.h"
+#if TARGET_OS_IPHONE
+#import "include/stream_webrtc_flutter/AudioUtils.h"
+#endif
 #import "include/stream_webrtc_flutter/CameraUtils.h"
 
 #import "include/stream_webrtc_flutter/AudioManager.h"
@@ -8,6 +11,11 @@
 #import "include/stream_webrtc_flutter/FlutterRTCEncryptionManager.h"
 #import "include/stream_webrtc_flutter/FlutterRTCMediaStream.h"
 #import "include/stream_webrtc_flutter/FlutterRTCPeerConnection.h"
+#if TARGET_OS_IPHONE
+#import "include/stream_webrtc_flutter/FlutterRTCMediaRecorder.h"
+#import "include/stream_webrtc_flutter/FlutterRTCVideoPlatformViewController.h"
+#import "include/stream_webrtc_flutter/FlutterRTCVideoPlatformViewFactory.h"
+#endif
 #import "include/stream_webrtc_flutter/FlutterRTCVideoRenderer.h"
 #import "include/stream_webrtc_flutter/ProcessorProvider.h"
 #import "include/stream_webrtc_flutter/VideoEffectProcessor.h"
@@ -117,8 +125,15 @@ void postEvent(FlutterEventSink _Nullable sink, id _Nullable event) {
   id _textures;
   BOOL _speakerOn;
   BOOL _speakerOnButPreferBluetooth;
+#if TARGET_OS_IPHONE
+  AVAudioSessionPort _preferredInput;
+#endif
   AudioManager* _audioManager;
   BOOL _stereoPlayoutPreferred;
+#if TARGET_OS_IPHONE
+  FLutterRTCVideoPlatformViewFactory* _platformViewFactory;
+  dispatch_block_t _stereoRefreshDebounceBlock;
+#endif
 
   RTC_OBJC_TYPE(RTCCallbackLogger) * loggerCallback;
 
@@ -136,16 +151,25 @@ static FlutterWebRTCPlugin* sharedSingleton;
 
 @synthesize messenger = _messenger;
 @synthesize eventSink = _eventSink;
+#if TARGET_OS_IPHONE
+@synthesize preferredInput = _preferredInput;
+#endif
 @synthesize audioManager = _audioManager;
 
 + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
   FlutterMethodChannel* channel =
       [FlutterMethodChannel methodChannelWithName:@"FlutterWebRTC.Method"
                                   binaryMessenger:[registrar messenger]];
+#if TARGET_OS_IPHONE
+  UIViewController* viewController = (UIViewController*)registrar.messenger;
+#endif
   FlutterWebRTCPlugin* instance =
       [[FlutterWebRTCPlugin alloc] initWithChannel:channel
                                          registrar:registrar
                                          messenger:[registrar messenger]
+#if TARGET_OS_IPHONE
+                                    viewController:viewController
+#endif
                                       withTextures:[registrar textures]];
   [registrar addMethodCallDelegate:instance channel:channel];
 }
@@ -153,7 +177,11 @@ static FlutterWebRTCPlugin* sharedSingleton;
 - (instancetype)initWithChannel:(FlutterMethodChannel*)channel
                       registrar:(NSObject<FlutterPluginRegistrar>*)registrar
                       messenger:(NSObject<FlutterBinaryMessenger>*)messenger
+#if TARGET_OS_IPHONE
+                 viewController:(UIViewController*)viewController
+#endif
                    withTextures:(NSObject<FlutterTextureRegistry>*)textures {
+
   self = [super init];
   sharedSingleton = self;
 
@@ -170,6 +198,14 @@ static FlutterWebRTCPlugin* sharedSingleton;
     _speakerOnButPreferBluetooth = NO;
     _eventChannel = eventChannel;
     _audioManager = AudioManager.sharedInstance;
+
+#if TARGET_OS_IPHONE
+    _preferredInput = AVAudioSessionPortHeadphones;
+    self.viewController = viewController;
+    _platformViewFactory = [[FLutterRTCVideoPlatformViewFactory alloc] initWithMessenger:messenger];
+    [registrar registerViewFactory:_platformViewFactory
+                            withId:FLutterRTCVideoPlatformViewFactoryID];
+#endif
   }
 
   NSDictionary* fieldTrials = @{kRTCFieldTrialUseNWPathMonitor : kRTCFieldTrialEnabledValue};
@@ -181,12 +217,24 @@ static FlutterWebRTCPlugin* sharedSingleton;
   self.renders = [NSMutableDictionary new];
   self.videoCapturerStopHandlers = [NSMutableDictionary new];
   self.videoCaptureState = [NSMutableDictionary new];
+#if TARGET_OS_IPHONE
+  self.recorders = [NSMutableDictionary new];
+#endif
   self.trackVolumeCache = [NSMutableDictionary new];
   self.pausedTrackVolumes = [NSMutableDictionary new];
   _factories = [NSMutableDictionary new];
   _pcFactoryId = [NSMutableDictionary new];
   _trackFactoryId = [NSMutableDictionary new];
   self.isAudioPlayoutPaused = NO;
+#if TARGET_OS_IPHONE
+  self.focusMode = @"locked";
+  self.exposureMode = @"locked";
+  AVAudioSession* session = [AVAudioSession sharedInstance];
+  [[NSNotificationCenter defaultCenter] addObserver:self
+                                           selector:@selector(didSessionRouteChange:)
+                                               name:AVAudioSessionRouteChangeNotification
+                                             object:session];
+#endif
 
   return self;
 }
@@ -219,9 +267,80 @@ static FlutterWebRTCPlugin* sharedSingleton;
 }
 
 - (void)didSessionRouteChange:(NSNotification*)notification {
+#if TARGET_OS_IPHONE
+  NSDictionary* interuptionDict = notification.userInfo;
+  NSInteger routeChangeReason =
+      [[interuptionDict valueForKey:AVAudioSessionRouteChangeReasonKey] integerValue];
+  if (self.eventSink && (routeChangeReason == AVAudioSessionRouteChangeReasonNewDeviceAvailable ||
+                         routeChangeReason == AVAudioSessionRouteChangeReasonOldDeviceUnavailable ||
+                         routeChangeReason == AVAudioSessionRouteChangeReasonCategoryChange ||
+                         routeChangeReason == AVAudioSessionRouteChangeReasonOverride)) {
+    postEvent(self.eventSink, @{@"event" : @"onDeviceChange"});
+
+    // Report the newly-active audio output
+    AVAudioSessionPortDescription* output =
+        [RTCAudioSession sharedInstance].currentRoute.outputs.firstObject;
+    if (output != nil) {
+      postEvent(self.eventSink, @{
+        @"event" : @"onAudioRouteChange",
+        @"deviceId" : output.UID ?: @"",
+        @"label" : output.portName ?: @"",
+        @"groupId" : output.portType ?: @"",
+      });
+    }
+  }
+
+  // When stereo playout is preferred, debounce-refresh stereo playout state
+  // after route changes so stereo is re-evaluated for the new audio device.
+  if (_stereoPlayoutPreferred) {
+    // Cancel any previously scheduled debounce block
+    if (_stereoRefreshDebounceBlock != nil) {
+      dispatch_block_cancel(_stereoRefreshDebounceBlock);
+      _stereoRefreshDebounceBlock = nil;
+    }
+
+    __weak typeof(self) weakSelf = self;
+    _stereoRefreshDebounceBlock = dispatch_block_create(0, ^{
+      __strong typeof(weakSelf) strongSelf = weakSelf;
+      if (strongSelf == nil)
+        return;
+      // Refresh every active factory's ADM so the new route is re-evaluated
+      NSLog(@"FlutterWebRTCPlugin: refreshing stereo playout state on all factories");
+      NSArray<NativePeerConnectionFactory*>* snapshot;
+      @synchronized(strongSelf) {
+        snapshot = [strongSelf.factories.allValues copy];
+      }
+      for (NativePeerConnectionFactory* nf in snapshot) {
+        RTCAudioDeviceModule* adm = nf.audioDeviceModule;
+        if (adm != nil) {
+          // Run on the factory's serial ADM queue
+          dispatch_async(nf.admQueue, ^{
+            [adm refreshStereoPlayoutState];
+          });
+        }
+      }
+      strongSelf->_stereoRefreshDebounceBlock = nil;
+    });
+
+    // Debounce for 2 seconds (matching Swift SDK behavior)
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), _stereoRefreshDebounceBlock);
+  }
+#endif
 }
 
 - (void)handleInterruption:(NSNotification*)notification {
+#if TARGET_OS_IPHONE
+  NSDictionary* info = notification.userInfo;
+  AVAudioSessionInterruptionType type =
+      [info[AVAudioSessionInterruptionTypeKey] unsignedIntegerValue];
+
+  if (type == AVAudioSessionInterruptionTypeBegan) {
+    postEvent(self.eventSink, @{@"event" : @"onInterruptionStart"});
+  } else if (type == AVAudioSessionInterruptionTypeEnded) {
+    postEvent(self.eventSink, @{@"event" : @"onInterruptionEnd"});
+  }
+#endif
 }
 
 - (void)initLoggerCallback:(RTCLoggingSeverity)severity {
@@ -317,6 +436,13 @@ static FlutterWebRTCPlugin* sharedSingleton;
     @synchronized(self) {
       _factories[factoryId] = nf;
     }
+#if TARGET_OS_IPHONE
+    // Replay any process-wide ADM prefs that were set before this factory
+    // existed (notably the stereo-playout preference set by the SDK during
+    // StreamVideo init). Without this, per-call factories created later
+    // miss the stereo-playout settings and incoming Opus stereo plays mono.
+    [self applyPersistentAdmStateToFactory:nf];
+#endif
     NSLog(@"[createPeerConnectionFactory] built id: %@", factoryId);
     result(@{@"factoryId" : factoryId});
   } else if ([@"disposePeerConnectionFactory" isEqualToString:call.method]) {
@@ -406,6 +532,12 @@ static FlutterWebRTCPlugin* sharedSingleton;
     [self mediaStreamTrackSetVideoEffects:trackId names:names];
     result(nil);
   } else if ([@"handleCallInterruptionCallbacks" isEqualToString:call.method]) {
+#if TARGET_OS_IPHONE
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(handleInterruption:)
+                                                 name:AVAudioSessionInterruptionNotification
+                                               object:[AVAudioSession sharedInstance]];
+#endif
     result(@"");
   } else if ([@"createPeerConnection" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
@@ -970,7 +1102,55 @@ static FlutterWebRTCPlugin* sharedSingleton;
     }
     [self rendererSetSrcObject:render stream:videoTrack];
     result(nil);
-  } else if ([@"enableIOSMultitaskingCameraAccess" isEqualToString:call.method]) {
+  }
+#if TARGET_OS_IPHONE
+  else if ([@"videoPlatformViewRendererSetSrcObject" isEqualToString:call.method]) {
+    NSDictionary* argsMap = call.arguments;
+    NSNumber* viewId = argsMap[@"viewId"];
+    FlutterRTCVideoPlatformViewController* render = _platformViewFactory.renders[viewId];
+    NSString* streamId = argsMap[@"streamId"];
+    NSString* ownerTag = argsMap[@"ownerTag"];
+    NSString* trackId = argsMap[@"trackId"];
+    if (!render) {
+      result([FlutterError errorWithCode:@"videoRendererSetSrcObject: render is nil"
+                                 message:nil
+                                 details:nil]);
+      return;
+    }
+    RTCMediaStream* stream = nil;
+    RTCVideoTrack* videoTrack = nil;
+    if ([ownerTag isEqualToString:@"local"]) {
+      stream = _localStreams[streamId];
+    }
+    if (!stream) {
+      stream = [self streamForId:streamId peerConnectionId:ownerTag];
+    }
+    if (stream) {
+      NSArray* videoTracks = stream ? stream.videoTracks : nil;
+      videoTrack = videoTracks && videoTracks.count ? videoTracks[0] : nil;
+      for (RTCVideoTrack* track in videoTracks) {
+        if ([track.trackId isEqualToString:trackId]) {
+          videoTrack = track;
+        }
+      }
+      if (!videoTrack) {
+        NSLog(@"Not found video track for RTCMediaStream: %@", streamId);
+      }
+    }
+    render.videoTrack = videoTrack;
+    result(nil);
+  } else if ([@"videoPlatformViewRendererDispose" isEqualToString:call.method]) {
+    NSDictionary* argsMap = call.arguments;
+    NSNumber* viewId = argsMap[@"viewId"];
+    FlutterRTCVideoPlatformViewController* render = _platformViewFactory.renders[viewId];
+    if (render != nil) {
+      render.videoTrack = nil;
+      [_platformViewFactory.renders removeObjectForKey:viewId];
+    }
+    result(nil);
+  }
+#endif
+  else if ([@"enableIOSMultitaskingCameraAccess" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     BOOL enable = [argsMap[@"enable"] boolValue];
 
@@ -1158,7 +1338,32 @@ static FlutterWebRTCPlugin* sharedSingleton;
       audioTrack.isEnabled = !mute.boolValue;
     }
     result(nil);
-  } else if ([@"getLocalDescription" isEqualToString:call.method]) {
+  }
+#if TARGET_OS_IPHONE
+  else if ([@"enableSpeakerphone" isEqualToString:call.method]) {
+    NSDictionary* argsMap = call.arguments;
+    NSNumber* enable = argsMap[@"enable"];
+    _speakerOn = enable.boolValue;
+    _speakerOnButPreferBluetooth = NO;
+    [AudioUtils setSpeakerphoneOn:_speakerOn];
+    postEvent(self.eventSink, @{@"event" : @"onDeviceChange"});
+    result(nil);
+  } else if ([@"ensureAudioSession" isEqualToString:call.method]) {
+    [self ensureAudioSession];
+    result(nil);
+  } else if ([@"enableSpeakerphoneButPreferBluetooth" isEqualToString:call.method]) {
+    _speakerOn = YES;
+    _speakerOnButPreferBluetooth = YES;
+    [AudioUtils setSpeakerphoneOnButPreferBluetooth];
+    result(nil);
+  } else if ([@"setAppleAudioConfiguration" isEqualToString:call.method]) {
+    NSDictionary* argsMap = call.arguments;
+    NSDictionary* configuration = argsMap[@"configuration"];
+    [AudioUtils setAppleAudioConfiguration:configuration];
+    result(nil);
+  }
+#endif
+  else if ([@"getLocalDescription" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* peerConnectionId = argsMap[@"peerConnectionId"];
     RTCPeerConnection* peerConnection = self.peerConnections[peerConnectionId];
@@ -1625,6 +1830,41 @@ static FlutterWebRTCPlugin* sharedSingleton;
     NSString* severityStr = argsMap[@"severity"];
     RTCLoggingSeverity severity = [self str2LogSeverity:severityStr];
     [self initLoggerCallback:severity];
+#if TARGET_OS_IOS
+  } else if ([@"startRecordToFile" isEqualToString:call.method]) {
+    NSDictionary* argsMap = call.arguments;
+    NSNumber* recorderId = argsMap[@"recorderId"];
+    NSString* path = argsMap[@"path"];
+    NSString* trackId = argsMap[@"videoTrackId"];
+    NSString* peerConnectionId = argsMap[@"peerConnectionId"];
+    NSString* audioTrackId = [self audioTrackIdForVideoTrackId:trackId];
+
+    RTCMediaStreamTrack* track = [self trackForId:trackId peerConnectionId:peerConnectionId];
+    RTCMediaStreamTrack* audioTrack = [self trackForId:audioTrackId
+                                      peerConnectionId:peerConnectionId];
+    if (track != nil && [track isKindOfClass:[RTCVideoTrack class]]) {
+      NSURL* pathUrl = [NSURL fileURLWithPath:path];
+      self.recorders[recorderId] =
+          [[FlutterRTCMediaRecorder alloc] initWithVideoTrack:(RTCVideoTrack*)track
+                                                   audioTrack:(RTCAudioTrack*)audioTrack
+                                                   outputFile:pathUrl];
+    }
+    result(nil);
+  } else if ([@"stopRecordToFile" isEqualToString:call.method]) {
+    NSDictionary* argsMap = call.arguments;
+    NSNumber* recorderId = argsMap[@"recorderId"];
+    FlutterRTCMediaRecorder* recorder = self.recorders[recorderId];
+    if (recorder != nil) {
+      [recorder stop:result];
+      [self.recorders removeObjectForKey:recorderId];
+    } else {
+      result([FlutterError
+          errorWithCode:[NSString stringWithFormat:@"%@ failed", call.method]
+                message:[NSString
+                            stringWithFormat:@"Error: recorder with id %@ not found!", recorderId]
+                details:nil]);
+    }
+#endif
   } else if ([@"resumeAudioPlayout" isEqualToString:call.method]) {
     self.isAudioPlayoutPaused = NO;
 
@@ -1880,6 +2120,12 @@ static FlutterWebRTCPlugin* sharedSingleton;
     }
     dispatch_async(nf.admQueue, ^{
       if (nf.audioSuspended) {
+#if TARGET_OS_IPHONE
+        NSDictionary* audioConfigSnapshot = nf.audioConfigSnapshot;
+        if (audioConfigSnapshot != nil) {
+          [AudioUtils setAppleAudioConfiguration:audioConfigSnapshot];
+        }
+#endif
         BOOL restorePlaying = nf.wasPlayingBeforeSuspend;
         BOOL restoreRecording = nf.wasRecordingBeforeSuspend;
         if (restorePlaying) {
@@ -2113,10 +2359,42 @@ static FlutterWebRTCPlugin* sharedSingleton;
   return nil;
 }
 
+#if TARGET_OS_IPHONE
+/**
+ * Replays process-wide ADM state (stereo playout preference, mute mode,
+ * voice-processing bypass) onto a freshly-built factory's ADM.
+ */
+- (void)applyPersistentAdmStateToFactory:(NativePeerConnectionFactory*)factory {
+  if (!_stereoPlayoutPreferred) {
+    return;
+  }
+  RTCAudioDeviceModule* adm = factory.audioDeviceModule;
+  if (adm == nil) {
+    return;
+  }
+  // Serialize with the factory's ADM queue like every other ADM mutation. The
+  // queue is empty at this point — the factory was just built and its id has
+  // not reached Dart yet — so this does not block meaningfully.
+  dispatch_sync(factory.admQueue, ^{
+    adm.prefersStereoPlayout = YES;
+    adm.voiceProcessingBypassed = YES;
+    [adm setMuteMode:RTCAudioEngineMuteModeInputMixer];
+  });
+}
+#endif
+
 - (void)ensureAudioSession {
+#if TARGET_OS_IPHONE
+  [AudioUtils ensureAudioSessionWithRecording:[self hasLocalAudioTrack]];
+#endif
 }
 
 - (void)deactiveRtcAudioSession {
+#if TARGET_OS_IPHONE
+  if (![self hasLocalAudioTrack] && self.peerConnections.count == 0) {
+    [AudioUtils deactiveRtcAudioSession];
+  }
+#endif
 }
 
 - (void)mediaStreamTrackSetVideoEffects:(nonnull NSString*)trackId
@@ -2147,8 +2425,50 @@ static FlutterWebRTCPlugin* sharedSingleton;
 }
 
 - (void)enableMultitaskingCameraAccess:(BOOL)enable result:(FlutterResult)result {
+#if TARGET_OS_OSX
   NSLog(@"enableMultitaskingCameraAccess: Multitasking camera access is not available on macOS.");
   result(@NO);
+#else
+  @try {
+    AVCaptureSession* session = self.videoCapturer.captureSession;
+    if (session == nil) {
+      NSLog(@"enableMultitaskingCameraAccess: Capture session is nil.");
+      result(@NO);
+      return;
+    }
+
+    if (@available(iOS 16.0, *)) {
+      BOOL shouldChange = session.multitaskingCameraAccessEnabled != enable;
+      BOOL canChange = !enable || (enable && session.isMultitaskingCameraAccessSupported);
+
+      if (shouldChange && canChange) {
+        [session beginConfiguration];
+        [session setMultitaskingCameraAccessEnabled:enable];
+        [session commitConfiguration];
+
+        result(enable ? @YES : @NO);
+      } else {
+        if (!canChange) {
+          NSLog(@"enableMultitaskingCameraAccess: Multitasking camera access is not supported on "
+                @"this device.");
+          result(@NO);
+        } else {
+          NSLog(@"enableMultitaskingCameraAccess: Multitasking camera access is already %@.",
+                enable ? @"enabled" : @"disabled");
+          result(enable ? @YES : @NO);
+        }
+      }
+    } else {
+      NSLog(
+          @"enableMultitaskingCameraAccess: Multitasking camera access requires iOS 16 or later.");
+      result(@NO);
+    }
+  } @catch (NSException* exception) {
+    NSLog(@"enableMultitaskingCameraAccess: Exception occurred: %@ - %@", exception.name,
+          exception.reason);
+    result(@NO);
+  }
+#endif
 }
 
 - (void)mediaStreamGetTracks:(NSString*)streamId result:(FlutterResult)result {
@@ -2766,6 +3086,10 @@ static FlutterWebRTCPlugin* sharedSingleton;
   encoding.isActive = YES;
   encoding.scaleResolutionDownBy = [NSNumber numberWithDouble:1.0];
   encoding.numTemporalLayers = [NSNumber numberWithInt:1];
+#if TARGET_OS_IPHONE
+  encoding.networkPriority = RTCPriorityLow;
+  encoding.bitratePriority = 1.0;
+#endif
   [encoding setRid:map[@"rid"]];
 
   if (map[@"active"] != nil) {
