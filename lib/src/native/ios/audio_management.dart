@@ -84,4 +84,20 @@ class IosAudioManagement {
           'enableMultitaskingCameraAccess is only supported for iOS');
     }
   }
+
+  /// Whether the capture session in use supports camera access while
+  /// multitasking (iOS only).
+  ///
+  /// Returns `null` when there is no capture session to ask, which is the case
+  /// until the camera is started.
+  static Future<bool?> isMultitaskingCameraAccessSupported() async {
+    if (WebRTC.platformIsIOS) {
+      return await WebRTC.invokeMethod(
+        'isIOSMultitaskingCameraAccessSupported',
+      );
+    } else {
+      throw Exception(
+          'isMultitaskingCameraAccessSupported is only supported for iOS');
+    }
+  }
 }

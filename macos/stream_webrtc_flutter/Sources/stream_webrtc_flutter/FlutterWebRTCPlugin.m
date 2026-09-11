@@ -1155,6 +1155,8 @@ static FlutterWebRTCPlugin* sharedSingleton;
     BOOL enable = [argsMap[@"enable"] boolValue];
 
     [self enableMultitaskingCameraAccess:enable result:result];
+  } else if ([@"isIOSMultitaskingCameraAccessSupported" isEqualToString:call.method]) {
+    [self multitaskingCameraAccessSupported:result];
   } else if ([@"mediaStreamTrackHasTorch" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* trackId = argsMap[@"trackId"];
@@ -2469,6 +2471,10 @@ static FlutterWebRTCPlugin* sharedSingleton;
     result(@NO);
   }
 #endif
+}
+
+- (void)multitaskingCameraAccessSupported:(FlutterResult)result {
+  result(@NO);
 }
 
 - (void)mediaStreamGetTracks:(NSString*)streamId result:(FlutterResult)result {

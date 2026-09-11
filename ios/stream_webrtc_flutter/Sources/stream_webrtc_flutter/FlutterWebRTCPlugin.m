@@ -1155,6 +1155,8 @@ static FlutterWebRTCPlugin* sharedSingleton;
     BOOL enable = [argsMap[@"enable"] boolValue];
 
     [self enableMultitaskingCameraAccess:enable result:result];
+  } else if ([@"isIOSMultitaskingCameraAccessSupported" isEqualToString:call.method]) {
+    [self multitaskingCameraAccessSupported:result];
   } else if ([@"mediaStreamTrackHasTorch" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* trackId = argsMap[@"trackId"];
@@ -2424,12 +2426,65 @@ static FlutterWebRTCPlugin* sharedSingleton;
   }
 }
 
+/// Applies the remembered multitasking camera access request to the capture
+/// session in use.
+///
+/// A capture session is created per `getUserMedia` call and starts without
+/// multitasking camera access, so the request is applied again every time one
+/// is created.
+- (void)applyMultitaskingCameraAccessToCaptureSession {
+#if !TARGET_OS_OSX
+  if (!self.multitaskingCameraAccessRequested) {
+    return;
+  }
+
+  if (@available(iOS 16.0, *)) {
+    AVCaptureSession* session = self.videoCapturer.captureSession;
+    if (session == nil || !session.isMultitaskingCameraAccessSupported ||
+        session.multitaskingCameraAccessEnabled) {
+      return;
+    }
+
+    @try {
+      [session beginConfiguration];
+      [session setMultitaskingCameraAccessEnabled:YES];
+      [session commitConfiguration];
+    } @catch (NSException* exception) {
+      NSLog(@"applyMultitaskingCameraAccessToCaptureSession: Exception occurred: %@ - %@",
+            exception.name, exception.reason);
+    }
+  }
+#endif
+}
+
+/// Reports whether the capture session in use supports camera access while
+/// multitasking, or nil when there is no capture session to ask.
+- (void)multitaskingCameraAccessSupported:(FlutterResult)result {
+#if TARGET_OS_OSX
+  result(@NO);
+#else
+  if (@available(iOS 16.0, *)) {
+    AVCaptureSession* session = self.videoCapturer.captureSession;
+    if (session == nil) {
+      result(nil);
+      return;
+    }
+
+    result(@(session.isMultitaskingCameraAccessSupported));
+  } else {
+    result(@NO);
+  }
+#endif
+}
+
 - (void)enableMultitaskingCameraAccess:(BOOL)enable result:(FlutterResult)result {
 #if TARGET_OS_OSX
   NSLog(@"enableMultitaskingCameraAccess: Multitasking camera access is not available on macOS.");
   result(@NO);
 #else
   @try {
+    self.multitaskingCameraAccessRequested = enable;
+
     AVCaptureSession* session = self.videoCapturer.captureSession;
     if (session == nil) {
       NSLog(@"enableMultitaskingCameraAccess: Capture session is nil.");

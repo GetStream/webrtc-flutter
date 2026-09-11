@@ -224,6 +224,14 @@ class Helper {
   static Future<bool> enableIOSMultitaskingCameraAccess(bool enable) =>
       IosAudioManagement.enableMultitaskingCameraAccess(enable);
 
+  /// Whether the capture session in use supports camera access while
+  /// multitasking (iOS only).
+  ///
+  /// Returns `null` when there is no capture session to ask, which is the case
+  /// until the camera is started.
+  static Future<bool?> isIOSMultitaskingCameraAccessSupported() =>
+      IosAudioManagement.isMultitaskingCameraAccessSupported();
+
   /// Trigger the iOS audio route selection UI (iOS only).
   static Future<void> triggeriOSAudioRouteSelectionUI() =>
       IosAudioManagement.triggerAudioRouteSelectionUI();
