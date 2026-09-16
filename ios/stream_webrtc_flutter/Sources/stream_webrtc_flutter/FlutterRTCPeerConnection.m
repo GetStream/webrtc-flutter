@@ -1,15 +1,10 @@
 #import "include/stream_webrtc_flutter/FlutterRTCPeerConnection.h"
 #import <objc/runtime.h>
-#import "include/stream_webrtc_flutter/AudioUtils.h"
+#import <StreamWebRTC/StreamWebRTC.h>
 #import "include/stream_webrtc_flutter/FlutterRTCDataChannel.h"
 #import "include/stream_webrtc_flutter/FlutterWebRTCPlugin.h"
 #import "include/stream_webrtc_flutter/NativePeerConnectionFactory.h"
 
-#if TARGET_OS_IPHONE
-#import <StreamWebRTC/StreamWebRTC.h>
-#elif TARGET_OS_MAC
-#import <WebRTC/WebRTC.h>
-#endif
 @implementation RTCPeerConnection (Flutter)
 
 @dynamic eventSink;
