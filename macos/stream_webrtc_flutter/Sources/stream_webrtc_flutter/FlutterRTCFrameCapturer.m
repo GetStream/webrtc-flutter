@@ -1,5 +1,9 @@
 #import "include/stream_webrtc_flutter/FlutterRTCFrameCapturer.h"
+#if TARGET_OS_IPHONE
+#import <Flutter/Flutter.h>
+#else
 #import <FlutterMacOS/FlutterMacOS.h>
+#endif
 
 @import CoreImage;
 @import CoreVideo;
@@ -68,6 +72,14 @@
   CIContext* tempContext = [CIContext contextWithOptions:nil];
   CGImageRef cgImage = [tempContext createCGImage:ciImage fromRect:outputSize];
   NSData* imageData;
+#if TARGET_OS_IPHONE
+  UIImage* uiImage = [UIImage imageWithCGImage:cgImage];
+  if ([[_path pathExtension] isEqualToString:@"jpg"]) {
+    imageData = UIImageJPEGRepresentation(uiImage, 1.0f);
+  } else {
+    imageData = UIImagePNGRepresentation(uiImage);
+  }
+#else
   NSBitmapImageRep* newRep = [[NSBitmapImageRep alloc] initWithCGImage:cgImage];
   [newRep setSize:NSSizeToCGSize(outputSize.size)];
   NSDictionary<NSBitmapImageRepPropertyKey, id>* quality = @{NSImageCompressionFactor : @1.0f};
@@ -76,6 +88,7 @@
   } else {
     imageData = [newRep representationUsingType:NSBitmapImageFileTypePNG properties:quality];
   }
+#endif
   CGImageRelease(cgImage);
   if (shouldRelease)
     CVPixelBufferRelease(pixelBufferRef);

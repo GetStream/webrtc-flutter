@@ -1,14 +1,19 @@
 #import "include/stream_webrtc_flutter/FlutterRTCMediaStream.h"
 #import <objc/runtime.h>
 #import "AVKit/AVKit.h"
+#if TARGET_OS_IPHONE
+#import "include/stream_webrtc_flutter/AudioUtils.h"
+#endif
 #import "include/stream_webrtc_flutter/CameraUtils.h"
 #import "include/stream_webrtc_flutter/FlutterRTCFrameCapturer.h"
 #import "include/stream_webrtc_flutter/FlutterRTCPeerConnection.h"
 #import "include/stream_webrtc_flutter/LocalAudioTrack.h"
 #import "include/stream_webrtc_flutter/LocalVideoTrack.h"
 #import "include/stream_webrtc_flutter/NativePeerConnectionFactory.h"
-#import "include/stream_webrtc_flutter/StreamMacAudioDevices.h"
 #import "include/stream_webrtc_flutter/VideoProcessingAdapter.h"
+#if TARGET_OS_OSX
+#import "include/stream_webrtc_flutter/StreamMacAudioDevices.h"
+#endif
 
 @implementation RTCMediaStreamTrack (Flutter)
 
@@ -67,12 +72,23 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 - (NSArray<AVCaptureDevice*>*)captureDevices {
   if (@available(iOS 13.0, macOS 10.15, macCatalyst 14.0, tvOS 17.0, *)) {
     NSArray<AVCaptureDeviceType>* deviceTypes = @[
+#if TARGET_OS_IPHONE
+      AVCaptureDeviceTypeBuiltInTripleCamera,
+      AVCaptureDeviceTypeBuiltInDualCamera,
+      AVCaptureDeviceTypeBuiltInDualWideCamera,
       AVCaptureDeviceTypeBuiltInWideAngleCamera,
+      AVCaptureDeviceTypeBuiltInTelephotoCamera,
+      AVCaptureDeviceTypeBuiltInUltraWideCamera,
+#else
+      AVCaptureDeviceTypeBuiltInWideAngleCamera,
+#endif
     ];
 
+#if TARGET_OS_OSX
     if (@available(macOS 13.0, *)) {
       deviceTypes = [deviceTypes arrayByAddingObject:AVCaptureDeviceTypeDeskViewCamera];
     }
+#endif
 
     if (@available(iOS 17.0, macOS 14.0, tvOS 17.0, *)) {
       deviceTypes = [deviceTypes arrayByAddingObjectsFromArray:@[
@@ -141,9 +157,11 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     rtcConstraints = [self parseMediaConstraints:[self defaultAudioConstraints]];
   }
 
+#if TARGET_OS_OSX
   if (audioDeviceId != nil) {
     [self selectAudioInput:audioDeviceId result:nil];
   }
+#endif
 
   NSString* trackId = [[NSUUID UUID] UUIDString];
   NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
@@ -304,6 +322,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
       BOOL requestAccessForVideo = [videoConstraints isKindOfClass:[NSNumber class]]
                                        ? [videoConstraints boolValue]
                                        : [videoConstraints isKindOfClass:[NSDictionary class]];
+#if !TARGET_IPHONE_SIMULATOR
       if (requestAccessForVideo) {
         [self requestAccessForMediaType:AVMediaTypeVideo
                             constraints:constraints
@@ -313,6 +332,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                               factoryId:factoryId];
         return;
       }
+#endif
     }
   }
 
@@ -575,9 +595,11 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
       return;
     }
     RTCVideoSource* videoSource = [nf.factory videoSource];
+#if TARGET_OS_OSX
     if (self.videoCapturer) {
       [self.videoCapturer stopCapture];
     }
+#endif
 
     VideoProcessingAdapter* videoProcessingAdapter =
         [[VideoProcessingAdapter alloc] initWithRTCVideoSource:videoSource];
@@ -727,7 +749,9 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     return;
   }
 
+#if TARGET_OS_OSX
   if (@available(macOS 10.14, *)) {
+#endif
     [AVCaptureDevice requestAccessForMediaType:mediaType
                              completionHandler:^(BOOL granted) {
                                dispatch_async(dispatch_get_main_queue(), ^{
@@ -763,6 +787,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                                  }
                                });
                              }];
+#if TARGET_OS_OSX
   } else {
     // Fallback on earlier versions
     NavigatorUserMediaSuccessCallback scb = ^(RTCMediaStream* mediaStream) {
@@ -786,6 +811,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                 factoryId:factoryId];
     }
   }
+#endif
 }
 
 - (void)createLocalMediaStream:(NSString*)factoryId result:(FlutterResult)result {
@@ -816,6 +842,38 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
       @"kind" : @"videoinput",
     }];
   }
+#if TARGET_OS_IPHONE
+
+  RTCAudioSession* session = [RTCAudioSession sharedInstance];
+  for (AVAudioSessionPortDescription* port in session.session.availableInputs) {
+    // NSLog(@"input portName: %@, type %@", port.portName,port.portType);
+    [sources addObject:@{
+      @"deviceId" : port.UID,
+      @"label" : port.portName,
+      @"groupId" : port.portType,
+      @"kind" : @"audioinput",
+    }];
+  }
+
+  for (AVAudioSessionPortDescription* port in session.currentRoute.outputs) {
+    // NSLog(@"output portName: %@, type %@", port.portName,port.portType);
+    if (session.currentRoute.outputs.count == 1 && ![port.UID isEqualToString:@"Speaker"]) {
+      [sources addObject:@{
+        @"deviceId" : @"Speaker",
+        @"label" : @"Speaker",
+        @"groupId" : @"Speaker",
+        @"kind" : @"audiooutput",
+      }];
+    }
+    [sources addObject:@{
+      @"deviceId" : port.UID,
+      @"label" : port.portName,
+      @"groupId" : port.portType,
+      @"kind" : @"audiooutput",
+    }];
+  }
+#endif
+#if TARGET_OS_OSX
   for (NSDictionary* d in [StreamMacAudioDevices inputDevices]) {
     [sources addObject:@{
       @"deviceId" : d[@"deviceId"],
@@ -830,10 +888,12 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
       @"kind" : @"audiooutput",
     }];
   }
+#endif
   result(@{@"sources" : sources});
 }
 
 - (void)selectAudioInput:(NSString*)deviceId result:(FlutterResult)result {
+#if TARGET_OS_OSX
   if (![StreamMacAudioDevices deviceIdExists:deviceId asInput:YES]) {
     if (result)
       result([FlutterError errorWithCode:@"selectAudioInputFailed"
@@ -863,9 +923,30 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                                      message:@"No active per-call factory; "
                                              @"join a call before selecting audio input."
                                      details:@{@"deviceId" : deviceId}]);
+  return;
+#endif
+#if TARGET_OS_IPHONE
+  RTCAudioSession* session = [RTCAudioSession sharedInstance];
+  for (AVAudioSessionPortDescription* port in session.session.availableInputs) {
+    if ([port.UID isEqualToString:deviceId]) {
+      if (self.preferredInput != port.portType) {
+        self.preferredInput = port.portType;
+        [AudioUtils selectAudioInput:self.preferredInput];
+      }
+      break;
+    }
+  }
+  if (result)
+    result(nil);
+#endif
+  if (result)
+    result([FlutterError errorWithCode:@"selectAudioInputFailed"
+                               message:[NSString stringWithFormat:@"Error: deviceId not found!"]
+                               details:nil]);
 }
 
 - (void)selectAudioOutput:(NSString*)deviceId result:(FlutterResult)result {
+#if TARGET_OS_OSX
   if (![StreamMacAudioDevices deviceIdExists:deviceId asInput:NO]) {
     result([FlutterError errorWithCode:@"selectAudioOutputFailed"
                                message:@"Error: deviceId not found!"
@@ -893,13 +974,90 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                                    message:@"No active per-call factory; "
                                            @"join a call before selecting audio output."
                                    details:@{@"deviceId" : deviceId}]);
+  return;
+#endif
+#if TARGET_OS_IPHONE
+  RTCAudioSession* session = [RTCAudioSession sharedInstance];
+  NSError* setCategoryError = nil;
+
+  if ([deviceId isEqualToString:@"Speaker"]) {
+    [session.session overrideOutputAudioPort:kAudioSessionOverrideAudioRoute_Speaker
+                                       error:&setCategoryError];
+  } else {
+    [session.session overrideOutputAudioPort:kAudioSessionOverrideAudioRoute_None
+                                       error:&setCategoryError];
+  }
+
+  if (setCategoryError == nil) {
+    result(nil);
+    return;
+  }
+
+  result([FlutterError
+      errorWithCode:@"selectAudioOutputFailed"
+            message:[NSString
+                        stringWithFormat:@"Error: %@", [setCategoryError localizedFailureReason]]
+            details:nil]);
+
+#endif
+  result([FlutterError errorWithCode:@"selectAudioOutputFailed"
+                             message:[NSString stringWithFormat:@"Error: deviceId not found!"]
+                             details:nil]);
 }
 
 - (void)triggeriOSAudioRouteSelectionUI:(FlutterResult)result {
+#if TARGET_OS_IPHONE
+  if (@available(iOS 11.0, *)) {
+    AVRoutePickerView* routePicker = [[AVRoutePickerView alloc] init];
+    routePicker.frame = CGRectMake(0, 0, 44, 44);
+
+    // Add the route picker to a temporary window to ensure it's in the view hierarchy
+    UIWindow* window = [[UIApplication sharedApplication] keyWindow];
+    if (!window) {
+      // Fallback for iOS 13+ where keyWindow is deprecated
+      for (UIWindowScene* windowScene in [UIApplication sharedApplication].connectedScenes) {
+        if (windowScene.activationState == UISceneActivationStateForegroundActive) {
+          window = windowScene.windows.firstObject;
+          break;
+        }
+      }
+    }
+
+    if (window) {
+      [window addSubview:routePicker];
+
+      // Trigger the route picker programmatically
+      for (UIView* view in routePicker.subviews) {
+        if ([view isKindOfClass:[UIButton class]]) {
+          UIButton* button = (UIButton*)view;
+          [button sendActionsForControlEvents:UIControlEventTouchUpInside];
+          break;  // Only trigger the first button found
+        }
+      }
+
+      // Remove the route picker after a short delay
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
+                     dispatch_get_main_queue(), ^{
+                       [routePicker removeFromSuperview];
+                     });
+
+      result(nil);
+    } else {
+      result([FlutterError errorWithCode:@"NoWindowError"
+                                 message:@"Could not find a window to present the route picker"
+                                 details:nil]);
+    }
+  } else {
+    result([FlutterError errorWithCode:@"UnsupportedVersionError"
+                               message:@"AVRoutePickerView is only available on iOS 11.0 or later"
+                               details:nil]);
+  }
+#else
   // macOS doesn't support iOS audio route selection UI
   result([FlutterError errorWithCode:@"UnsupportedPlatformError"
                              message:@"triggeriOSAudioRouteSelectionUI is only supported on iOS"
                              details:nil]);
+#endif
 }
 
 - (void)mediaStreamTrackRelease:(RTCMediaStream*)mediaStream track:(RTCMediaStreamTrack*)track {
@@ -968,7 +1126,35 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 - (void)mediaStreamTrackSetZoom:(RTCMediaStreamTrack*)track
                       zoomLevel:(double)zoomLevel
                          result:(FlutterResult)result {
+#if TARGET_OS_OSX
   NSLog(@"Not supported on macOS. Can't set zoom");
+  return;
+#endif
+#if TARGET_OS_IPHONE
+  if (!self.videoCapturer) {
+    NSLog(@"Video capturer is null. Can't set zoom");
+    return;
+  }
+  if (self.videoCapturer.captureSession.inputs.count == 0) {
+    NSLog(@"Video capturer is missing an input. Can't set zoom");
+    return;
+  }
+
+  AVCaptureDeviceInput* deviceInput = [self.videoCapturer.captureSession.inputs objectAtIndex:0];
+  AVCaptureDevice* device = deviceInput.device;
+
+  NSError* error;
+  if ([device lockForConfiguration:&error] == NO) {
+    NSLog(@"Failed to acquire configuration lock. %@", error.localizedDescription);
+    return;
+  }
+
+  CGFloat desiredZoomFactor = (CGFloat)zoomLevel;
+  device.videoZoomFactor = MAX(1.0, MIN(desiredZoomFactor, device.activeFormat.videoMaxZoomFactor));
+  [device unlockForConfiguration];
+
+  result(nil);
+#endif
 }
 
 - (void)mediaStreamTrackCaptureFrame:(RTCVideoTrack*)track
@@ -1012,6 +1198,13 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
   for (AVCaptureDeviceFormat* format in formats) {
     CMVideoDimensions dimension = CMVideoFormatDescriptionGetDimensions(format.formatDescription);
     FourCharCode pixelFormat = CMFormatDescriptionGetMediaSubType(format.formatDescription);
+#if TARGET_OS_IPHONE
+    if (@available(iOS 13.0, *)) {
+      if (format.isMultiCamSupported != AVCaptureMultiCamSession.multiCamSupported) {
+        continue;
+      }
+    }
+#endif
     // NSLog(@"AVCaptureDeviceFormats,fps %d, dimension: %dx%d",
     // format.videoSupportedFrameRateRanges, dimension.width, dimension.height);
     long diff = labs(targetWidth - dimension.width) + labs(targetHeight - dimension.height);

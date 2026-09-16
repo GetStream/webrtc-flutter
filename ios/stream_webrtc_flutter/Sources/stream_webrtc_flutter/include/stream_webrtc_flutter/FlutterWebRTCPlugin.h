@@ -1,4 +1,8 @@
+#if TARGET_OS_IPHONE
 #import <Flutter/Flutter.h>
+#else
+#import <FlutterMacOS/FlutterMacOS.h>
+#endif
 #import <Foundation/Foundation.h>
 #import <StreamWebRTC/StreamWebRTC.h>
 #import "LocalTrack.h"
@@ -6,7 +10,9 @@
 @class VideoEffectProcessor;
 @class FlutterRTCVideoRenderer;
 @class FlutterRTCFrameCapturer;
+#if TARGET_OS_IPHONE
 @class FlutterRTCMediaRecorder;
+#endif
 @class AudioManager;
 @class NativePeerConnectionFactory;
 
@@ -19,13 +25,11 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 @interface FlutterWebRTCPlugin : NSObject <FlutterPlugin,
                                            RTCPeerConnectionDelegate,
                                            RTCAudioDeviceModuleDelegate,
-                                           FlutterStreamHandler
 #if TARGET_OS_OSX
-                                           ,
                                            RTCDesktopMediaListDelegate,
-                                           RTCDesktopCapturerDelegate
+                                           RTCDesktopCapturerDelegate,
 #endif
-                                           >
+                                           FlutterStreamHandler>
 
 /**
  * Per-call factory registry, keyed by factoryId.
@@ -55,8 +59,10 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 @property(nonatomic, strong) NSMutableDictionary<NSString*, id<LocalTrack>>* _Nullable localTracks;
 @property(nonatomic, strong)
     NSMutableDictionary<NSNumber*, FlutterRTCVideoRenderer*>* _Nullable renders;
+#if TARGET_OS_IPHONE
 @property(nonatomic, strong)
     NSMutableDictionary<NSNumber*, FlutterRTCMediaRecorder*>* _Nonnull recorders;
+#endif
 @property(nonatomic, strong)
     NSMutableDictionary<NSString*, CapturerStopHandler>* _Nullable videoCapturerStopHandlers;
 @property(nonatomic, strong)
