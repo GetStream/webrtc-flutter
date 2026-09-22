@@ -1,6 +1,11 @@
 
 # Changelog
 
+[Unreleased]
+
+* [Android] Migrated the Android module to AGP's built-in Kotlin. The module no longer applies the Kotlin Gradle Plugin (KGP), whose application Android Gradle Plugin 9.0 removed — apps on AGP 9 failed to build because of it.
+* Increased minimum Flutter version to 3.44.0 (Dart 3.12.0), which is required for the built-in Kotlin migration: from 3.44 Flutter applies KGP to plugin modules that no longer declare it, keeping AGP 8 builds working.
+
 [3.2.0] - 2026.09.03
 
 * Exposed webrtc's EncryptionManager to Dart, so the video SDK can implement E2EE on Android and iOS.
