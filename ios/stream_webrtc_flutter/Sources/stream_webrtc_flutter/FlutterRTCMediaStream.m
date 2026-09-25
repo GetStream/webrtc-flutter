@@ -628,13 +628,19 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
       [videoDevice unlockForConfiguration];
     }
 
+    __weak FlutterWebRTCPlugin* weakSelf = self;
     [self.videoCapturer startCaptureWithDevice:videoDevice
                                         format:selectedFormat
                                            fps:selectedFps
                              completionHandler:^(NSError* error) {
                                if (error) {
                                  NSLog(@"Start capture error: %@", [error localizedDescription]);
+                                 return;
                                }
+
+                               // This is a freshly created capture session, so it
+                               // starts without multitasking camera access.
+                               [weakSelf applyMultitaskingCameraAccessToCaptureSession];
                              }];
 
     NSString* trackUUID = [[NSUUID UUID] UUIDString];

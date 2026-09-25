@@ -96,6 +96,10 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 @property(nonatomic, strong) NSMutableDictionary<NSString*, NSNumber*>* _Nonnull pausedTrackVolumes;
 @property(nonatomic) BOOL isAudioPlayoutPaused;
 
+/// Whether camera access while multitasking was asked for. Remembered so that
+/// a capture session created afterwards is started with it applied.
+@property(nonatomic) BOOL multitaskingCameraAccessRequested;
+
 - (void)mediaStreamTrackSetVideoEffects:(nonnull NSString*)trackId
                                   names:(nonnull NSArray<NSString*>*)names;
 - (RTCMediaStream* _Nullable)streamForId:(NSString* _Nonnull)streamId
@@ -114,6 +118,7 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 - (RTCMediaStreamTrack* _Nullable)remoteTrackForId:(NSString* _Nonnull)trackId;
 
 - (BOOL)hasLocalAudioTrack;
+- (void)applyMultitaskingCameraAccessToCaptureSession;
 - (void)ensureAudioSession;
 - (void)deactiveRtcAudioSession;
 
