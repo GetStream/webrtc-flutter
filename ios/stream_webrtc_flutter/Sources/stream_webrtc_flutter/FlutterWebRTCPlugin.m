@@ -861,8 +861,9 @@ static FlutterWebRTCPlugin* sharedSingleton;
         if (stopHandler) {
           shouldCallResult = NO;
           stopHandler(^{
+            // The stop handler itself clears `videoCapturer`, and only when it
+            // is still the capturer that stopped.
             NSLog(@"video capturer stopped, trackID = %@", videoTrack.trackId);
-            self.videoCapturer = nil;
             result(nil);
           });
           [self.videoCapturerStopHandlers removeObjectForKey:videoTrack.trackId];

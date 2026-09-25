@@ -603,7 +603,15 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 
     VideoProcessingAdapter* videoProcessingAdapter =
         [[VideoProcessingAdapter alloc] initWithRTCVideoSource:videoSource];
-    self.videoCapturer = [[RTCCameraVideoCapturer alloc] initWithDelegate:videoProcessingAdapter];
+    // Every capturer gets a capture session of its own. The default initialiser
+    // joins the one multi-cam session the WebRTC fork shares across the process
+    // on iPhone, which never removes a capturer's output and removes inputs by
+    // camera rather than by owner: each acquisition then leaks an output, and
+    // stopping an old capturer takes the live one's input with it. A session of
+    // its own goes away with the capturer.
+    self.videoCapturer =
+        [[RTCCameraVideoCapturer alloc] initWithDelegate:videoProcessingAdapter
+                                          captureSession:[[AVCaptureSession alloc] init]];
 
     AVCaptureDeviceFormat* selectedFormat = [self selectFormatForDevice:videoDevice
                                                             targetWidth:targetWidth
@@ -671,7 +679,19 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 
     self.videoCapturerStopHandlers[videoTrack.trackId] = ^(CompletionHandler handler) {
       NSLog(@"Stop video capturer, trackID %@", videoTrack.trackId);
-      [capturer stopCaptureWithCompletionHandler:handler];
+      [capturer stopCaptureWithCompletionHandler:^{
+        // Let go of the stopped capturer, and with it its capture session, but
+        // only while it is still the current one: a camera recreated since has
+        // already replaced it, and must be kept.
+        RTCCameraVideoCapturer* stoppedCapturer = capturer;
+        dispatch_async(dispatch_get_main_queue(), ^{
+          FlutterWebRTCPlugin* strongSelf = weakSelf;
+          if (stoppedCapturer != nil && strongSelf.videoCapturer == stoppedCapturer) {
+            strongSelf.videoCapturer = nil;
+          }
+        });
+        if (handler) handler();
+      }];
     };
 
     if (!videoDeviceId) {
