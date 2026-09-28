@@ -133,6 +133,14 @@ void postEvent(FlutterEventSink _Nullable sink, id _Nullable event) {
 #if TARGET_OS_IPHONE
   FLutterRTCVideoPlatformViewFactory* _platformViewFactory;
   dispatch_block_t _stereoRefreshDebounceBlock;
+  /**
+   * Serial queue for AVAudioSession reconfiguration requested from Dart.
+   * setCategory / setMode / setActive block for hundreds of milliseconds while
+   * the audio route changes, and since Flutter 3.29 the platform main thread is
+   * also the Dart UI thread, so running them there freezes the app. Serial so
+   * the requests still apply in the order Dart sent them.
+   */
+  dispatch_queue_t _audioSessionQueue;
 #endif
 
   RTC_OBJC_TYPE(RTCCallbackLogger) * loggerCallback;
@@ -201,6 +209,9 @@ static FlutterWebRTCPlugin* sharedSingleton;
 
 #if TARGET_OS_IPHONE
     _preferredInput = AVAudioSessionPortHeadphones;
+    _audioSessionQueue = dispatch_queue_create(
+        "io.getstream.webrtc.flutter.audioSession",
+        dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0));
     self.viewController = viewController;
     _platformViewFactory = [[FLutterRTCVideoPlatformViewFactory alloc] initWithMessenger:messenger];
     [registrar registerViewFactory:_platformViewFactory
@@ -1348,22 +1359,41 @@ static FlutterWebRTCPlugin* sharedSingleton;
     NSNumber* enable = argsMap[@"enable"];
     _speakerOn = enable.boolValue;
     _speakerOnButPreferBluetooth = NO;
-    [AudioUtils setSpeakerphoneOn:_speakerOn];
-    postEvent(self.eventSink, @{@"event" : @"onDeviceChange"});
-    result(nil);
+    BOOL speakerOn = _speakerOn;
+    dispatch_async(_audioSessionQueue, ^{
+      [AudioUtils setSpeakerphoneOn:speakerOn];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        postEvent(self.eventSink, @{@"event" : @"onDeviceChange"});
+        result(nil);
+      });
+    });
   } else if ([@"ensureAudioSession" isEqualToString:call.method]) {
-    [self ensureAudioSession];
-    result(nil);
+    // localTracks is only touched on main, so read it before hopping.
+    BOOL recording = [self hasLocalAudioTrack];
+    dispatch_async(_audioSessionQueue, ^{
+      [AudioUtils ensureAudioSessionWithRecording:recording];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        result(nil);
+      });
+    });
   } else if ([@"enableSpeakerphoneButPreferBluetooth" isEqualToString:call.method]) {
     _speakerOn = YES;
     _speakerOnButPreferBluetooth = YES;
-    [AudioUtils setSpeakerphoneOnButPreferBluetooth];
-    result(nil);
+    dispatch_async(_audioSessionQueue, ^{
+      [AudioUtils setSpeakerphoneOnButPreferBluetooth];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        result(nil);
+      });
+    });
   } else if ([@"setAppleAudioConfiguration" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSDictionary* configuration = argsMap[@"configuration"];
-    [AudioUtils setAppleAudioConfiguration:configuration];
-    result(nil);
+    dispatch_async(_audioSessionQueue, ^{
+      [AudioUtils setAppleAudioConfiguration:configuration];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        result(nil);
+      });
+    });
   }
 #endif
   else if ([@"getLocalDescription" isEqualToString:call.method]) {

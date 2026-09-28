@@ -1,6 +1,10 @@
 
 # Changelog
 
+Upcoming
+
+* [iOS] fix: `setAppleAudioConfiguration`, `ensureAudioSession`, `enableSpeakerphone` and `enableSpeakerphoneButPreferBluetooth` now reconfigure the `AVAudioSession` on a serial background queue and reply once it is done, instead of on the main thread. Since Flutter 3.29 the main thread also runs Dart, so a slow category or route change froze the app while it ran.
+
 [3.2.0] - 2026.09.03
 
 * Exposed webrtc's EncryptionManager to Dart, so the video SDK can implement E2EE on Android and iOS.
