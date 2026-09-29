@@ -54,7 +54,7 @@ abstract class DesktopCapturer {
   /// share, by passing `system-picker` as the `deviceId` of `getDisplayMedia`.
   ///
   /// Only true on macOS 14 or newer.
-  Future<bool> isContentSharingPickerSupported() async => false;
+  Future<bool> isSystemContentPickerSupported() async => false;
 
   StreamController<DesktopCapturerSource> get onAdded =>
       throw UnimplementedError();
