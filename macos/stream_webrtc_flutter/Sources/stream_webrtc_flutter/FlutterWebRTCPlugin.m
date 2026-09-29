@@ -134,11 +134,12 @@ void postEvent(FlutterEventSink _Nullable sink, id _Nullable event) {
   FLutterRTCVideoPlatformViewFactory* _platformViewFactory;
   dispatch_block_t _stereoRefreshDebounceBlock;
   /**
-   * Serial queue for AVAudioSession reconfiguration requested from Dart.
+   * Serial queue for AVAudioSession reconfiguration, both requested from Dart
+   * and triggered internally (track / peer-connection lifecycle).
    * setCategory / setMode / setActive block for hundreds of milliseconds while
    * the audio route changes, and since Flutter 3.29 the platform main thread is
    * also the Dart UI thread, so running them there freezes the app. Serial so
-   * the requests still apply in the order Dart sent them.
+   * the requests still apply in the order they were made.
    */
   dispatch_queue_t _audioSessionQueue;
 #endif
@@ -1357,31 +1358,31 @@ static FlutterWebRTCPlugin* sharedSingleton;
   else if ([@"enableSpeakerphone" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSNumber* enable = argsMap[@"enable"];
-    _speakerOn = enable.boolValue;
-    _speakerOnButPreferBluetooth = NO;
-    BOOL speakerOn = _speakerOn;
+    BOOL speakerOn = enable.boolValue;
     dispatch_async(_audioSessionQueue, ^{
       [AudioUtils setSpeakerphoneOn:speakerOn];
       dispatch_async(dispatch_get_main_queue(), ^{
+        // Only flip the flags once the route is applied.
+        self->_speakerOn = speakerOn;
+        self->_speakerOnButPreferBluetooth = NO;
         postEvent(self.eventSink, @{@"event" : @"onDeviceChange"});
         result(nil);
       });
     });
   } else if ([@"ensureAudioSession" isEqualToString:call.method]) {
-    // localTracks is only touched on main, so read it before hopping.
-    BOOL recording = [self hasLocalAudioTrack];
+    [self ensureAudioSession];
+    // Reply once the enqueued reconfiguration has run.
     dispatch_async(_audioSessionQueue, ^{
-      [AudioUtils ensureAudioSessionWithRecording:recording];
       dispatch_async(dispatch_get_main_queue(), ^{
         result(nil);
       });
     });
   } else if ([@"enableSpeakerphoneButPreferBluetooth" isEqualToString:call.method]) {
-    _speakerOn = YES;
-    _speakerOnButPreferBluetooth = YES;
     dispatch_async(_audioSessionQueue, ^{
       [AudioUtils setSpeakerphoneOnButPreferBluetooth];
       dispatch_async(dispatch_get_main_queue(), ^{
+        self->_speakerOn = YES;
+        self->_speakerOnButPreferBluetooth = YES;
         result(nil);
       });
     });
@@ -2416,16 +2417,28 @@ static FlutterWebRTCPlugin* sharedSingleton;
 }
 #endif
 
+/**
+ * Both helpers decide from the track / peer-connection state at call time and
+ * enqueue the result on _audioSessionQueue. Since the Dart-initiated changes go
+ * through the same queue, a later lifecycle change (e.g. a track dispose) enqueues
+ * after any pending request and is applied last, so an earlier snapshot never
+ * wins over a newer one.
+ */
 - (void)ensureAudioSession {
 #if TARGET_OS_IPHONE
-  [AudioUtils ensureAudioSessionWithRecording:[self hasLocalAudioTrack]];
+  BOOL recording = [self hasLocalAudioTrack];
+  dispatch_async(_audioSessionQueue, ^{
+    [AudioUtils ensureAudioSessionWithRecording:recording];
+  });
 #endif
 }
 
 - (void)deactiveRtcAudioSession {
 #if TARGET_OS_IPHONE
   if (![self hasLocalAudioTrack] && self.peerConnections.count == 0) {
-    [AudioUtils deactiveRtcAudioSession];
+    dispatch_async(_audioSessionQueue, ^{
+      [AudioUtils deactiveRtcAudioSession];
+    });
   }
 #endif
 }
