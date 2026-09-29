@@ -22,7 +22,10 @@ let package = Package(
                 .product(name: "FlutterFramework", package: "FlutterFramework"),
                 .product(name: "StreamWebRTC", package: "stream-video-swift-webrtc")
             ],
-            resources: []
+            resources: [],
+            linkerSettings: [
+                .unsafeFlags(["-weak_framework", "ScreenCaptureKit"], .when(platforms: [.macOS]))
+            ]
         )
     ]
 )
