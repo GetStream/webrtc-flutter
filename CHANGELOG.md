@@ -3,6 +3,7 @@
 
 [Unreleased]
 
+* [Android/iOS/macOS] fix: `peerConnectionClose` and `peerConnectionDispose` now close the peer connection on a single background thread (Android) or serial queue (iOS/macOS) and reply once it is closed, instead of closing it on the main thread. Closing waits for WebRTC to tear the connection down, a few hundred milliseconds with media running, and since Flutter 3.29 the main thread also runs Dart, so leaving a call froze the app for that long. `disposePeerConnectionFactory` now waits for connections still closing before it disposes the factory.
 * [Android] Migrated the Android module to AGP's built-in Kotlin. The module no longer applies the Kotlin Gradle Plugin (KGP), whose application Android Gradle Plugin 9.0 removed — apps on AGP 9 failed to build because of it.
 * Increased minimum Flutter version to 3.44.0 (Dart 3.12.0), which is required for the built-in Kotlin migration: from 3.44 Flutter applies KGP to plugin modules that no longer declare it, keeping AGP 8 builds working.
 
