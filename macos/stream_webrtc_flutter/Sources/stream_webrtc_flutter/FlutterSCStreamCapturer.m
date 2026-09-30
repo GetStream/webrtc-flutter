@@ -21,11 +21,13 @@ NSString* const kFlutterSystemPickerSourceId = @"system-picker";
   return self;
 }
 
-- (void)startCaptureWithFPS:(NSInteger)fps {
+- (void)startCaptureWithFPS:(NSInteger)fps
+         completionHandler:(void (^)(NSError* _Nullable error))completionHandler {
   SCStreamConfiguration* configuration = [[SCStreamConfiguration alloc] init];
   CGFloat scale = _filter.pointPixelScale > 0 ? _filter.pointPixelScale : 1.0;
-  configuration.width = (size_t)MAX(2, _filter.contentRect.size.width * scale);
-  configuration.height = (size_t)MAX(2, _filter.contentRect.size.height * scale);
+  // 4:2:0 needs even dimensions.
+  configuration.width = (size_t)MAX(2, ceil(_filter.contentRect.size.width * scale / 2) * 2);
+  configuration.height = (size_t)MAX(2, ceil(_filter.contentRect.size.height * scale / 2) * 2);
   configuration.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
   configuration.minimumFrameInterval = CMTimeMake(1, (int32_t)MAX(1, fps));
   configuration.showsCursor = YES;
@@ -35,12 +37,16 @@ NSString* const kFlutterSystemPickerSourceId = @"system-picker";
   NSError* error = nil;
   if (![_stream addStreamOutput:self type:SCStreamOutputTypeScreen sampleHandlerQueue:_queue error:&error]) {
     NSLog(@"FlutterSCStreamCapturer: addStreamOutput failed: %@", error);
+    _stream = nil;
+    completionHandler(error);
     return;
   }
   [_stream startCaptureWithCompletionHandler:^(NSError* _Nullable startError) {
     if (startError != nil) {
       NSLog(@"FlutterSCStreamCapturer: startCapture failed: %@", startError);
+      self->_stream = nil;
     }
+    completionHandler(startError);
   }];
 }
 
@@ -95,6 +101,10 @@ NSString* const kFlutterSystemPickerSourceId = @"system-picker";
 
 - (void)stream:(SCStream*)stream didStopWithError:(NSError*)error {
   NSLog(@"FlutterSCStreamCapturer: stream stopped: %@", error);
+  // The stream retains this capturer as its output; release it so the two do not keep each other alive.
+  if (_stream == stream) {
+    _stream = nil;
+  }
 }
 
 @end
@@ -108,7 +118,7 @@ NSString* const kFlutterSystemPickerSourceId = @"system-picker";
 @implementation FlutterContentSharingPicker
 
 // The picker keeps a weak reference to its observers, so the one in flight is held here.
-static FlutterContentSharingPicker* _current;
+static id _current;
 
 + (void)presentWithCompletion:(void (^)(SCContentFilter*, NSError*))completion {
   dispatch_async(dispatch_get_main_queue(), ^{

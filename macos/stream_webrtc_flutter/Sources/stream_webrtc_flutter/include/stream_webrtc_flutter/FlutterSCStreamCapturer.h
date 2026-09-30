@@ -13,7 +13,10 @@ API_AVAILABLE(macos(14.0))
 - (nonnull instancetype)initWithDelegate:(nonnull id<RTCVideoCapturerDelegate>)delegate
                                   filter:(nonnull SCContentFilter*)filter;
 
-- (void)startCaptureWithFPS:(NSInteger)fps;
+/// Starts capturing. Calls [completionHandler] once with nil when frames are flowing, or with the
+/// error when capture could not start.
+- (void)startCaptureWithFPS:(NSInteger)fps
+          completionHandler:(nonnull void (^)(NSError* _Nullable error))completionHandler;
 
 - (void)stopCaptureWithCompletionHandler:(nullable void (^)(void))completionHandler;
 
