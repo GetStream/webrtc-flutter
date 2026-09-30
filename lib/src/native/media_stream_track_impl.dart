@@ -9,14 +9,27 @@ import '../helper.dart';
 import 'utils.dart';
 
 class MediaStreamTrackNative extends MediaStreamTrack {
-  MediaStreamTrackNative(this._trackId, this._label, this._kind, this._enabled,
-      this._peerConnectionId,
-      [this.settings_ = const {}]);
+  MediaStreamTrackNative(
+    this._trackId,
+    this._label,
+    this._kind,
+    this._enabled,
+    this._peerConnectionId, [
+    this.settings_ = const {},
+  ]);
 
   factory MediaStreamTrackNative.fromMap(
-      Map<dynamic, dynamic> map, String peerConnectionId) {
-    return MediaStreamTrackNative(map['id'], map['label'], map['kind'],
-        map['enabled'], peerConnectionId, map['settings'] ?? {});
+    Map<dynamic, dynamic> map,
+    String peerConnectionId,
+  ) {
+    return MediaStreamTrackNative(
+      map['id'],
+      map['label'],
+      map['kind'],
+      map['enabled'],
+      peerConnectionId,
+      map['settings'] ?? {},
+    );
   }
   final String _trackId;
   final String _label;
@@ -35,7 +48,7 @@ class MediaStreamTrackNative extends MediaStreamTrack {
     WebRTC.invokeMethod('mediaStreamTrackSetEnable', <String, dynamic>{
       'trackId': _trackId,
       'enabled': enabled,
-      'peerConnectionId': _peerConnectionId
+      'peerConnectionId': _peerConnectionId,
     });
     _enabled = enabled;
 
@@ -62,15 +75,15 @@ class MediaStreamTrackNative extends MediaStreamTrack {
 
   @override
   Future<bool> hasTorch() => WebRTC.invokeMethod(
-        'mediaStreamTrackHasTorch',
-        <String, dynamic>{'trackId': _trackId},
-      ).then((value) => value ?? false);
+    'mediaStreamTrackHasTorch',
+    <String, dynamic>{'trackId': _trackId},
+  ).then((value) => value ?? false);
 
   @override
   Future<void> setTorch(bool torch) => WebRTC.invokeMethod(
-        'mediaStreamTrackSetTorch',
-        <String, dynamic>{'trackId': _trackId, 'torch': torch},
-      );
+    'mediaStreamTrackSetTorch',
+    <String, dynamic>{'trackId': _trackId, 'torch': torch},
+  );
 
   @override
   Future<bool> switchCamera() => Helper.switchCamera(this);
@@ -86,17 +99,14 @@ class MediaStreamTrackNative extends MediaStreamTrack {
   @override
   Future<ByteBuffer> captureFrame() async {
     var filePath = await getTemporaryDirectory();
-    await WebRTC.invokeMethod(
-      'captureFrame',
-      <String, dynamic>{
-        'trackId': _trackId,
-        'peerConnectionId': _peerConnectionId,
-        'path': '${filePath.path}/captureFrame.png'
-      },
-    );
-    return File('${filePath.path}/captureFrame.png')
-        .readAsBytes()
-        .then((value) => value.buffer);
+    await WebRTC.invokeMethod('captureFrame', <String, dynamic>{
+      'trackId': _trackId,
+      'peerConnectionId': _peerConnectionId,
+      'path': '${filePath.path}/captureFrame.png',
+    });
+    return File(
+      '${filePath.path}/captureFrame.png',
+    ).readAsBytes().then((value) => value.buffer);
   }
 
   @override
@@ -124,21 +134,17 @@ class MediaStreamTrackNative extends MediaStreamTrack {
 
   @override
   Future<void> stop() async {
-    await WebRTC.invokeMethod(
-      'trackDispose',
-      <String, dynamic>{'trackId': _trackId},
-    );
+    await WebRTC.invokeMethod('trackDispose', <String, dynamic>{
+      'trackId': _trackId,
+    });
   }
 
   @override
   Future<MediaStreamTrack> clone() async {
-    final response = await WebRTC.invokeMethod(
-      'trackClone',
-      <String, dynamic>{
-        'trackId': _trackId,
-        'peerConnectionId': _peerConnectionId,
-      },
-    );
+    final response = await WebRTC.invokeMethod('trackClone', <String, dynamic>{
+      'trackId': _trackId,
+      'peerConnectionId': _peerConnectionId,
+    });
 
     if (response == null) {
       throw Exception('clone return null, something wrong');

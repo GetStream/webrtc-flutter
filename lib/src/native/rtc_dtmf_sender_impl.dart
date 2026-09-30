@@ -9,8 +9,11 @@ class RTCDTMFSenderNative extends RTCDTMFSender {
   final String _rtpSenderId;
 
   @override
-  Future<void> insertDTMF(String tones,
-      {int duration = 100, int interToneGap = 70}) async {
+  Future<void> insertDTMF(
+    String tones, {
+    int duration = 100,
+    int interToneGap = 70,
+  }) async {
     await WebRTC.invokeMethod('sendDtmf', <String, dynamic>{
       'peerConnectionId': _peerConnectionId,
       'rtpSenderId': _rtpSenderId,
@@ -24,7 +27,7 @@ class RTCDTMFSenderNative extends RTCDTMFSender {
   Future<bool> canInsertDtmf() async {
     return await WebRTC.invokeMethod('canInsertDtmf', <String, dynamic>{
       'peerConnectionId': _peerConnectionId,
-      'rtpSenderId': _rtpSenderId
+      'rtpSenderId': _rtpSenderId,
     });
   }
 }

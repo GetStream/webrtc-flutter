@@ -66,8 +66,10 @@ class DataPacketCryptorFactoryImpl implements DataPacketCryptorFactory {
   static final DataPacketCryptorFactoryImpl instance =
       DataPacketCryptorFactoryImpl._internal();
   @override
-  Future<DataPacketCryptor> createDataPacketCryptor(
-      {required Algorithm algorithm, required KeyProvider keyProvider}) async {
+  Future<DataPacketCryptor> createDataPacketCryptor({
+    required Algorithm algorithm,
+    required KeyProvider keyProvider,
+  }) async {
     try {
       final response = await WebRTC.invokeMethod('createDataPacketCryptor', {
         'algorithm': algorithm.index,

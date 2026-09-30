@@ -27,9 +27,9 @@ class RTCVideoRenderer extends ValueNotifier<RTCVideoValue>
     _initializing = Completer();
     final response = await WebRTC.invokeMethod('createVideoRenderer', {});
     _textureId = response['textureId'];
-    _eventSubscription = EventChannel('FlutterWebRTC/Texture$textureId')
-        .receiveBroadcastStream()
-        .listen(eventListener, onError: errorListener);
+    _eventSubscription = EventChannel(
+      'FlutterWebRTC/Texture$textureId',
+    ).receiveBroadcastStream().listen(eventListener, onError: errorListener);
     _initializing!.complete(null);
   }
 
@@ -59,16 +59,20 @@ class RTCVideoRenderer extends ValueNotifier<RTCVideoValue>
     if (textureId == null) throw 'Call initialize before setting the stream';
     _srcObject = stream;
     WebRTC.invokeMethod('videoRendererSetSrcObject', <String, dynamic>{
-      'textureId': textureId,
-      'streamId': stream?.id ?? '',
-      'ownerTag': stream?.ownerTag ?? ''
-    }).then((_) {
-      value = (stream == null)
-          ? RTCVideoValue.empty
-          : value.copyWith(renderVideo: renderVideo);
-    }).catchError((e) {
-      print('Got exception for RTCVideoRenderer::setSrcObject: ${e.message}');
-    }, test: (e) => e is PlatformException);
+          'textureId': textureId,
+          'streamId': stream?.id ?? '',
+          'ownerTag': stream?.ownerTag ?? '',
+        })
+        .then((_) {
+          value = (stream == null)
+              ? RTCVideoValue.empty
+              : value.copyWith(renderVideo: renderVideo);
+        })
+        .catchError((e) {
+          print(
+            'Got exception for RTCVideoRenderer::setSrcObject: ${e.message}',
+          );
+        }, test: (e) => e is PlatformException);
   }
 
   Future<void> setSrcObject({MediaStream? stream, String? trackId}) async {
@@ -83,7 +87,7 @@ class RTCVideoRenderer extends ValueNotifier<RTCVideoValue>
         'textureId': _textureId,
         'streamId': stream?.id ?? '',
         'ownerTag': stream?.ownerTag ?? '',
-        'trackId': trackId ?? '0'
+        'trackId': trackId ?? '0',
       });
       value = (stream == null)
           ? RTCVideoValue.empty
@@ -118,15 +122,18 @@ class RTCVideoRenderer extends ValueNotifier<RTCVideoValue>
     final Map<dynamic, dynamic> map = event;
     switch (map['event']) {
       case 'didTextureChangeRotation':
-        value =
-            value.copyWith(rotation: map['rotation'], renderVideo: renderVideo);
+        value = value.copyWith(
+          rotation: map['rotation'],
+          renderVideo: renderVideo,
+        );
         onResize?.call();
         break;
       case 'didTextureChangeVideoSize':
         value = value.copyWith(
-            width: 0.0 + map['width'],
-            height: 0.0 + map['height'],
-            renderVideo: renderVideo);
+          width: 0.0 + map['width'],
+          height: 0.0 + map['height'],
+          renderVideo: renderVideo,
+        );
         onResize?.call();
         break;
       case 'didFirstFrameRendered':
@@ -158,7 +165,8 @@ class RTCVideoRenderer extends ValueNotifier<RTCVideoValue>
     }
     if (_srcObject!.ownerTag != 'local') {
       throw Exception(
-          'You\'re trying to mute a remote track, this is not supported');
+        'You\'re trying to mute a remote track, this is not supported',
+      );
     }
     if (_srcObject!.getAudioTracks().isEmpty) {
       throw Exception('Can\'t be muted: The MediaStreamTrack(audio) is empty');

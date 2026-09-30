@@ -5,5 +5,5 @@ enum AdapterType {
   adapterTypeCellular,
   adapterTypeVpn,
   adapterTypeLoopback,
-  adapterTypeAny
+  adapterTypeAny,
 }

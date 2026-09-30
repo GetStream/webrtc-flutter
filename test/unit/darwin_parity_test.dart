@@ -11,7 +11,8 @@ void main() {
     expect(
       findings,
       isEmpty,
-      reason: 'The two Darwin source trees have drifted:\n\n'
+      reason:
+          'The two Darwin source trees have drifted:\n\n'
           '${findings.map((f) => '  - $f').join('\n\n')}\n\n'
           'See tool/darwin_parity.dart for how the trees are meant to relate.',
     );

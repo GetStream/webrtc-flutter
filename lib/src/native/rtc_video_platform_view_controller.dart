@@ -22,9 +22,9 @@ class RTCVideoPlatformViewController extends ValueNotifier<RTCVideoValue>
   @override
   Future<void> initialize() async {
     _eventSubscription?.cancel();
-    _eventSubscription = EventChannel('FlutterWebRTC/PlatformViewId$_viewId')
-        .receiveBroadcastStream()
-        .listen(eventListener, onError: errorListener);
+    _eventSubscription = EventChannel(
+      'FlutterWebRTC/PlatformViewId$_viewId',
+    ).receiveBroadcastStream().listen(eventListener, onError: errorListener);
   }
 
   @override
@@ -57,18 +57,23 @@ class RTCVideoPlatformViewController extends ValueNotifier<RTCVideoValue>
     _srcObject = stream;
     onSrcObjectChange?.call();
     WebRTC.invokeMethod(
-        'videoPlatformViewRendererSetSrcObject', <String, dynamic>{
-      'viewId': _viewId,
-      'streamId': stream?.id ?? '',
-      'ownerTag': stream?.ownerTag ?? ''
-    }).then((_) {
-      value = (stream == null)
-          ? RTCVideoValue.empty
-          : value.copyWith(renderVideo: renderVideo);
-    }).catchError((e) {
-      print(
-          'Got exception for RTCVideoPlatformController::setSrcObject: ${e.message}');
-    }, test: (e) => e is PlatformException);
+          'videoPlatformViewRendererSetSrcObject',
+          <String, dynamic>{
+            'viewId': _viewId,
+            'streamId': stream?.id ?? '',
+            'ownerTag': stream?.ownerTag ?? '',
+          },
+        )
+        .then((_) {
+          value = (stream == null)
+              ? RTCVideoValue.empty
+              : value.copyWith(renderVideo: renderVideo);
+        })
+        .catchError((e) {
+          print(
+            'Got exception for RTCVideoPlatformController::setSrcObject: ${e.message}',
+          );
+        }, test: (e) => e is PlatformException);
   }
 
   Future<void> setSrcObject({MediaStream? stream, String? trackId}) async {
@@ -82,12 +87,14 @@ class RTCVideoPlatformViewController extends ValueNotifier<RTCVideoValue>
     var oldviewId = _viewId;
     try {
       await WebRTC.invokeMethod(
-          'videoPlatformViewRendererSetSrcObject', <String, dynamic>{
-        'viewId': _viewId,
-        'streamId': stream?.id ?? '',
-        'ownerTag': stream?.ownerTag ?? '',
-        'trackId': trackId ?? '0'
-      });
+        'videoPlatformViewRendererSetSrcObject',
+        <String, dynamic>{
+          'viewId': _viewId,
+          'streamId': stream?.id ?? '',
+          'ownerTag': stream?.ownerTag ?? '',
+          'trackId': trackId ?? '0',
+        },
+      );
       value = (stream == null)
           ? RTCVideoValue.empty
           : value.copyWith(renderVideo: renderVideo);
@@ -104,9 +111,9 @@ class RTCVideoPlatformViewController extends ValueNotifier<RTCVideoValue>
     if (_viewId != null) {
       try {
         await WebRTC.invokeMethod(
-            'videoPlatformViewRendererDispose', <String, dynamic>{
-          'viewId': _viewId,
-        });
+          'videoPlatformViewRendererDispose',
+          <String, dynamic>{'viewId': _viewId},
+        );
         _viewId = null;
       } on PlatformException catch (e) {
         throw 'Failed to RTCVideoPlatformController::dispose: ${e.message}';
@@ -121,15 +128,18 @@ class RTCVideoPlatformViewController extends ValueNotifier<RTCVideoValue>
     final Map<dynamic, dynamic> map = event;
     switch (map['event']) {
       case 'didPlatformViewChangeRotation':
-        value =
-            value.copyWith(rotation: map['rotation'], renderVideo: renderVideo);
+        value = value.copyWith(
+          rotation: map['rotation'],
+          renderVideo: renderVideo,
+        );
         onResize?.call();
         break;
       case 'didPlatformViewChangeVideoSize':
         value = value.copyWith(
-            width: 0.0 + map['width'],
-            height: 0.0 + map['height'],
-            renderVideo: renderVideo);
+          width: 0.0 + map['width'],
+          height: 0.0 + map['height'],
+          renderVideo: renderVideo,
+        );
         onResize?.call();
         break;
       case 'didFirstFrameRendered':
@@ -155,14 +165,16 @@ class RTCVideoPlatformViewController extends ValueNotifier<RTCVideoValue>
   set muted(bool mute) {
     if (_disposed) {
       throw Exception(
-          'Can\'t be muted: The RTCVideoPlatformController is disposed');
+        'Can\'t be muted: The RTCVideoPlatformController is disposed',
+      );
     }
     if (_srcObject == null) {
       throw Exception('Can\'t be muted: The MediaStream is null');
     }
     if (_srcObject!.ownerTag != 'local') {
       throw Exception(
-          'You\'re trying to mute a remote track, this is not supported');
+        'You\'re trying to mute a remote track, this is not supported',
+      );
     }
     if (_srcObject!.getAudioTracks().isEmpty) {
       throw Exception('Can\'t be muted: The MediaStreamTrack(audio) is empty');

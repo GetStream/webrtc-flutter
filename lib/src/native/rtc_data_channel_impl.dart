@@ -8,23 +8,28 @@ import 'utils.dart';
 
 final _typeStringToMessageType = <String, MessageType>{
   'text': MessageType.text,
-  'binary': MessageType.binary
+  'binary': MessageType.binary,
 };
 
 /// A class that represents a WebRTC datachannel.
 /// Can send and receive text and binary messages.
 class RTCDataChannelNative extends RTCDataChannel {
   RTCDataChannelNative(
-      this._peerConnectionId, this._label, this._dataChannelId, this._flutterId,
-      {RTCDataChannelState? state}) {
+    this._peerConnectionId,
+    this._label,
+    this._dataChannelId,
+    this._flutterId, {
+    RTCDataChannelState? state,
+  }) {
     stateChangeStream = _stateChangeController.stream;
     messageStream = _messageController.stream;
     if (state != null) {
       _state = state;
     }
-    _eventSubscription = _eventChannelFor(_peerConnectionId, _flutterId)
-        .receiveBroadcastStream()
-        .listen(eventListener, onError: errorListener);
+    _eventSubscription = _eventChannelFor(
+      _peerConnectionId,
+      _flutterId,
+    ).receiveBroadcastStream().listen(eventListener, onError: errorListener);
   }
   final String _peerConnectionId;
   final String _label;
@@ -55,8 +60,9 @@ class RTCDataChannelNative extends RTCDataChannel {
 
   final _stateChangeController =
       StreamController<RTCDataChannelState>.broadcast(sync: true);
-  final _messageController =
-      StreamController<RTCDataChannelMessage>.broadcast(sync: true);
+  final _messageController = StreamController<RTCDataChannelMessage>.broadcast(
+    sync: true,
+  );
 
   /// RTCDataChannel event listener.
   void eventListener(dynamic event) {
@@ -100,7 +106,8 @@ class RTCDataChannelNative extends RTCDataChannel {
 
   EventChannel _eventChannelFor(String peerConnectionId, String flutterId) {
     return EventChannel(
-        'FlutterWebRTC/dataChannelEvent$peerConnectionId$flutterId');
+      'FlutterWebRTC/dataChannelEvent$peerConnectionId$flutterId',
+    );
   }
 
   void errorListener(Object obj) {
@@ -112,10 +119,12 @@ class RTCDataChannelNative extends RTCDataChannel {
   @override
   Future<int> getBufferedAmount() async {
     final Map<dynamic, dynamic> response = await WebRTC.invokeMethod(
-        'dataChannelGetBufferedAmount', <String, dynamic>{
-      'peerConnectionId': _peerConnectionId,
-      'dataChannelId': _flutterId
-    });
+      'dataChannelGetBufferedAmount',
+      <String, dynamic>{
+        'peerConnectionId': _peerConnectionId,
+        'dataChannelId': _flutterId,
+      },
+    );
     _bufferedAmount = response['bufferedAmount'];
     return _bufferedAmount;
   }
@@ -137,7 +146,7 @@ class RTCDataChannelNative extends RTCDataChannel {
     await _eventSubscription?.cancel();
     await WebRTC.invokeMethod('dataChannelClose', <String, dynamic>{
       'peerConnectionId': _peerConnectionId,
-      'dataChannelId': _flutterId
+      'dataChannelId': _flutterId,
     });
   }
 }

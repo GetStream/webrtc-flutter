@@ -16,22 +16,22 @@ class NativePeerConnectionFactory {
     Map<String, dynamic>? options,
   }) async {
     throw UnimplementedError(
-        'NativePeerConnectionFactory is not supported on web');
+      'NativePeerConnectionFactory is not supported on web',
+    );
   }
 
   Future<RTCPeerConnection> createPeerConnection(
     Map<String, dynamic> configuration, [
     Map<String, dynamic> constraints = const {},
-  ]) async =>
-      throw UnimplementedError();
+  ]) async => throw UnimplementedError();
 
   Future<MediaStream> getUserMedia(
-          Map<String, dynamic> mediaConstraints) async =>
-      throw UnimplementedError();
+    Map<String, dynamic> mediaConstraints,
+  ) async => throw UnimplementedError();
 
   Future<MediaStream> getDisplayMedia(
-          Map<String, dynamic> mediaConstraints) async =>
-      throw UnimplementedError();
+    Map<String, dynamic> mediaConstraints,
+  ) async => throw UnimplementedError();
 
   Future<MediaStream> createLocalMediaStream(String label) async =>
       throw UnimplementedError();
@@ -52,10 +52,12 @@ class NativePeerConnectionFactory {
   static bool get isAdmMicrophoneMuteSupported => false;
 
   Future<void> setMicrophoneMuted(bool muted) async => throw UnsupportedError(
-      'ADM-level microphone mute is not supported on web');
+    'ADM-level microphone mute is not supported on web',
+  );
 
   Future<bool> isMicrophoneMuted() async => throw UnsupportedError(
-      'ADM-level microphone mute is not supported on web');
+    'ADM-level microphone mute is not supported on web',
+  );
 
   Future<void> suspendAudio() async {}
   Future<void> resumeAudio() async {}

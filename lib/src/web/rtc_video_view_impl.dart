@@ -44,8 +44,8 @@ class RTCVideoViewState extends State<RTCVideoView> {
     videoRenderer.mirror = widget.mirror;
     videoRenderer.objectFit =
         widget.objectFit == RTCVideoViewObjectFit.RTCVideoViewObjectFitContain
-            ? 'contain'
-            : 'cover';
+        ? 'contain'
+        : 'cover';
 
     videoElement =
         web.document.getElementById("video_${videoRenderer.viewType}")
@@ -60,8 +60,9 @@ class RTCVideoViewState extends State<RTCVideoView> {
   int? callbackID;
 
   void getFrame(web.HTMLVideoElement element) {
-    callbackID =
-        element.requestVideoFrameCallbackWithFallback(frameCallback.toJS);
+    callbackID = element.requestVideoFrameCallbackWithFallback(
+      frameCallback.toJS,
+    );
   }
 
   void cancelFrame(web.HTMLVideoElement element) {
@@ -97,10 +98,12 @@ class RTCVideoViewState extends State<RTCVideoView> {
     if (lastFrameTime != element.currentTime) {
       lastFrameTime = element.currentTime;
       try {
-        final ui.Image img = await ui_web.createImageFromTextureSource(element,
-            width: element.videoWidth,
-            height: element.videoHeight,
-            transferOwnership: true);
+        final ui.Image img = await ui_web.createImageFromTextureSource(
+          element,
+          width: element.videoWidth,
+          height: element.videoHeight,
+          transferOwnership: true,
+        );
 
         if (mounted) {
           setState(() {
@@ -143,11 +146,13 @@ class RTCVideoViewState extends State<RTCVideoView> {
   void didUpdateWidget(RTCVideoView oldWidget) {
     super.didUpdateWidget(oldWidget);
     Timer(
-        Duration(milliseconds: 10), () => videoRenderer.mirror = widget.mirror);
+      Duration(milliseconds: 10),
+      () => videoRenderer.mirror = widget.mirror,
+    );
     videoRenderer.objectFit =
         widget.objectFit == RTCVideoViewObjectFit.RTCVideoViewObjectFitContain
-            ? 'contain'
-            : 'cover';
+        ? 'contain'
+        : 'cover';
   }
 
   web.HTMLVideoElement? videoElement;
@@ -156,16 +161,18 @@ class RTCVideoViewState extends State<RTCVideoView> {
     if (useHtmlElementView) {
       return HtmlElementView(viewType: videoRenderer.viewType);
     } else {
-      return LayoutBuilder(builder: (context, constraints) {
-        if (videoElement != null && size != constraints.biggest) {
-          size = constraints.biggest;
-          updateElement();
-        }
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          if (videoElement != null && size != constraints.biggest) {
+            size = constraints.biggest;
+            updateElement();
+          }
 
-        return Stack(children: [
-          if (capturedFrame != null)
-            Positioned.fill(
-                child: FittedBox(
+          return Stack(
+            children: [
+              if (capturedFrame != null)
+                Positioned.fill(
+                  child: FittedBox(
                     fit: switch (widget.objectFit) {
                       RTCVideoViewObjectFit.RTCVideoViewObjectFitContain =>
                         BoxFit.contain,
@@ -174,16 +181,22 @@ class RTCVideoViewState extends State<RTCVideoView> {
                     },
                     clipBehavior: Clip.hardEdge,
                     child: SizedBox(
-                        width: capturedFrame!.width.toDouble(),
-                        height: capturedFrame!.height.toDouble(),
-                        child: CustomPaint(
-                            willChange: true,
-                            painter: _ImageFlipPainter(
-                              capturedFrame!,
-                              widget.mirror,
-                            )))))
-        ]);
-      });
+                      width: capturedFrame!.width.toDouble(),
+                      height: capturedFrame!.height.toDouble(),
+                      child: CustomPaint(
+                        willChange: true,
+                        painter: _ImageFlipPainter(
+                          capturedFrame!,
+                          widget.mirror,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      );
     }
   }
 
@@ -209,13 +222,16 @@ typedef _VideoFrameRequestCallback = JSFunction;
 
 extension _HTMLVideoElementRequestAnimationFrame on web.HTMLVideoElement {
   int requestVideoFrameCallbackWithFallback(
-      _VideoFrameRequestCallback callback) {
+    _VideoFrameRequestCallback callback,
+  ) {
     if (hasProperty('requestVideoFrameCallback'.toJS).toDart) {
       return requestVideoFrameCallback(callback);
     } else {
-      return web.window.requestAnimationFrame((double num) {
-        callback.callAsFunction(this, 0.toJS, 0.toJS);
-      }.toJS);
+      return web.window.requestAnimationFrame(
+        (double num) {
+          callback.callAsFunction(this, 0.toJS, 0.toJS);
+        }.toJS,
+      );
     }
   }
 
@@ -241,11 +257,17 @@ class _ImageFlipPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (flip) {
       canvas.scale(-1, 1);
-      canvas.drawImage(image, Offset(-size.width, 0),
-          Paint()..filterQuality = ui.FilterQuality.high);
+      canvas.drawImage(
+        image,
+        Offset(-size.width, 0),
+        Paint()..filterQuality = ui.FilterQuality.high,
+      );
     } else {
       canvas.drawImage(
-          image, Offset(0, 0), Paint()..filterQuality = ui.FilterQuality.high);
+        image,
+        Offset(0, 0),
+        Paint()..filterQuality = ui.FilterQuality.high,
+      );
     }
   }
 

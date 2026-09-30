@@ -15,13 +15,13 @@ class WebRTC {
 
   static bool get platformIsWeb => true;
 
-  static Future<T?> invokeMethod<T, P>(String methodName,
-          [dynamic param]) async =>
-      throw UnimplementedError();
+  static Future<T?> invokeMethod<T, P>(
+    String methodName, [
+    dynamic param,
+  ]) async => throw UnimplementedError();
 
   static Future<void> initialize({
     Map<String, dynamic>? options,
     bool refresh = false,
-  }) async =>
-      throw UnimplementedError('initialize is not supported on web');
+  }) async => throw UnimplementedError('initialize is not supported on web');
 }

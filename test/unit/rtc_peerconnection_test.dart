@@ -12,10 +12,16 @@ void main() {
     channel.setMockMethodCallHandler((MethodCall methodCall) async {
       await ServicesBinding.instance.defaultBinaryMessenger
           .handlePlatformMessage(
-              'FlutterWebRTC/peerConnectionEvent', null, (ByteData? data) {});
+            'FlutterWebRTC/peerConnectionEvent',
+            null,
+            (ByteData? data) {},
+          );
       await ServicesBinding.instance.defaultBinaryMessenger
           .handlePlatformMessage(
-              'FlutterWebRTC/dataChannelEvent', null, (ByteData? data) {});
+            'FlutterWebRTC/dataChannelEvent',
+            null,
+            (ByteData? data) {},
+          );
     });
   });
 
@@ -24,61 +30,56 @@ void main() {
   });
 
   test(
-      'Validate that not setting any public delegate this will not break the implementation by throwing NPE',
-      () {
-    final pc = RTCPeerConnectionNative('', {});
-    final events = [
-      'signalingState',
-      'iceGatheringState',
-      'iceConnectionState',
-      'onCandidate',
-      'onAddStream',
-      'onRemoveStream',
-      'onAddTrack',
-      'onRemoveTrack',
-      'didOpenDataChannel',
-      'onRenegotiationNeeded'
-    ];
+    'Validate that not setting any public delegate this will not break the implementation by throwing NPE',
+    () {
+      final pc = RTCPeerConnectionNative('', {});
+      final events = [
+        'signalingState',
+        'iceGatheringState',
+        'iceConnectionState',
+        'onCandidate',
+        'onAddStream',
+        'onRemoveStream',
+        'onAddTrack',
+        'onRemoveTrack',
+        'didOpenDataChannel',
+        'onRenegotiationNeeded',
+      ];
 
-    pc.onDataChannel = (dc) {
-      final channel = dc as RTCDataChannelNative;
-      channel.eventListener(<String, dynamic>{
-        'event': 'dataChannelStateChanged',
-        'id': 0,
-        'flutterId': '',
-        'state': 'open'
-      });
-    };
+      pc.onDataChannel = (dc) {
+        final channel = dc as RTCDataChannelNative;
+        channel.eventListener(<String, dynamic>{
+          'event': 'dataChannelStateChanged',
+          'id': 0,
+          'flutterId': '',
+          'state': 'open',
+        });
+      };
 
-    for (var event in events) {
-      pc.eventListener(<String, dynamic>{
-        'event': event,
+      for (var event in events) {
+        pc.eventListener(<String, dynamic>{
+          'event': event,
 
-        //Minimum values for signalingState, iceGatheringState, iceConnectionState
-        'state': 'stable', // just picking one valid value from the list
+          //Minimum values for signalingState, iceGatheringState, iceConnectionState
+          'state': 'stable', // just picking one valid value from the list
+          //Minimum values for onCandidate
+          'candidate': {'candidate': '', 'sdpMid': '', 'sdpMLineIndex': 1},
 
-        //Minimum values for onCandidate
-        'candidate': {'candidate': '', 'sdpMid': '', 'sdpMLineIndex': 1},
+          //Minimum values for onAddStream
+          'streamId': '',
+          'audioTracks': [],
+          'videoTracks': [],
 
-        //Minimum values for onAddStream
-        'streamId': '',
-        'audioTracks': [],
-        'videoTracks': [],
+          //Minimum values for onRemoveTrack
+          'trackId': '',
 
-        //Minimum values for onRemoveTrack
-        'trackId': '',
-
-        //Minimum values for onAddTrack
-        'track': {
-          'id': '',
+          //Minimum values for onAddTrack
+          'track': {'id': '', 'label': '', 'kind': '', 'enabled': false},
+          'id': 0,
           'label': '',
-          'kind': '',
-          'enabled': false,
-        },
-        'id': 0,
-        'label': '',
-        'flutterId': '',
-      });
-    }
-  });
+          'flutterId': '',
+        });
+      }
+    },
+  );
 }
