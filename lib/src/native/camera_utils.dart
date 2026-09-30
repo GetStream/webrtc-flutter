@@ -10,12 +10,14 @@ enum CameraExposureMode { auto, locked }
 
 class CameraUtils {
   static Future<void> setZoom(
-      MediaStreamTrack videoTrack, double zoomLevel) async {
+    MediaStreamTrack videoTrack,
+    double zoomLevel,
+  ) async {
     if (WebRTC.platformIsAndroid || WebRTC.platformIsIOS) {
-      await WebRTC.invokeMethod(
-        'mediaStreamTrackSetZoom',
-        <String, dynamic>{'trackId': videoTrack.id, 'zoomLevel': zoomLevel},
-      );
+      await WebRTC.invokeMethod('mediaStreamTrackSetZoom', <String, dynamic>{
+        'trackId': videoTrack.id,
+        'zoomLevel': zoomLevel,
+      });
     } else {
       throw Exception('setZoom only support for mobile devices!');
     }
@@ -24,7 +26,9 @@ class CameraUtils {
   /// Set the exposure point for the camera, focusMode can be:
   /// 'auto', 'locked'
   static Future<void> setFocusMode(
-      MediaStreamTrack videoTrack, CameraFocusMode focusMode) async {
+    MediaStreamTrack videoTrack,
+    CameraFocusMode focusMode,
+  ) async {
     if (WebRTC.platformIsAndroid || WebRTC.platformIsIOS) {
       await WebRTC.invokeMethod(
         'mediaStreamTrackSetFocusMode',
@@ -39,17 +43,15 @@ class CameraUtils {
   }
 
   static Future<void> setFocusPoint(
-      MediaStreamTrack videoTrack, Point<double>? point) async {
+    MediaStreamTrack videoTrack,
+    Point<double>? point,
+  ) async {
     if (WebRTC.platformIsAndroid || WebRTC.platformIsIOS) {
       await WebRTC.invokeMethod(
         'mediaStreamTrackSetFocusPoint',
         <String, dynamic>{
           'trackId': videoTrack.id,
-          'focusPoint': {
-            'reset': point == null,
-            'x': point?.x,
-            'y': point?.y,
-          },
+          'focusPoint': {'reset': point == null, 'x': point?.x, 'y': point?.y},
         },
       );
     } else {
@@ -58,7 +60,9 @@ class CameraUtils {
   }
 
   static Future<void> setExposureMode(
-      MediaStreamTrack videoTrack, CameraExposureMode exposureMode) async {
+    MediaStreamTrack videoTrack,
+    CameraExposureMode exposureMode,
+  ) async {
     if (WebRTC.platformIsAndroid || WebRTC.platformIsIOS) {
       await WebRTC.invokeMethod(
         'mediaStreamTrackSetExposureMode',
@@ -73,7 +77,9 @@ class CameraUtils {
   }
 
   static Future<void> setExposurePoint(
-      MediaStreamTrack videoTrack, Point<double>? point) async {
+    MediaStreamTrack videoTrack,
+    Point<double>? point,
+  ) async {
     if (WebRTC.platformIsAndroid || WebRTC.platformIsIOS) {
       await WebRTC.invokeMethod(
         'mediaStreamTrackSetExposurePoint',

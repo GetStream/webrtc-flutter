@@ -73,10 +73,7 @@ class EncryptionManagerNative implements EncryptionManager {
   Future<void> _create() async {
     final response = await WebRTC.invokeMethod<Map<dynamic, dynamic>, dynamic>(
       'encryptionManagerCreate',
-      <String, dynamic>{
-        'userId': userId,
-        'algorithm': algorithm.value,
-      },
+      <String, dynamic>{'userId': userId, 'algorithm': algorithm.value},
     );
 
     final managerId = response?['managerId'] as String?;
@@ -86,9 +83,9 @@ class EncryptionManagerNative implements EncryptionManager {
 
     // Subscribing only once the id is known keeps the channel name stable and
     // avoids a second manager ever sharing this stream.
-    _eventSubscription = EventChannel('FlutterWebRTC/e2ee/$managerId')
-        .receiveBroadcastStream()
-        .listen(_onNativeEvent, onError: _onNativeError);
+    _eventSubscription = EventChannel(
+      'FlutterWebRTC/e2ee/$managerId',
+    ).receiveBroadcastStream().listen(_onNativeEvent, onError: _onNativeError);
 
     _managerId = managerId;
   }
@@ -140,7 +137,10 @@ class EncryptionManagerNative implements EncryptionManager {
   void _validateKeyIndex(int keyIndex) {
     if (keyIndex < 0 || keyIndex > 255) {
       throw ArgumentError.value(
-          keyIndex, 'keyIndex', 'must be between 0 and 255');
+        keyIndex,
+        'keyIndex',
+        'must be between 0 and 255',
+      );
     }
   }
 
@@ -233,7 +233,10 @@ class EncryptionManagerNative implements EncryptionManager {
   }) {
     if (sender is! RTCRtpSenderNative) {
       throw ArgumentError.value(
-          sender, 'sender', 'expected a native RTCRtpSender');
+        sender,
+        'sender',
+        'expected a native RTCRtpSender',
+      );
     }
     final peerConnectionId = sender.peerConnectionId;
     final senderId = sender.senderId;
@@ -258,7 +261,10 @@ class EncryptionManagerNative implements EncryptionManager {
   }) {
     if (receiver is! RTCRtpReceiverNative) {
       throw ArgumentError.value(
-          receiver, 'receiver', 'expected a native RTCRtpReceiver');
+        receiver,
+        'receiver',
+        'expected a native RTCRtpReceiver',
+      );
     }
     if (userId.isEmpty) {
       throw ArgumentError.value(userId, 'userId', 'must not be empty');

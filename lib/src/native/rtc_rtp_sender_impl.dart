@@ -10,28 +10,41 @@ import 'rtc_dtmf_sender_impl.dart';
 import 'utils.dart';
 
 class RTCRtpSenderNative extends RTCRtpSender {
-  RTCRtpSenderNative(this._id, this._track, this._dtmf, this._parameters,
-      this._ownsTrack, this._peerConnectionId);
+  RTCRtpSenderNative(
+    this._id,
+    this._track,
+    this._dtmf,
+    this._parameters,
+    this._ownsTrack,
+    this._peerConnectionId,
+  );
 
-  factory RTCRtpSenderNative.fromMap(Map<dynamic, dynamic> map,
-      {required String peerConnectionId}) {
+  factory RTCRtpSenderNative.fromMap(
+    Map<dynamic, dynamic> map, {
+    required String peerConnectionId,
+  }) {
     Map<dynamic, dynamic> trackMap = map['track'];
     return RTCRtpSenderNative(
-        map['senderId'],
-        (trackMap.isNotEmpty)
-            ? MediaStreamTrackNative.fromMap(map['track'], peerConnectionId)
-            : null,
-        RTCDTMFSenderNative(peerConnectionId, map['senderId']),
-        RTCRtpParameters.fromMap(map['rtpParameters']),
-        map['ownsTrack'],
-        peerConnectionId);
+      map['senderId'],
+      (trackMap.isNotEmpty)
+          ? MediaStreamTrackNative.fromMap(map['track'], peerConnectionId)
+          : null,
+      RTCDTMFSenderNative(peerConnectionId, map['senderId']),
+      RTCRtpParameters.fromMap(map['rtpParameters']),
+      map['ownsTrack'],
+      peerConnectionId,
+    );
   }
 
-  static List<RTCRtpSenderNative> fromMaps(List<dynamic> map,
-      {required String peerConnectionId}) {
+  static List<RTCRtpSenderNative> fromMaps(
+    List<dynamic> map, {
+    required String peerConnectionId,
+  }) {
     return map
-        .map((e) =>
-            RTCRtpSenderNative.fromMap(e, peerConnectionId: peerConnectionId))
+        .map(
+          (e) =>
+              RTCRtpSenderNative.fromMap(e, peerConnectionId: peerConnectionId),
+        )
         .toList();
   }
 
@@ -54,8 +67,14 @@ class RTCRtpSenderNative extends RTCRtpSender {
       if (response != null) {
         List<dynamic> reports = response['stats'];
         for (var report in reports) {
-          stats.add(StatsReport(report['id'], report['type'],
-              report['timestamp'], report['values']));
+          stats.add(
+            StatsReport(
+              report['id'],
+              report['type'],
+              report['timestamp'],
+              report['values'],
+            ),
+          );
         }
       }
       return stats;
@@ -70,10 +89,10 @@ class RTCRtpSenderNative extends RTCRtpSender {
     try {
       final response =
           await WebRTC.invokeMethod('rtpSenderSetParameters', <String, dynamic>{
-        'peerConnectionId': _peerConnectionId,
-        'rtpSenderId': _id,
-        'parameters': parameters.toMap()
-      });
+            'peerConnectionId': _peerConnectionId,
+            'rtpSenderId': _id,
+            'parameters': parameters.toMap(),
+          });
       return response['result'];
     } on PlatformException catch (e) {
       throw 'Unable to RTCRtpSenderNative::setParameters: ${e.message}';
@@ -86,7 +105,7 @@ class RTCRtpSenderNative extends RTCRtpSender {
       await WebRTC.invokeMethod('rtpSenderReplaceTrack', <String, dynamic>{
         'peerConnectionId': _peerConnectionId,
         'rtpSenderId': _id,
-        'trackId': track != null ? track.id : ''
+        'trackId': track != null ? track.id : '',
       });
 
       // change reference of associated MediaTrack
@@ -97,8 +116,10 @@ class RTCRtpSenderNative extends RTCRtpSender {
   }
 
   @override
-  Future<void> setTrack(MediaStreamTrack? track,
-      {bool takeOwnership = true}) async {
+  Future<void> setTrack(
+    MediaStreamTrack? track, {
+    bool takeOwnership = true,
+  }) async {
     try {
       await WebRTC.invokeMethod('rtpSenderSetTrack', <String, dynamic>{
         'peerConnectionId': _peerConnectionId,
@@ -152,7 +173,8 @@ class RTCRtpSenderNative extends RTCRtpSender {
   String get peerConnectionId => _peerConnectionId;
 
   @Deprecated(
-      'No need to dispose rtpSender as it is handled by peerConnection.')
+    'No need to dispose rtpSender as it is handled by peerConnection.',
+  )
   @override
   @mustCallSuper
   Future<void> dispose() async {}

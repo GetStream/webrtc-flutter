@@ -41,7 +41,8 @@ class MediaDeviceNative extends MediaDevices {
 
   @override
   Future<MediaStream> getUserMedia(
-      Map<String, dynamic> mediaConstraints) async {
+    Map<String, dynamic> mediaConstraints,
+  ) async {
     try {
       final response = await WebRTC.invokeMethod(
         'getUserMedia',
@@ -54,7 +55,9 @@ class MediaDeviceNative extends MediaDevices {
       String streamId = response['streamId'];
       var stream = MediaStreamNative(streamId, 'local');
       stream.setMediaTracks(
-          response['audioTracks'] ?? [], response['videoTracks'] ?? []);
+        response['audioTracks'] ?? [],
+        response['videoTracks'] ?? [],
+      );
       return stream;
     } on PlatformException catch (e) {
       throw 'Unable to getUserMedia: ${e.message}';
@@ -63,7 +66,8 @@ class MediaDeviceNative extends MediaDevices {
 
   @override
   Future<MediaStream> getDisplayMedia(
-      Map<String, dynamic> mediaConstraints) async {
+    Map<String, dynamic> mediaConstraints,
+  ) async {
     try {
       final response = await WebRTC.invokeMethod(
         'getDisplayMedia',
@@ -103,17 +107,19 @@ class MediaDeviceNative extends MediaDevices {
     return source
         .map(
           (e) => MediaDeviceInfo(
-              deviceId: e['deviceId'],
-              groupId: e['groupId'],
-              kind: e['kind'],
-              label: e['label']),
+            deviceId: e['deviceId'],
+            groupId: e['groupId'],
+            kind: e['kind'],
+            label: e['label'],
+          ),
         )
         .toList();
   }
 
   @override
-  Future<MediaDeviceInfo> selectAudioOutput(
-      [AudioOutputOptions? options]) async {
+  Future<MediaDeviceInfo> selectAudioOutput([
+    AudioOutputOptions? options,
+  ]) async {
     await WebRTC.invokeMethod('selectAudioOutput', {
       'deviceId': options?.deviceId,
     });

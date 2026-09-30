@@ -37,15 +37,17 @@ class NativeVideoPlayerViewState extends State<RTCVideoPlatFormView> {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) =>
-            _buildVideoView(context, constraints));
+      builder: (BuildContext context, BoxConstraints constraints) =>
+          _buildVideoView(context, constraints),
+    );
   }
 
   Widget _buildVideoView(BuildContext context, BoxConstraints constraints) {
     return Center(
       child: FittedBox(
         clipBehavior: Clip.hardEdge,
-        fit: widget.objectFit ==
+        fit:
+            widget.objectFit ==
                 RTCVideoViewObjectFit.RTCVideoViewObjectFitContain
             ? BoxFit.contain
             : BoxFit.cover,
@@ -53,10 +55,10 @@ class NativeVideoPlayerViewState extends State<RTCVideoPlatFormView> {
           child: SizedBox(
             width: _showVideoView
                 ? widget.objectFit ==
-                        RTCVideoViewObjectFit.RTCVideoViewObjectFitCover
-                    ? constraints.maxWidth
-                    : constraints.maxHeight *
-                        (_controller?.value.aspectRatio ?? 1.0)
+                          RTCVideoViewObjectFit.RTCVideoViewObjectFitCover
+                      ? constraints.maxWidth
+                      : constraints.maxHeight *
+                            (_controller?.value.aspectRatio ?? 1.0)
                 : 0.1,
             height: _showVideoView ? constraints.maxHeight : 0.1,
             child: Transform(

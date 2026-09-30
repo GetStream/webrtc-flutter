@@ -7,21 +7,37 @@ import 'utils.dart';
 
 class RTCRtpReceiverNative extends RTCRtpReceiver {
   RTCRtpReceiverNative(
-      this._id, this._track, this._parameters, this._peerConnectionId);
+    this._id,
+    this._track,
+    this._parameters,
+    this._peerConnectionId,
+  );
 
-  factory RTCRtpReceiverNative.fromMap(Map<dynamic, dynamic> map,
-      {required String peerConnectionId}) {
+  factory RTCRtpReceiverNative.fromMap(
+    Map<dynamic, dynamic> map, {
+    required String peerConnectionId,
+  }) {
     var track = MediaStreamTrackNative.fromMap(map['track'], peerConnectionId);
     var parameters = RTCRtpParameters.fromMap(map['rtpParameters']);
     return RTCRtpReceiverNative(
-        map['receiverId'], track, parameters, peerConnectionId);
+      map['receiverId'],
+      track,
+      parameters,
+      peerConnectionId,
+    );
   }
 
-  static List<RTCRtpReceiverNative> fromMaps(List<dynamic> map,
-      {required String peerConnectionId}) {
+  static List<RTCRtpReceiverNative> fromMaps(
+    List<dynamic> map, {
+    required String peerConnectionId,
+  }) {
     return map
-        .map((e) =>
-            RTCRtpReceiverNative.fromMap(e, peerConnectionId: peerConnectionId))
+        .map(
+          (e) => RTCRtpReceiverNative.fromMap(
+            e,
+            peerConnectionId: peerConnectionId,
+          ),
+        )
         .toList();
   }
 
@@ -30,14 +46,20 @@ class RTCRtpReceiverNative extends RTCRtpReceiver {
     try {
       final response = await WebRTC.invokeMethod('getStats', <String, dynamic>{
         'peerConnectionId': _peerConnectionId,
-        'trackId': track.id
+        'trackId': track.id,
       });
       var stats = <StatsReport>[];
       if (response != null) {
         List<dynamic> reports = response['stats'];
         for (var report in reports) {
-          stats.add(StatsReport(report['id'], report['type'],
-              report['timestamp'], report['values']));
+          stats.add(
+            StatsReport(
+              report['id'],
+              report['type'],
+              report['timestamp'],
+              report['values'],
+            ),
+          );
         }
       }
       return stats;

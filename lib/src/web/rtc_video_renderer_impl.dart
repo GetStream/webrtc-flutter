@@ -11,8 +11,10 @@ import 'package:web/web.dart' as web;
 
 import '../video_renderer_extension.dart' show AudioControl;
 
-const bool useHtmlElementView =
-    bool.fromEnvironment("WEBRTC_USE_HTML_ELEMENT_VIEW", defaultValue: false);
+const bool useHtmlElementView = bool.fromEnvironment(
+  "WEBRTC_USE_HTML_ELEMENT_VIEW",
+  defaultValue: false,
+);
 
 // An error code value to error name Map.
 // See: https://developer.mozilla.org/en-US/docs/Web/API/MediaError/code
@@ -40,8 +42,8 @@ const String _kDefaultErrorMessage =
 class RTCVideoRenderer extends ValueNotifier<RTCVideoValue>
     implements VideoRenderer, AudioControl {
   RTCVideoRenderer()
-      : _textureId = _textureCounter++,
-        super(RTCVideoValue.empty);
+    : _textureId = _textureCounter++,
+      super(RTCVideoValue.empty);
 
   static const _elementIdForAudioManager = 'html_webrtc_audio_manager_list';
 
@@ -236,8 +238,9 @@ class RTCVideoRenderer extends ValueNotifier<RTCVideoValue>
     element?.removeAttribute('src');
     element?.load();
     _audioElement?.remove();
-    final audioManager = web.document.getElementById(_elementIdForAudioManager)
-        as web.HTMLDivElement?;
+    final audioManager =
+        web.document.getElementById(_elementIdForAudioManager)
+            as web.HTMLDivElement?;
     if (audioManager != null && !audioManager.hasChildNodes()) {
       audioManager.remove();
     }

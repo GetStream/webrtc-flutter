@@ -7,9 +7,8 @@ import 'media_stream_track_impl.dart';
 import 'utils.dart';
 
 class MediaRecorderNative extends MediaRecorder {
-  MediaRecorderNative({
-    String? albumName = 'FlutterWebRTC',
-  }) : _albumName = albumName;
+  MediaRecorderNative({this._albumName = 'FlutterWebRTC'});
+
   static final _random = Random();
   final _recorderId = _random.nextInt(0x7FFFFFFF);
   var _isStarted = false;
@@ -32,16 +31,18 @@ class MediaRecorderNative extends MediaRecorder {
       'recorderId': _recorderId,
       'peerConnectionId': videoTrack is MediaStreamTrackNative
           ? videoTrack.peerConnectionId
-          : null
+          : null,
     });
     _isStarted = true;
   }
 
   @override
-  void startWeb(MediaStream stream,
-      {Function(dynamic blob, bool isLastOne)? onDataChunk,
-      String? mimeType,
-      int timeSlice = 1000}) {
+  void startWeb(
+    MediaStream stream, {
+    Function(dynamic blob, bool isLastOne)? onDataChunk,
+    String? mimeType,
+    int timeSlice = 1000,
+  }) {
     throw 'It\'s for Flutter Web only';
   }
 
