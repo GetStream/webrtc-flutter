@@ -150,6 +150,18 @@ class MediaStreamTrackNative extends MediaStreamTrack {
       throw Exception('clone return null, something wrong');
     }
 
-    return MediaStreamTrackNative.fromMap(response, peerConnectionId);
+    final clone = MediaStreamTrackNative.fromMap(response, peerConnectionId);
+    // A clone shares its source with this track, so it has the same settings.
+    // Android returns none for clones; inherit ours instead.
+    if (clone.settings_.isNotEmpty) return clone;
+
+    return MediaStreamTrackNative(
+      clone._trackId,
+      clone._label,
+      clone._kind,
+      clone._enabled,
+      clone._peerConnectionId,
+      settings_,
+    );
   }
 }

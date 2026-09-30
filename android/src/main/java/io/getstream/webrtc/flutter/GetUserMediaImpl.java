@@ -29,6 +29,7 @@ import android.util.Log;
 import android.util.Pair;
 import android.util.SparseArray;
 import android.view.Display;
+import android.view.Surface;
 import android.view.WindowManager;
 
 import androidx.annotation.NonNull;
@@ -1020,12 +1021,18 @@ public class GetUserMediaImpl {
 
         // Find actual capture format.
         Size actualSize = null;
+        int sensorOrientation = -1;
         if (videoCapturer instanceof Camera1Capturer) {
             int cameraId = Camera1Helper.getCameraId(deviceId);
             actualSize = Camera1Helper.findClosestCaptureFormat(cameraId, targetWidth, targetHeight);
+            sensorOrientation = Camera1Helper.getSensorOrientation(cameraId);
         } else if (videoCapturer instanceof Camera2Capturer) {
             CameraManager cameraManager = (CameraManager) applicationContext.getSystemService(Context.CAMERA_SERVICE);
             actualSize = Camera2Helper.findClosestCaptureFormat(cameraManager, deviceId, targetWidth, targetHeight);
+            sensorOrientation = Camera2Helper.getSensorOrientation(cameraManager, deviceId);
+        }
+        if (sensorOrientation < 0) {
+            Log.w(TAG, "Sensor orientation unavailable for camera " + deviceId + "; reporting the capture size unrotated");
         }
 
         if (actualSize != null) {
@@ -1066,8 +1073,17 @@ public class GetUserMediaImpl {
         ConstraintsMap settings = new ConstraintsMap();
         settings.putString("deviceId", deviceId);
         settings.putString("kind", "videoinput");
-        settings.putInt("width", info.width);
-        settings.putInt("height", info.height);
+        // Frames are delivered rotated to the display orientation, while the capture format is in
+        // sensor space. Report the size of the frames the track actually produces.
+        if (shouldSwapDimensions(sensorOrientation, getDisplayRotationDegrees())) {
+            settings.putInt("width", info.height);
+            settings.putInt("height", info.width);
+        } else {
+            settings.putInt("width", info.width);
+            settings.putInt("height", info.height);
+        }
+        // Non-standard: tells callers the size above is already in frame orientation.
+        if (sensorOrientation >= 0) settings.putInt("sensorOrientation", sensorOrientation);
         settings.putInt("frameRate", info.fps);
         if (facingMode != null) settings.putString("facingMode", facingMode);
         trackParams.putMap("settings", settings.toMap());
@@ -1290,6 +1306,34 @@ public class GetUserMediaImpl {
 
     public interface IsCameraEnabled {
         boolean isEnabled(String id);
+    }
+
+    /**
+     * True when frames are rotated by 90 or 270 degrees relative to the sensor, so the reported
+     * width and height must be swapped. An unknown sensor orientation (-1) never swaps.
+     */
+    static boolean shouldSwapDimensions(int sensorOrientation, int displayRotationDegrees) {
+        if (sensorOrientation < 0) return false;
+        return ((sensorOrientation + displayRotationDegrees) % 180) == 90;
+    }
+
+    /** The display rotation in degrees (0/90/180/270), as libwebrtc's CameraSession reads it. */
+    private int getDisplayRotationDegrees() {
+        WindowManager wm =
+                (WindowManager) applicationContext.getSystemService(Context.WINDOW_SERVICE);
+        if (wm == null) return 0;
+
+        switch (wm.getDefaultDisplay().getRotation()) {
+            case Surface.ROTATION_90:
+                return 90;
+            case Surface.ROTATION_180:
+                return 180;
+            case Surface.ROTATION_270:
+                return 270;
+            case Surface.ROTATION_0:
+            default:
+                return 0;
+        }
     }
 
     public static class VideoCapturerInfoEx extends VideoCapturerInfo {

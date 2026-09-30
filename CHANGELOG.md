@@ -5,6 +5,8 @@
 
 * [Android] Migrated the Android module to AGP's built-in Kotlin. The module no longer applies the Kotlin Gradle Plugin (KGP), whose application Android Gradle Plugin 9.0 removed — apps on AGP 9 failed to build because of it.
 * Increased minimum Flutter version to 3.44.0 (Dart 3.12.0), which is required for the built-in Kotlin migration: from 3.44 Flutter applies KGP to plugin modules that no longer declare it, keeping AGP 8 builds working.
+* [Android] Camera track `getSettings()` now reports `width` and `height` in the orientation of the delivered frames instead of the sensor's capture format, so a phone held upright reports a portrait size. The orientation is taken when the track is created. The settings also carry the camera's `sensorOrientation` whenever it is known, which marks the reported size as already in frame orientation.
+* Cloned tracks now inherit the original track's `getSettings()` when the platform reports none for the clone, as Android does.
 
 [3.2.0] - 2026.09.03
 
