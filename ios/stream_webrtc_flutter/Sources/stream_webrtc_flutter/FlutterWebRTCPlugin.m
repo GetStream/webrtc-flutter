@@ -2418,16 +2418,22 @@ static FlutterWebRTCPlugin* sharedSingleton;
 #endif
 
 /**
- * Both helpers decide from the track / peer-connection state at call time and
- * enqueue the result on _audioSessionQueue. Since the Dart-initiated changes go
- * through the same queue, a later lifecycle change (e.g. a track dispose) enqueues
- * after any pending request and is applied last, so an earlier snapshot never
- * wins over a newer one.
+ * Both helpers run on _audioSessionQueue and read the track / peer-connection
+ * state when the block executes, not when it is enqueued: by then the state may
+ * have changed (e.g. the last peer connection closed and a new call started
+ * while a slow reconfiguration was still ahead in the queue), and the new
+ * call's ADM activates the session outside this queue.
+ *
+ * That state is owned by main, so the check hops there with dispatch_sync. This
+ * is deadlock-free as long as main never dispatch_syncs onto _audioSessionQueue.
  */
 - (void)ensureAudioSession {
 #if TARGET_OS_IPHONE
-  BOOL recording = [self hasLocalAudioTrack];
   dispatch_async(_audioSessionQueue, ^{
+    __block BOOL recording = NO;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+      recording = [self hasLocalAudioTrack];
+    });
     [AudioUtils ensureAudioSessionWithRecording:recording];
   });
 #endif
@@ -2435,11 +2441,19 @@ static FlutterWebRTCPlugin* sharedSingleton;
 
 - (void)deactiveRtcAudioSession {
 #if TARGET_OS_IPHONE
-  if (![self hasLocalAudioTrack] && self.peerConnections.count == 0) {
-    dispatch_async(_audioSessionQueue, ^{
-      [AudioUtils deactiveRtcAudioSession];
-    });
+  // Cheap early out; the condition is checked again when the block runs.
+  if ([self hasLocalAudioTrack] || self.peerConnections.count > 0) {
+    return;
   }
+  dispatch_async(_audioSessionQueue, ^{
+    __block BOOL shouldDeactivate = NO;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+      shouldDeactivate = ![self hasLocalAudioTrack] && self.peerConnections.count == 0;
+    });
+    if (shouldDeactivate) {
+      [AudioUtils deactiveRtcAudioSession];
+    }
+  });
 #endif
 }
 
