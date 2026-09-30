@@ -176,8 +176,9 @@ class DesktopCapturerNative extends DesktopCapturer {
   @override
   Future<bool> isSystemContentPickerSupported() async {
     if (!WebRTC.platformIsMacOS) return false;
-    final response =
-        await WebRTC.invokeMethod('isSystemContentPickerSupported');
+    final response = await WebRTC.invokeMethod(
+      'isSystemContentPickerSupported',
+    );
     return response is Map && response['result'] == true;
   }
 
