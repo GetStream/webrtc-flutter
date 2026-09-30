@@ -27,9 +27,7 @@ class NativeLogsListener {
     _logger = logger;
     _severity = severity;
 
-    WebRTC.invokeMethod('setLogSeverity', {
-      'severity': severity,
-    });
+    WebRTC.invokeMethod('setLogSeverity', {'severity': severity});
   }
 
   void handleEvent(String event, final Map<dynamic, dynamic> map) async {

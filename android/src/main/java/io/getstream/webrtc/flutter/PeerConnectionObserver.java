@@ -762,6 +762,8 @@ class PeerConnectionObserver implements PeerConnection.Observer, EventChannel.St
         Double scaleResolutionDownBy = (Double) encoding.get("scaleResolutionDownBy");
         if (scaleResolutionDownBy != null)
           currentParams.scaleResolutionDownBy = scaleResolutionDownBy;
+        String scalabilityMode = (String) encoding.get("scalabilityMode");
+        if (scalabilityMode != null) currentParams.scalabilityMode = scalabilityMode;
       }
     }
 
@@ -810,6 +812,9 @@ class PeerConnectionObserver implements PeerConnection.Observer, EventChannel.St
       }
       if (encoding.scaleResolutionDownBy != null) {
         map.putDouble("scaleResolutionDownBy", encoding.scaleResolutionDownBy);
+      }
+      if (encoding.scalabilityMode != null) {
+        map.putString("scalabilityMode", encoding.scalabilityMode);
       }
       if (encoding.ssrc != null) {
         map.putLong("ssrc", encoding.ssrc);

@@ -66,16 +66,14 @@ class EncryptionManagerWeb implements EncryptionManager {
     RTCRtpSender sender, {
     String? codec,
     E2eeTrackType? trackType,
-  }) =>
-      _unsupported();
+  }) => _unsupported();
 
   @override
   Future<void> decrypt(
     RTCRtpReceiver receiver, {
     required String userId,
     E2eeTrackType? trackType,
-  }) =>
-      _unsupported();
+  }) => _unsupported();
 
   @override
   Future<void> enablePerformanceReporting(bool enabled) => _unsupported();

@@ -3057,6 +3057,8 @@ static FlutterWebRTCPlugin* sharedSingleton;
       [obj setObject:encoding.numTemporalLayers forKey:@"numTemporalLayers"];
     if (encoding.scaleResolutionDownBy != nil)
       [obj setObject:encoding.scaleResolutionDownBy forKey:@"scaleResolutionDownBy"];
+    if (encoding.scalabilityMode != nil)
+      [obj setObject:encoding.scalabilityMode forKey:@"scalabilityMode"];
     if (encoding.ssrc != nil)
       [obj setObject:encoding.ssrc forKey:@"ssrc"];
 
@@ -3353,6 +3355,9 @@ static FlutterWebRTCPlugin* sharedSingleton;
       NSNumber* scaleResolutionDownBy = [newParams objectForKey:@"scaleResolutionDownBy"];
       if (scaleResolutionDownBy != nil)
         currentParams.scaleResolutionDownBy = scaleResolutionDownBy;
+      NSString* scalabilityMode = [newParams objectForKey:@"scalabilityMode"];
+      if (scalabilityMode != nil)
+        currentParams.scalabilityMode = scalabilityMode;
     }
   }
 

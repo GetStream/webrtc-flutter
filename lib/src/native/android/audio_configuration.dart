@@ -17,7 +17,7 @@ enum AndroidAudioFocusMode {
   gain,
   gainTransient,
   gainTransientExclusive,
-  gainTransientMayDuck
+  gainTransientMayDuck,
 }
 
 extension AndroidAudioFocusModeEnumEx on String {
@@ -39,7 +39,7 @@ enum AndroidAudioStreamType {
   notification,
   ring,
   system,
-  voiceCall
+  voiceCall,
 }
 
 extension AndroidAudioStreamTypeEnumEx on String {
@@ -60,13 +60,14 @@ enum AndroidAudioAttributesUsageType {
   notificationRingtone,
   unknown,
   voiceCommunication,
-  voiceCommunicationSignalling
+  voiceCommunicationSignalling,
 }
 
 extension AndroidAudioAttributesUsageTypeEnumEx on String {
   AndroidAudioAttributesUsageType toAndroidAudioAttributesUsageType() =>
-      AndroidAudioAttributesUsageType.values
-          .firstWhere((d) => d.name == toLowerCase());
+      AndroidAudioAttributesUsageType.values.firstWhere(
+        (d) => d.name == toLowerCase(),
+      );
 }
 
 enum AndroidAudioAttributesContentType {
@@ -74,13 +75,14 @@ enum AndroidAudioAttributesContentType {
   music,
   sonification,
   speech,
-  unknown
+  unknown,
 }
 
 extension AndroidAudioAttributesContentTypeEnumEx on String {
   AndroidAudioAttributesContentType toAndroidAudioAttributesContentType() =>
-      AndroidAudioAttributesContentType.values
-          .firstWhere((d) => d.name == toLowerCase());
+      AndroidAudioAttributesContentType.values.firstWhere(
+        (d) => d.name == toLowerCase(),
+      );
 }
 
 class AndroidAudioConfiguration {
@@ -111,22 +113,20 @@ class AndroidAudioConfiguration {
   final bool? forceHandleAudioRouting;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
-        if (manageAudioFocus != null) 'manageAudioFocus': manageAudioFocus!,
-        if (androidAudioMode != null)
-          'androidAudioMode': androidAudioMode!.name,
-        if (androidAudioFocusMode != null)
-          'androidAudioFocusMode': androidAudioFocusMode!.name,
-        if (androidAudioStreamType != null)
-          'androidAudioStreamType': androidAudioStreamType!.name,
-        if (androidAudioAttributesUsageType != null)
-          'androidAudioAttributesUsageType':
-              androidAudioAttributesUsageType!.name,
-        if (androidAudioAttributesContentType != null)
-          'androidAudioAttributesContentType':
-              androidAudioAttributesContentType!.name,
-        if (forceHandleAudioRouting != null)
-          'forceHandleAudioRouting': forceHandleAudioRouting!,
-      };
+    if (manageAudioFocus != null) 'manageAudioFocus': manageAudioFocus!,
+    if (androidAudioMode != null) 'androidAudioMode': androidAudioMode!.name,
+    if (androidAudioFocusMode != null)
+      'androidAudioFocusMode': androidAudioFocusMode!.name,
+    if (androidAudioStreamType != null)
+      'androidAudioStreamType': androidAudioStreamType!.name,
+    if (androidAudioAttributesUsageType != null)
+      'androidAudioAttributesUsageType': androidAudioAttributesUsageType!.name,
+    if (androidAudioAttributesContentType != null)
+      'androidAudioAttributesContentType':
+          androidAudioAttributesContentType!.name,
+    if (forceHandleAudioRouting != null)
+      'forceHandleAudioRouting': forceHandleAudioRouting!,
+  };
 
   /// A pre-configured AndroidAudioConfiguration for media playback.
   static final media = AndroidAudioConfiguration(
@@ -153,7 +153,8 @@ class AndroidAudioConfiguration {
 
 class AndroidNativeAudioManagement {
   static Future<void> setAndroidAudioConfiguration(
-      AndroidAudioConfiguration config) async {
+    AndroidAudioConfiguration config,
+  ) async {
     if (WebRTC.platformIsAndroid) {
       await WebRTC.invokeMethod(
         'setAndroidAudioConfiguration',

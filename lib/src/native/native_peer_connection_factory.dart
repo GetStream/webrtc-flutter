@@ -30,14 +30,13 @@ class NativePeerConnectionFactory {
   }) async {
     final response = await WebRTC.invokeMethod(
       'createPeerConnectionFactory',
-      <String, dynamic>{
-        'options': options ?? <String, dynamic>{},
-      },
+      <String, dynamic>{'options': options ?? <String, dynamic>{}},
     );
 
     if (response == null) {
       throw Exception(
-          'createPeerConnectionFactory returned null, something wrong');
+        'createPeerConnectionFactory returned null, something wrong',
+      );
     }
 
     final factoryId = response['factoryId'] as String;
@@ -56,14 +55,12 @@ class NativePeerConnectionFactory {
         {'DtlsSrtpKeyAgreement': true},
       ],
     };
-    final response = await WebRTC.invokeMethod(
-      'createPeerConnection',
-      <String, dynamic>{
-        'configuration': configuration,
-        'constraints': constraints.isEmpty ? defaultConstraints : constraints,
-        'factoryId': factoryId,
-      },
-    );
+    final response =
+        await WebRTC.invokeMethod('createPeerConnection', <String, dynamic>{
+          'configuration': configuration,
+          'constraints': constraints.isEmpty ? defaultConstraints : constraints,
+          'factoryId': factoryId,
+        });
 
     final peerConnectionId = response['peerConnectionId'] as String;
     return RTCPeerConnectionNative(peerConnectionId, configuration);
@@ -71,7 +68,8 @@ class NativePeerConnectionFactory {
 
   /// Captures user media against this factory.
   Future<MediaStream> getUserMedia(
-      Map<String, dynamic> mediaConstraints) async {
+    Map<String, dynamic> mediaConstraints,
+  ) async {
     _checkDisposed('getUserMedia');
     try {
       final response = await WebRTC.invokeMethod(
@@ -97,7 +95,8 @@ class NativePeerConnectionFactory {
 
   /// Captures the screen against this factory.
   Future<MediaStream> getDisplayMedia(
-      Map<String, dynamic> mediaConstraints) async {
+    Map<String, dynamic> mediaConstraints,
+  ) async {
     _checkDisposed('getDisplayMedia');
     try {
       final response = await WebRTC.invokeMethod(
@@ -123,9 +122,7 @@ class NativePeerConnectionFactory {
     _checkDisposed('createLocalMediaStream');
     final response = await WebRTC.invokeMethod(
       'createLocalMediaStream',
-      <String, dynamic>{
-        'factoryId': factoryId,
-      },
+      <String, dynamic>{'factoryId': factoryId},
     );
     if (response == null) {
       throw Exception('createLocalMediaStream returned null, something wrong');
@@ -155,10 +152,7 @@ class NativePeerConnectionFactory {
     _checkDisposed('getRtpSenderCapabilities');
     final response = await WebRTC.invokeMethod(
       'getRtpSenderCapabilities',
-      <String, dynamic>{
-        'kind': kind,
-        'factoryId': factoryId,
-      },
+      <String, dynamic>{'kind': kind, 'factoryId': factoryId},
     );
     return RTCRtpCapabilities.fromMap(response);
   }
@@ -167,10 +161,7 @@ class NativePeerConnectionFactory {
     _checkDisposed('getRtpReceiverCapabilities');
     final response = await WebRTC.invokeMethod(
       'getRtpReceiverCapabilities',
-      <String, dynamic>{
-        'kind': kind,
-        'factoryId': factoryId,
-      },
+      <String, dynamic>{'kind': kind, 'factoryId': factoryId},
     );
     return RTCRtpCapabilities.fromMap(response);
   }
@@ -178,12 +169,9 @@ class NativePeerConnectionFactory {
   Future<void> startLocalRecording() async {
     _checkDisposed('startLocalRecording');
     try {
-      await WebRTC.invokeMethod(
-        'startLocalRecording',
-        <String, dynamic>{
-          'factoryId': factoryId,
-        },
-      );
+      await WebRTC.invokeMethod('startLocalRecording', <String, dynamic>{
+        'factoryId': factoryId,
+      });
     } on PlatformException catch (e) {
       throw 'Unable to start local recording: ${e.message}';
     }
@@ -192,12 +180,9 @@ class NativePeerConnectionFactory {
   Future<void> stopLocalRecording() async {
     _checkDisposed('stopLocalRecording');
     try {
-      await WebRTC.invokeMethod(
-        'stopLocalRecording',
-        <String, dynamic>{
-          'factoryId': factoryId,
-        },
-      );
+      await WebRTC.invokeMethod('stopLocalRecording', <String, dynamic>{
+        'factoryId': factoryId,
+      });
     } on PlatformException catch (e) {
       throw 'Unable to stop local recording: ${e.message}';
     }
@@ -219,13 +204,10 @@ class NativePeerConnectionFactory {
     _checkAdmMuteSupported('setMicrophoneMuted');
     _checkDisposed('setMicrophoneMuted');
     try {
-      await WebRTC.invokeMethod(
-        'appleAdmSetMicrophoneMuted',
-        <String, dynamic>{
-          'factoryId': factoryId,
-          'muted': muted,
-        },
-      );
+      await WebRTC.invokeMethod('appleAdmSetMicrophoneMuted', <String, dynamic>{
+        'factoryId': factoryId,
+        'muted': muted,
+      });
     } on PlatformException catch (e) {
       throw 'Unable to set microphone muted: ${e.message}';
     }
@@ -245,9 +227,7 @@ class NativePeerConnectionFactory {
     try {
       final response = await WebRTC.invokeMethod(
         'appleAdmIsMicrophoneMuted',
-        <String, dynamic>{
-          'factoryId': factoryId,
-        },
+        <String, dynamic>{'factoryId': factoryId},
       );
       return response == true;
     } on PlatformException catch (e) {
@@ -270,12 +250,9 @@ class NativePeerConnectionFactory {
       return;
     }
     _disposed = true;
-    await WebRTC.invokeMethod(
-      'disposePeerConnectionFactory',
-      <String, dynamic>{
-        'factoryId': factoryId,
-      },
-    );
+    await WebRTC.invokeMethod('disposePeerConnectionFactory', <String, dynamic>{
+      'factoryId': factoryId,
+    });
   }
 
   /// Suspends this factory's audio capture + playback. Use when another
@@ -284,9 +261,7 @@ class NativePeerConnectionFactory {
     _checkDisposed('suspendAudio');
     await WebRTC.invokeMethod(
       'suspendAudioPeerConnectionFactory',
-      <String, dynamic>{
-        'factoryId': factoryId,
-      },
+      <String, dynamic>{'factoryId': factoryId},
     );
   }
 
@@ -295,16 +270,15 @@ class NativePeerConnectionFactory {
     _checkDisposed('resumeAudio');
     await WebRTC.invokeMethod(
       'resumeAudioPeerConnectionFactory',
-      <String, dynamic>{
-        'factoryId': factoryId,
-      },
+      <String, dynamic>{'factoryId': factoryId},
     );
   }
 
   void _checkDisposed(String op) {
     if (_disposed) {
       throw StateError(
-          '$op called on disposed NativePeerConnectionFactory($factoryId)');
+        '$op called on disposed NativePeerConnectionFactory($factoryId)',
+      );
     }
   }
 }

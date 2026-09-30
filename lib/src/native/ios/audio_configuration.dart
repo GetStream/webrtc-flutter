@@ -42,8 +42,9 @@ enum AppleAudioCategoryOption {
 
 extension AppleAudioCategoryOptionEnumEx on String {
   AppleAudioCategoryOption toAppleAudioCategoryOption() =>
-      AppleAudioCategoryOption.values
-          .firstWhere((d) => d.name == toLowerCase());
+      AppleAudioCategoryOption.values.firstWhere(
+        (d) => d.name == toLowerCase(),
+      );
 }
 
 class AppleAudioConfiguration {
@@ -57,35 +58,30 @@ class AppleAudioConfiguration {
   final AppleAudioMode? appleAudioMode;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
-        if (appleAudioCategory != null)
-          'appleAudioCategory': appleAudioCategory!.name,
-        if (appleAudioCategoryOptions != null)
-          'appleAudioCategoryOptions':
-              appleAudioCategoryOptions!.map((e) => e.name).toList(),
-        if (appleAudioMode != null) 'appleAudioMode': appleAudioMode!.name,
-      };
+    if (appleAudioCategory != null)
+      'appleAudioCategory': appleAudioCategory!.name,
+    if (appleAudioCategoryOptions != null)
+      'appleAudioCategoryOptions': appleAudioCategoryOptions!
+          .map((e) => e.name)
+          .toList(),
+    if (appleAudioMode != null) 'appleAudioMode': appleAudioMode!.name,
+  };
 }
 
-enum AppleAudioIOMode {
-  none,
-  remoteOnly,
-  localOnly,
-  localAndRemote,
-}
+enum AppleAudioIOMode { none, remoteOnly, localOnly, localAndRemote }
 
 class AppleNativeAudioManagement {
   static AppleAudioIOMode currentMode = AppleAudioIOMode.none;
 
   static AppleAudioConfiguration getAppleAudioConfigurationForMode(
-      AppleAudioIOMode mode,
-      {bool preferSpeakerOutput = false}) {
+    AppleAudioIOMode mode, {
+    bool preferSpeakerOutput = false,
+  }) {
     currentMode = mode;
     if (mode == AppleAudioIOMode.remoteOnly) {
       return AppleAudioConfiguration(
         appleAudioCategory: AppleAudioCategory.playback,
-        appleAudioCategoryOptions: {
-          AppleAudioCategoryOption.mixWithOthers,
-        },
+        appleAudioCategoryOptions: {AppleAudioCategoryOption.mixWithOthers},
         appleAudioMode: AppleAudioMode.spokenAudio,
       );
     } else if ([
@@ -112,12 +108,12 @@ class AppleNativeAudioManagement {
   }
 
   static Future<void> setAppleAudioConfiguration(
-      AppleAudioConfiguration config) async {
+    AppleAudioConfiguration config,
+  ) async {
     if (WebRTC.platformIsIOS) {
-      await WebRTC.invokeMethod(
-        'setAppleAudioConfiguration',
-        <String, dynamic>{'configuration': config.toMap()},
-      );
+      await WebRTC.invokeMethod('setAppleAudioConfiguration', <String, dynamic>{
+        'configuration': config.toMap(),
+      });
     }
   }
 }

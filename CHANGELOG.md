@@ -4,6 +4,8 @@
 Upcoming
 
 * [iOS] fix: `setAppleAudioConfiguration`, `ensureAudioSession`, `enableSpeakerphone` and `enableSpeakerphoneButPreferBluetooth` now reconfigure the `AVAudioSession` on a serial background queue and reply once it is done, instead of on the main thread. Since Flutter 3.29 the main thread also runs Dart, so a slow category or route change froze the app while it ran.
+* [Android] Migrated the Android module to AGP's built-in Kotlin. The module no longer applies the Kotlin Gradle Plugin (KGP), whose application Android Gradle Plugin 9.0 removed — apps on AGP 9 failed to build because of it.
+* Increased minimum Flutter version to 3.44.0 (Dart 3.12.0), which is required for the built-in Kotlin migration: from 3.44 Flutter applies KGP to plugin modules that no longer declare it, keeping AGP 8 builds working.
 
 [3.2.0] - 2026.09.03
 

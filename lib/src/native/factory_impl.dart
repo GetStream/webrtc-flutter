@@ -33,15 +33,18 @@ class RTCFactoryNative extends RTCFactory {
     AndroidInterruptionSource androidInterruptionSource =
         AndroidInterruptionSource.audioFocusAndTelephony,
     @Deprecated(
-        'Audio focus is now handled in a way that does not require this parameter. It will be removed in the next major version.')
+      'Audio focus is now handled in a way that does not require this parameter. It will be removed in the next major version.',
+    )
     AndroidAudioAttributesUsageType? androidAudioAttributesUsageType,
     @Deprecated(
-        'Audio focus is now handled in a way that does not require this parameter. It will be removed in the next major version.')
+      'Audio focus is now handled in a way that does not require this parameter. It will be removed in the next major version.',
+    )
     AndroidAudioAttributesContentType? androidAudioAttributesContentType,
   }) async {
     if (!Platform.isAndroid && !Platform.isIOS) {
       throw UnimplementedError(
-          'handleCallInterruptionCallbacks is only supported on Android and iOS');
+        'handleCallInterruptionCallbacks is only supported on Android and iOS',
+      );
     }
 
     await WebRTC.invokeMethod(
@@ -68,8 +71,9 @@ class RTCFactoryNative extends RTCFactory {
 
   @override
   Future<RTCPeerConnection> createPeerConnection(
-      Map<String, dynamic> configuration,
-      [Map<String, dynamic> constraints = const {}]) async {
+    Map<String, dynamic> configuration, [
+    Map<String, dynamic> constraints = const {},
+  ]) async {
     var defaultConstraints = <String, dynamic>{
       'mandatory': {},
       'optional': [
@@ -77,13 +81,11 @@ class RTCFactoryNative extends RTCFactory {
       ],
     };
 
-    final response = await WebRTC.invokeMethod(
-      'createPeerConnection',
-      <String, dynamic>{
-        'configuration': configuration,
-        'constraints': constraints.isEmpty ? defaultConstraints : constraints
-      },
-    );
+    final response =
+        await WebRTC.invokeMethod('createPeerConnection', <String, dynamic>{
+          'configuration': configuration,
+          'constraints': constraints.isEmpty ? defaultConstraints : constraints,
+        });
 
     String peerConnectionId = response['peerConnectionId'];
     return RTCPeerConnectionNative(peerConnectionId, configuration);
@@ -107,9 +109,7 @@ class RTCFactoryNative extends RTCFactory {
   Future<RTCRtpCapabilities> getRtpReceiverCapabilities(String kind) async {
     final response = await WebRTC.invokeMethod(
       'getRtpReceiverCapabilities',
-      <String, dynamic>{
-        'kind': kind,
-      },
+      <String, dynamic>{'kind': kind},
     );
     return RTCRtpCapabilities.fromMap(response);
   }
@@ -119,26 +119,26 @@ class RTCFactoryNative extends RTCFactory {
   Future<RTCRtpCapabilities> getRtpSenderCapabilities(String kind) async {
     final response = await WebRTC.invokeMethod(
       'getRtpSenderCapabilities',
-      <String, dynamic>{
-        'kind': kind,
-      },
+      <String, dynamic>{'kind': kind},
     );
     return RTCRtpCapabilities.fromMap(response);
   }
 
   @override
   FrameCryptorFactory get frameCryptorFactory => throw UnimplementedError(
-        'FrameCryptor support has been temporarily removed from '
-        'stream_webrtc_flutter and will be re-added in a future release.',
-      );
+    'FrameCryptor support has been temporarily removed from '
+    'stream_webrtc_flutter and will be re-added in a future release.',
+  );
 }
 
 Future<void> setVideoEffects(
   String trackId, {
   required List<String> names,
 }) async {
-  return (RTCFactoryNative.instance as RTCFactoryNative)
-      .setVideoEffects(trackId, names);
+  return (RTCFactoryNative.instance as RTCFactoryNative).setVideoEffects(
+    trackId,
+    names,
+  );
 }
 
 Future<void> handleCallInterruptionCallbacks(
@@ -147,27 +147,32 @@ Future<void> handleCallInterruptionCallbacks(
   AndroidInterruptionSource androidInterruptionSource =
       AndroidInterruptionSource.audioFocusAndTelephony,
   @Deprecated(
-      'Audio focus is now handled in a way that does not require this parameter. It will be removed in the next major version.')
+    'Audio focus is now handled in a way that does not require this parameter. It will be removed in the next major version.',
+  )
   AndroidAudioAttributesUsageType? androidAudioAttributesUsageType,
   @Deprecated(
-      'Audio focus is now handled in a way that does not require this parameter. It will be removed in the next major version.')
+    'Audio focus is now handled in a way that does not require this parameter. It will be removed in the next major version.',
+  )
   AndroidAudioAttributesContentType? androidAudioAttributesContentType,
 }) {
   return (RTCFactoryNative.instance as RTCFactoryNative)
       .handleCallInterruptionCallbacks(
-    onInterruptionStart,
-    onInterruptionEnd,
-    androidInterruptionSource: androidInterruptionSource,
-    androidAudioAttributesUsageType: androidAudioAttributesUsageType,
-    androidAudioAttributesContentType: androidAudioAttributesContentType,
-  );
+        onInterruptionStart,
+        onInterruptionEnd,
+        androidInterruptionSource: androidInterruptionSource,
+        androidAudioAttributesUsageType: androidAudioAttributesUsageType,
+        androidAudioAttributesContentType: androidAudioAttributesContentType,
+      );
 }
 
 Future<RTCPeerConnection> createPeerConnection(
-    Map<String, dynamic> configuration,
-    [Map<String, dynamic> constraints = const {}]) async {
-  return RTCFactoryNative.instance
-      .createPeerConnection(configuration, constraints);
+  Map<String, dynamic> configuration, [
+  Map<String, dynamic> constraints = const {},
+]) async {
+  return RTCFactoryNative.instance.createPeerConnection(
+    configuration,
+    constraints,
+  );
 }
 
 Future<MediaStream> createLocalMediaStream(String label) async {

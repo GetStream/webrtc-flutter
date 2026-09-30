@@ -27,8 +27,9 @@ class RTCVideoView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) =>
-            _buildVideoView(context, constraints));
+      builder: (BuildContext context, BoxConstraints constraints) =>
+          _buildVideoView(context, constraints),
+    );
   }
 
   Widget _buildVideoView(BuildContext context, BoxConstraints constraints) {
@@ -46,12 +47,12 @@ class RTCVideoView extends StatelessWidget {
               valueListenable: videoRenderer,
               builder:
                   (BuildContext context, RTCVideoValue value, Widget? child) {
-                return SizedBox(
-                  width: constraints.maxHeight * value.aspectRatio,
-                  height: constraints.maxHeight,
-                  child: child,
-                );
-              },
+                    return SizedBox(
+                      width: constraints.maxHeight * value.aspectRatio,
+                      height: constraints.maxHeight,
+                      child: child,
+                    );
+                  },
               child: Transform(
                 transform: Matrix4.identity()..rotateY(mirror ? -pi : 0.0),
                 alignment: FractionalOffset.center,

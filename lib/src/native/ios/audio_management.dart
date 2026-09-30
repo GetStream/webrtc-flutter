@@ -23,10 +23,9 @@ class IosAudioManagement {
     if (kIsWeb || !WebRTC.platformIsIOS) return;
 
     try {
-      await WebRTC.invokeMethod(
-        'setStereoPlayoutPreferred',
-        <String, dynamic>{'preferred': preferred},
-      );
+      await WebRTC.invokeMethod('setStereoPlayoutPreferred', <String, dynamic>{
+        'preferred': preferred,
+      });
     } on PlatformException catch (e) {
       throw 'Unable to set stereo playout preferred: ${e.message}';
     }
@@ -64,9 +63,7 @@ class IosAudioManagement {
   /// Trigger the iOS audio route selection UI (iOS only).
   static Future<void> triggerAudioRouteSelectionUI() async {
     if (WebRTC.platformIsIOS) {
-      return await WebRTC.invokeMethod(
-        'triggeriOSAudioRouteSelectionUI',
-      );
+      return await WebRTC.invokeMethod('triggeriOSAudioRouteSelectionUI');
     } else {
       throw Exception('triggerAudioRouteSelectionUI is only supported for iOS');
     }
@@ -81,7 +78,8 @@ class IosAudioManagement {
       );
     } else {
       throw Exception(
-          'enableMultitaskingCameraAccess is only supported for iOS');
+        'enableMultitaskingCameraAccess is only supported for iOS',
+      );
     }
   }
 
@@ -97,7 +95,8 @@ class IosAudioManagement {
       );
     } else {
       throw Exception(
-          'isMultitaskingCameraAccessSupported is only supported for iOS');
+        'isMultitaskingCameraAccessSupported is only supported for iOS',
+      );
     }
   }
 }

@@ -94,7 +94,8 @@ class E2eeUserKey {
   final String fingerprint;
 
   @override
-  String toString() => 'E2eeUserKey(userId: $userId, keyIndex: $keyIndex, '
+  String toString() =>
+      'E2eeUserKey(userId: $userId, keyIndex: $keyIndex, '
       'fingerprint: $fingerprint)';
 }
 
@@ -128,10 +129,7 @@ class E2eeSharedKey {
 
 /// Payload of an `e2ee.key_state` event.
 class E2eeKeyState {
-  const E2eeKeyState({
-    required this.perUserKeys,
-    required this.sharedKeys,
-  });
+  const E2eeKeyState({required this.perUserKeys, required this.sharedKeys});
 
   factory E2eeKeyState.fromMap(Map<dynamic, dynamic> map) {
     return E2eeKeyState(

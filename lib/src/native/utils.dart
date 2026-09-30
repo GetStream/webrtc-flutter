@@ -24,16 +24,15 @@ class WebRTC {
 
   static bool get platformIsWeb => false;
 
-  static Future<T?> invokeMethod<T, P>(String methodName,
-      [dynamic param]) async {
-    await initialize(options: {
-      'logSeverity': NativeLogsListener.instance.severity,
-    });
-
-    return _channel.invokeMethod<T>(
-      methodName,
-      param,
+  static Future<T?> invokeMethod<T, P>(
+    String methodName, [
+    dynamic param,
+  ]) async {
+    await initialize(
+      options: {'logSeverity': NativeLogsListener.instance.severity},
     );
+
+    return _channel.invokeMethod<T>(methodName, param);
   }
 
   static bool initialized = false;
