@@ -95,7 +95,8 @@ class IosAudioManagement {
       );
     } else {
       throw Exception(
-          'isMultitaskingCameraAccessSupported is only supported for iOS');
+        'isMultitaskingCameraAccessSupported is only supported for iOS',
+      );
     }
   }
 }
