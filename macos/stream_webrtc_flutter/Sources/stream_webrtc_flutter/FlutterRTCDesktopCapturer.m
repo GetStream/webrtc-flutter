@@ -194,6 +194,10 @@ static id _pendingContentFilter = nil;
       }
       FlutterSCStreamCapturer* streamCapturer =
           [[FlutterSCStreamCapturer alloc] initWithDelegate:videoProcessingAdapter filter:filter];
+      // Same event Android sends when its screen share is ended from the system UI.
+      streamCapturer.onStopped = ^{
+        [self postEventWithName:@"screenSharingStopped" data:@{@"trackId" : trackUUID}];
+      };
       self.videoCapturerStopHandlers[trackUUID] = ^(CompletionHandler handler) {
         NSLog(@"stop desktop capture: system picker, trackID %@", trackUUID);
         [streamCapturer stopCaptureWithCompletionHandler:handler];

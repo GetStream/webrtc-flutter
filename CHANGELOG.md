@@ -7,6 +7,7 @@
 * Increased minimum Flutter version to 3.44.0 (Dart 3.12.0), which is required for the built-in Kotlin migration: from 3.44 Flutter applies KGP to plugin modules that no longer declare it, keeping AGP 8 builds working.
 * [macOS] `getDisplayMedia` can show the system content sharing picker (`SCContentSharingPicker`) when `deviceId.exact` is `system-picker`, and captures the choice with ScreenCaptureKit. macOS 14 or newer.
 * [macOS] Added `DesktopCapturer.isSystemContentPickerSupported`.
+* [macOS] Stopping a system picker share from the menu bar sends `screenSharingStopped`, as Android does.
 
 [3.2.0] - 2026.09.03
 

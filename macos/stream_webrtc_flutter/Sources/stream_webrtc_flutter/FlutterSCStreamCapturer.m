@@ -102,8 +102,12 @@ NSString* const kFlutterSystemPickerSourceId = @"system-picker";
 - (void)stream:(SCStream*)stream didStopWithError:(NSError*)error {
   NSLog(@"FlutterSCStreamCapturer: stream stopped: %@", error);
   // The stream retains this capturer as its output; release it so the two do not keep each other alive.
-  if (_stream == stream) {
-    _stream = nil;
+  if (_stream != stream) {
+    return;
+  }
+  _stream = nil;
+  if (self.onStopped != nil) {
+    self.onStopped();
   }
 }
 

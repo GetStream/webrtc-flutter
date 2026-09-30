@@ -15,6 +15,10 @@ API_AVAILABLE(macos(14.0))
 
 /// Starts capturing. Calls [completionHandler] once with nil when frames are flowing, or with the
 /// error when capture could not start.
+/// Called when the system ends the capture, such as when the user stops sharing from the menu bar.
+/// Not called for [stopCaptureWithCompletionHandler:].
+@property(nonatomic, copy, nullable) void (^onStopped)(void);
+
 - (void)startCaptureWithFPS:(NSInteger)fps
           completionHandler:(nonnull void (^)(NSError* _Nullable error))completionHandler;
 
