@@ -72,3 +72,11 @@ macos/Frameworks
 .build/
 .swiftpm/
 example/android/build
+
+# Package.resolved for the plugin's own Swift packages. SwiftPM ignores the
+# lock of a non-root package, so these files never affect what a consuming app
+# resolves - they only drift out of sync with the `exact:` pin in Package.swift
+# and mislead anyone debugging a resolution failure.
+/Package.resolved
+/ios/stream_webrtc_flutter/Package.resolved
+/macos/stream_webrtc_flutter/Package.resolved
