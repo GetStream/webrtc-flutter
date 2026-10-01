@@ -146,6 +146,20 @@ void postEvent(FlutterEventSink _Nullable sink, id _Nullable event) {
 
   RTC_OBJC_TYPE(RTCCallbackLogger) * loggerCallback;
 
+  /**
+   * Serial queue for `-[RTCPeerConnection close]`. Close is a synchronous call
+   * into WebRTC's signaling thread that waits for the whole teardown, hundreds
+   * of milliseconds with media running, and since Flutter 3.29 the main thread
+   * also runs Dart. Serial so factory disposal can wait for pending closes.
+   */
+  dispatch_queue_t _peerConnectionCloseQueue;
+
+  /**
+   * Peer connections closing on `_peerConnectionCloseQueue`. They are already
+   * out of `peerConnections`, so engine detach finds them here. Main thread only.
+   */
+  NSMutableSet<RTCPeerConnection*>* _closingPeerConnections;
+
   /** Snapshot of the most-recent [WebRTC.initialize] options. */
   RTCInitializeSnapshot* _initializeSnapshot;
 }
@@ -207,6 +221,10 @@ static FlutterWebRTCPlugin* sharedSingleton;
     _speakerOnButPreferBluetooth = NO;
     _eventChannel = eventChannel;
     _audioManager = AudioManager.sharedInstance;
+    _peerConnectionCloseQueue = dispatch_queue_create(
+        "io.getstream.webrtc.flutter.peerConnectionClose",
+        dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0));
+    _closingPeerConnections = [NSMutableSet set];
 
 #if TARGET_OS_IPHONE
     _preferredInput = AVAudioSessionPortHeadphones;
@@ -254,8 +272,12 @@ static FlutterWebRTCPlugin* sharedSingleton;
 - (void)detachFromEngineForRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
   [self disposeAllEncryptionManagers];
 
-  for (RTCPeerConnection* peerConnection in _peerConnections.allValues) {
-    for (RTCDataChannel* dataChannel in peerConnection.dataChannels) {
+  // Connections still closing fire their last state changes from the close
+  // queue, so they must stop posting to this engine too.
+  NSArray<RTCPeerConnection*>* peerConnections =
+      [_peerConnections.allValues arrayByAddingObjectsFromArray:_closingPeerConnections.allObjects];
+  for (RTCPeerConnection* peerConnection in peerConnections) {
+    for (RTCDataChannel* dataChannel in peerConnection.dataChannels.allValues) {
       dataChannel.eventSink = nil;
     }
     peerConnection.eventSink = nil;
@@ -458,84 +480,14 @@ static FlutterWebRTCPlugin* sharedSingleton;
     NSLog(@"[createPeerConnectionFactory] built id: %@", factoryId);
     result(@{@"factoryId" : factoryId});
   } else if ([@"disposePeerConnectionFactory" isEqualToString:call.method]) {
-    NSDictionary* argsMap = call.arguments;
-    NSString* factoryId = argsMap[@"factoryId"];
-    if (factoryId == nil || factoryId.length == 0) {
-      result([FlutterError errorWithCode:@"disposePeerConnectionFactory"
-                                 message:@"factoryId argument is required"
-                                 details:nil]);
-      return;
-    }
-    NativePeerConnectionFactory* nf;
-    @synchronized(self) {
-      nf = _factories[factoryId];
-      [_factories removeObjectForKey:factoryId];
-    }
-    if (nf == nil) {
-      NSLog(@"[disposePeerConnectionFactory] unknown factoryId: %@", factoryId);
-      result(nil);
-      return;
-    }
-    NSLog(@"[disposePeerConnectionFactory] disposing id: %@, ownedPcs: %lu, "
-           "ownedTracks: %lu, ownedStreams: %lu",
-          factoryId, (unsigned long)nf.ownedPcIds.count, (unsigned long)nf.ownedTrackIds.count,
-          (unsigned long)nf.ownedStreamIds.count);
-
-    // 1. Defensively drain any PCs the SDK forgot.
-    NSArray<NSString*>* pcIdsSnapshot = [nf.ownedPcIds.allObjects copy];
-    for (NSString* pcId in pcIdsSnapshot) {
-      RTCPeerConnection* peerConnection = self.peerConnections[pcId];
-      if (peerConnection != nil) {
-        [peerConnection close];
-        [self.peerConnections removeObjectForKey:pcId];
-      }
-      [self.pcFactoryId removeObjectForKey:pcId];
-    }
-    [nf.ownedPcIds removeAllObjects];
-
-    // 2. Evict every track wrapper this factory created.
-    NSArray<NSString*>* trackIdsSnapshot = [nf.ownedTrackIds.allObjects copy];
-    for (NSString* trackId in trackIdsSnapshot) {
-      id<LocalTrack> lt = self.localTracks[trackId];
-      if (lt != nil) {
-        @try {
-          lt.track.isEnabled = NO;
-        } @catch (NSException* e) {
-          // Native peer may already be gone; ignore.
-        }
-      }
-      CapturerStopHandler stopHandler = self.videoCapturerStopHandlers[trackId];
-      if (stopHandler) {
-        @try {
-          stopHandler(^{
-            NSLog(@"[disposePeerConnectionFactory] capturer stopped, trackId = %@", trackId);
-          });
-        } @catch (NSException* e) {
-          NSLog(@"[disposePeerConnectionFactory] capturer stop failed: %@", e);
-        }
-        [self.videoCapturerStopHandlers removeObjectForKey:trackId];
-        [self.videoCaptureState removeObjectForKey:trackId];
-      }
-      [self.localTracks removeObjectForKey:trackId];
-      [self.trackFactoryId removeObjectForKey:trackId];
-    }
-    [nf.ownedTrackIds removeAllObjects];
-
-    // 3. Evict every stream wrapper this factory created.
-    NSArray<NSString*>* streamIdsSnapshot = [nf.ownedStreamIds.allObjects copy];
-    for (NSString* streamId in streamIdsSnapshot) {
-      [self.localStreams removeObjectForKey:streamId];
-    }
-    [nf.ownedStreamIds removeAllObjects];
-
-    // 4. Tear down the native factory itself.
-    @try {
-      [nf dispose];
-    } @catch (NSException* e) {
-      NSLog(@"[disposePeerConnectionFactory] dispose failed: %@", e);
-    }
-
-    result(nil);
+    // Peer connections of this factory may still be closing on
+    // _peerConnectionCloseQueue. Going through that queue first waits for them,
+    // and their main-thread cleanup is queued ahead of this disposal.
+    dispatch_async(_peerConnectionCloseQueue, ^{
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [self disposePeerConnectionFactory:call result:result];
+      });
+    });
   } else if ([@"setVideoEffects" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* trackId = argsMap[@"trackId"];
@@ -1026,45 +978,82 @@ static FlutterWebRTCPlugin* sharedSingleton;
              [@"peerConnectionDispose" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* peerConnectionId = argsMap[@"peerConnectionId"];
-    BOOL isDispose = [@"peerConnectionDispose" isEqualToString:call.method];
+    if (peerConnectionId == nil) {
+      // Nothing to close; removeObjectForKey:nil below would throw.
+      result(nil);
+      return;
+    }
 
     RTCPeerConnection* peerConnection = self.peerConnections[peerConnectionId];
-    if (peerConnection) {
+    // Unregister it right away, so no call made while it closes can reach it.
+    [self.peerConnections removeObjectForKey:peerConnectionId];
+
+    // What has to happen once the connection is closed, on the main thread.
+    void (^finish)(void) = ^{
+      if (peerConnection) {
+        [self->_closingPeerConnections removeObject:peerConnection];
+        for (NSString* trackId in peerConnection.remoteTracks) {
+          [self.pausedTrackVolumes removeObjectForKey:trackId];
+          [self.trackVolumeCache removeObjectForKey:trackId];
+        }
+
+        // Clean up peerConnection's streams and tracks
+        [peerConnection.remoteStreams removeAllObjects];
+        [peerConnection.remoteTracks removeAllObjects];
+
+        // Clean up peerConnection's dataChannels.
+        NSMutableDictionary<NSString*, RTCDataChannel*>* dataChannels = peerConnection.dataChannels;
+        for (NSString* dataChannelId in dataChannels) {
+          dataChannels[dataChannelId].delegate = nil;
+          // There is no need to close the RTCDataChannel because it is owned by the
+          // RTCPeerConnection and the latter will close the former.
+        }
+        [dataChannels removeAllObjects];
+      }
+
+      NSString* factoryIdForPc = self.pcFactoryId[peerConnectionId];
+      if (factoryIdForPc != nil) {
+        [self.pcFactoryId removeObjectForKey:peerConnectionId];
+        NativePeerConnectionFactory* nf;
+        @synchronized(self) {
+          nf = self.factories[factoryIdForPc];
+        }
+        if (nf != nil) {
+          [nf.ownedPcIds removeObject:peerConnectionId];
+        }
+      }
+      [self deactiveRtcAudioSession];
+      result(nil);
+    };
+
+    if (peerConnection == nil) {
+      // A close of this connection may still be running, e.g. a dispose sent
+      // without awaiting the close. Queue behind it, so the reply still means
+      // closed and the audio session isn't deactivated under running I/O.
+      BOOL isClosing = NO;
+      for (RTCPeerConnection* closing in _closingPeerConnections) {
+        if ([closing.flutterId isEqualToString:peerConnectionId]) {
+          isClosing = YES;
+          break;
+        }
+      }
+      if (isClosing) {
+        dispatch_async(_peerConnectionCloseQueue, ^{
+          dispatch_async(dispatch_get_main_queue(), finish);
+        });
+      } else {
+        finish();
+      }
+      return;
+    }
+
+    // Close off the main thread (see _peerConnectionCloseQueue) and reply once
+    // it is done, so the caller still sees a closed connection.
+    [_closingPeerConnections addObject:peerConnection];
+    dispatch_async(_peerConnectionCloseQueue, ^{
       [peerConnection close];
-      [self.peerConnections removeObjectForKey:peerConnectionId];
-
-      for (NSString* trackId in peerConnection.remoteTracks) {
-        [self.pausedTrackVolumes removeObjectForKey:trackId];
-        [self.trackVolumeCache removeObjectForKey:trackId];
-      }
-
-      // Clean up peerConnection's streams and tracks
-      [peerConnection.remoteStreams removeAllObjects];
-      [peerConnection.remoteTracks removeAllObjects];
-
-      // Clean up peerConnection's dataChannels.
-      NSMutableDictionary<NSString*, RTCDataChannel*>* dataChannels = peerConnection.dataChannels;
-      for (NSString* dataChannelId in dataChannels) {
-        dataChannels[dataChannelId].delegate = nil;
-        // There is no need to close the RTCDataChannel because it is owned by the
-        // RTCPeerConnection and the latter will close the former.
-      }
-      [dataChannels removeAllObjects];
-    }
-
-    NSString* factoryIdForPc = self.pcFactoryId[peerConnectionId];
-    if (factoryIdForPc != nil) {
-      [self.pcFactoryId removeObjectForKey:peerConnectionId];
-      NativePeerConnectionFactory* nf;
-      @synchronized(self) {
-        nf = self.factories[factoryIdForPc];
-      }
-      if (nf != nil) {
-        [nf.ownedPcIds removeObject:peerConnectionId];
-      }
-    }
-    [self deactiveRtcAudioSession];
-    result(nil);
+      dispatch_async(dispatch_get_main_queue(), finish);
+    });
   } else if ([@"createVideoRenderer" isEqualToString:call.method]) {
     FlutterRTCVideoRenderer* render = [self createWithTextureRegistry:_textures
                                                             messenger:_messenger];
@@ -2439,16 +2428,101 @@ static FlutterWebRTCPlugin* sharedSingleton;
 #endif
 }
 
+- (void)disposePeerConnectionFactory:(FlutterMethodCall*)call result:(FlutterResult)result {
+  NSDictionary* argsMap = call.arguments;
+  NSString* factoryId = argsMap[@"factoryId"];
+  if (factoryId == nil || factoryId.length == 0) {
+    result([FlutterError errorWithCode:@"disposePeerConnectionFactory"
+                               message:@"factoryId argument is required"
+                               details:nil]);
+    return;
+  }
+  NativePeerConnectionFactory* nf;
+  @synchronized(self) {
+    nf = _factories[factoryId];
+    [_factories removeObjectForKey:factoryId];
+  }
+  if (nf == nil) {
+    NSLog(@"[disposePeerConnectionFactory] unknown factoryId: %@", factoryId);
+    result(nil);
+    return;
+  }
+  NSLog(@"[disposePeerConnectionFactory] disposing id: %@, ownedPcs: %lu, "
+         "ownedTracks: %lu, ownedStreams: %lu",
+        factoryId, (unsigned long)nf.ownedPcIds.count, (unsigned long)nf.ownedTrackIds.count,
+        (unsigned long)nf.ownedStreamIds.count);
+
+  // 1. Defensively drain any PCs the SDK forgot.
+  NSArray<NSString*>* pcIdsSnapshot = [nf.ownedPcIds.allObjects copy];
+  for (NSString* pcId in pcIdsSnapshot) {
+    RTCPeerConnection* peerConnection = self.peerConnections[pcId];
+    if (peerConnection != nil) {
+      [peerConnection close];
+      [self.peerConnections removeObjectForKey:pcId];
+    }
+    [self.pcFactoryId removeObjectForKey:pcId];
+  }
+  [nf.ownedPcIds removeAllObjects];
+
+  // 2. Evict every track wrapper this factory created.
+  NSArray<NSString*>* trackIdsSnapshot = [nf.ownedTrackIds.allObjects copy];
+  for (NSString* trackId in trackIdsSnapshot) {
+    id<LocalTrack> lt = self.localTracks[trackId];
+    if (lt != nil) {
+      @try {
+        lt.track.isEnabled = NO;
+      } @catch (NSException* e) {
+        // Native peer may already be gone; ignore.
+      }
+    }
+    CapturerStopHandler stopHandler = self.videoCapturerStopHandlers[trackId];
+    if (stopHandler) {
+      @try {
+        stopHandler(^{
+          NSLog(@"[disposePeerConnectionFactory] capturer stopped, trackId = %@", trackId);
+        });
+      } @catch (NSException* e) {
+        NSLog(@"[disposePeerConnectionFactory] capturer stop failed: %@", e);
+      }
+      [self.videoCapturerStopHandlers removeObjectForKey:trackId];
+      [self.videoCaptureState removeObjectForKey:trackId];
+    }
+    [self.localTracks removeObjectForKey:trackId];
+    [self.trackFactoryId removeObjectForKey:trackId];
+  }
+  [nf.ownedTrackIds removeAllObjects];
+
+  // 3. Evict every stream wrapper this factory created.
+  NSArray<NSString*>* streamIdsSnapshot = [nf.ownedStreamIds.allObjects copy];
+  for (NSString* streamId in streamIdsSnapshot) {
+    [self.localStreams removeObjectForKey:streamId];
+  }
+  [nf.ownedStreamIds removeAllObjects];
+
+  // 4. Tear down the native factory itself.
+  @try {
+    [nf dispose];
+  } @catch (NSException* e) {
+    NSLog(@"[disposePeerConnectionFactory] dispose failed: %@", e);
+  }
+
+  result(nil);
+}
+
 - (void)deactiveRtcAudioSession {
 #if TARGET_OS_IPHONE
   // Cheap early out; the condition is checked again when the block runs.
-  if ([self hasLocalAudioTrack] || self.peerConnections.count > 0) {
+  // Connections still closing are already out of peerConnections but may
+  // still be running audio I/O.
+  if ([self hasLocalAudioTrack] || self.peerConnections.count > 0 ||
+      _closingPeerConnections.count > 0) {
     return;
   }
   dispatch_async(_audioSessionQueue, ^{
     __block BOOL shouldDeactivate = NO;
     dispatch_sync(dispatch_get_main_queue(), ^{
-      shouldDeactivate = ![self hasLocalAudioTrack] && self.peerConnections.count == 0;
+      shouldDeactivate = ![self hasLocalAudioTrack] && self.peerConnections.count == 0 &&
+                         self->_closingPeerConnections.count == 0;
     });
     if (shouldDeactivate) {
       [AudioUtils deactiveRtcAudioSession];
