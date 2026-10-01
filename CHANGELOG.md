@@ -7,6 +7,8 @@
 * Increased minimum Flutter version to 3.44.0 (Dart 3.12.0), which is required for the built-in Kotlin migration: from 3.44 Flutter applies KGP to plugin modules that no longer declare it, keeping AGP 8 builds working.
 * [Android] Camera track `getSettings()` now reports `width` and `height` in the orientation of the delivered frames instead of the sensor's capture format, so a phone held upright reports a portrait size. The orientation is taken when the track is created. The settings also carry the camera's `sensorOrientation` whenever it is known, which marks the reported size as already in frame orientation.
 * Cloned tracks now inherit the original track's `getSettings()` when the platform reports none for the clone, as Android does.
+* [Android] Device enumeration (`getSources`) no longer runs on the main thread, and camera details are read once instead of on every enumeration. Each enumeration used to block the UI for several hundred milliseconds on some devices.
+* [Android] `onDeviceChange` is now only emitted when the list of audio devices changes. It was also emitted when only the selected output changed, and on every output selection when audio routing is not handled by the plugin (e.g. in normal audio mode), triggering needless device enumerations.
 
 [3.2.0] - 2026.09.03
 

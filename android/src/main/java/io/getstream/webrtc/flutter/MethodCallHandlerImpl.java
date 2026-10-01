@@ -89,6 +89,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.EventChannel;
@@ -140,6 +141,20 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   }
 
   ExecutorService executor = Executors.newSingleThreadExecutor();
+
+  /**
+   * Runs the camera and microphone part of {@link #getSources}, which is slow
+   * enough (camera HAL queries) to stall the UI when run on the main thread.
+   */
+  private final ExecutorService deviceEnumerationExecutor =
+      Executors.newSingleThreadExecutor(r -> new Thread(r, "DeviceEnumeration"));
+
+  /**
+   * Camera entries of {@link #getSources}, reused while the number of cameras
+   * stays the same. Only touched on {@link #deviceEnumerationExecutor}.
+   */
+  @Nullable
+  private List<ConstraintsMap> cachedCameraSources;
   Handler mainHandler = new Handler(Looper.getMainLooper());
 
   public static LogSink logSink = new LogSink();
@@ -165,6 +180,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
    */
   void dispose() {
     encryptionManager.disposeAll();
+    deviceEnumerationExecutor.shutdown();
 
     if (AudioSwitchManager.instance != null) {
       AudioSwitchManager.instance.setAudioFocusChangeListener(null);
@@ -2240,15 +2256,60 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   }
 
   public void getSources(Result result) {
-    ConstraintsArray array = new ConstraintsArray();
-    String[] names = new String[Camera.getNumberOfCameras()];
+    final Result safeResult = new AnyThreadResult(result);
 
-    for (int i = 0; i < Camera.getNumberOfCameras(); ++i) {
+    // AudioSwitch is driven from the main thread, so read its devices here.
+    final List<ConstraintsMap> audioOutputSources = getAudioOutputSources();
+
+    try {
+      deviceEnumerationExecutor.execute(() -> {
+        try {
+          ConstraintsArray array = new ConstraintsArray();
+          for (ConstraintsMap source : getCameraSources()) {
+            array.pushMap(source);
+          }
+          for (ConstraintsMap source : getAudioInputSources()) {
+            array.pushMap(source);
+          }
+          for (ConstraintsMap source : audioOutputSources) {
+            array.pushMap(source);
+          }
+
+          ConstraintsMap map = new ConstraintsMap();
+          map.putArray("sources", array.toArrayList());
+          safeResult.success(map.toMap());
+        } catch (Throwable t) {
+          resultError("getSources", "Failed to enumerate devices: " + t, safeResult);
+        }
+      });
+    } catch (RejectedExecutionException e) {
+      resultError("getSources", "Device enumeration is shut down", safeResult);
+    }
+  }
+
+  private List<ConstraintsMap> getCameraSources() {
+    final int cameraCount = Camera.getNumberOfCameras();
+    if (cachedCameraSources != null && cachedCameraSources.size() == cameraCount) {
+      return cachedCameraSources;
+    }
+
+    List<ConstraintsMap> sources = new ArrayList<>();
+    for (int i = 0; i < cameraCount; ++i) {
       ConstraintsMap info = getCameraInfo(i);
       if (info != null) {
-        array.pushMap(info);
+        sources.add(info);
       }
     }
+
+    // Keep failed lookups out of the cache so they are retried next time.
+    if (sources.size() == cameraCount) {
+      cachedCameraSources = sources;
+    }
+    return sources;
+  }
+
+  private List<ConstraintsMap> getAudioInputSources() {
+    List<ConstraintsMap> sources = new ArrayList<>();
 
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
       ConstraintsMap audio = new ConstraintsMap();
@@ -2256,40 +2317,40 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       audio.putString("deviceId", "audio-1");
       audio.putString("kind", "audioinput");
       audio.putString("groupId", "microphone");
-      array.pushMap(audio);
-    } else {
-      android.media.AudioManager audioManager = ((android.media.AudioManager) context
-              .getSystemService(Context.AUDIO_SERVICE));
-      final AudioDeviceInfo[] devices = audioManager.getDevices(android.media.AudioManager.GET_DEVICES_INPUTS);
-      for (int i = 0; i < devices.length; i++) {
-        AudioDeviceInfo device = devices[i];
-        if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_MIC || device.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                device.getType() == AudioDeviceInfo.TYPE_WIRED_HEADSET) {
-          ConstraintsMap audio = new ConstraintsMap();
-          audio.putString("label", AudioUtils.getAudioDeviceLabel(device));
-          audio.putString("deviceId", AudioUtils.getAudioDeviceId(device));
-          audio.putString("groupId", AudioUtils.getAudioGroupId(device));
-          audio.putString("kind", "audioinput");
-          array.pushMap(audio);
-        }
-      }
+      sources.add(audio);
+      return sources;
     }
 
-    List<? extends AudioDevice> audioOutputs = AudioSwitchManager.instance.availableAudioDevices();
+    android.media.AudioManager audioManager = ((android.media.AudioManager) context
+            .getSystemService(Context.AUDIO_SERVICE));
+    final AudioDeviceInfo[] devices = audioManager.getDevices(android.media.AudioManager.GET_DEVICES_INPUTS);
+    for (AudioDeviceInfo device : devices) {
+      if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_MIC || device.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+              device.getType() == AudioDeviceInfo.TYPE_WIRED_HEADSET) {
+        ConstraintsMap audio = new ConstraintsMap();
+        audio.putString("label", AudioUtils.getAudioDeviceLabel(device));
+        audio.putString("deviceId", AudioUtils.getAudioDeviceId(device));
+        audio.putString("groupId", AudioUtils.getAudioGroupId(device));
+        audio.putString("kind", "audioinput");
+        sources.add(audio);
+      }
+    }
+    return sources;
+  }
 
+  private List<ConstraintsMap> getAudioOutputSources() {
+    List<ConstraintsMap> sources = new ArrayList<>();
+
+    List<? extends AudioDevice> audioOutputs = AudioSwitchManager.instance.availableAudioDevices();
     for (AudioDevice audioOutput : audioOutputs) {
       ConstraintsMap audioOutputMap = new ConstraintsMap();
       audioOutputMap.putString("label", audioOutput.getName());
       audioOutputMap.putString("deviceId", AudioDeviceKind.fromAudioDevice(audioOutput).typeName);
       audioOutputMap.putString("groupId", AudioDeviceKind.fromAudioDevice(audioOutput).typeName);
       audioOutputMap.putString("kind", "audiooutput");
-      array.pushMap(audioOutputMap);
+      sources.add(audioOutputMap);
     }
-
-    ConstraintsMap map = new ConstraintsMap();
-    map.putArray("sources", array.toArrayList());
-
-    result.success(map.toMap());
+    return sources;
   }
 
   private void createLocalMediaStream(@Nullable String factoryId, Result result) {
