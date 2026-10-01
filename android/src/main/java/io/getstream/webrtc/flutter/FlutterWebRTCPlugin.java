@@ -7,6 +7,7 @@ import android.os.Bundle;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.lifecycle.DefaultLifecycleObserver;
 import androidx.lifecycle.Lifecycle;
 import androidx.lifecycle.LifecycleOwner;
@@ -16,6 +17,11 @@ import io.getstream.webrtc.flutter.audio.AudioProcessingController;
 import io.getstream.webrtc.flutter.audio.AudioSwitchManager;
 import io.getstream.webrtc.flutter.utils.AnyThreadSink;
 import io.getstream.webrtc.flutter.utils.ConstraintsMap;
+
+import com.twilio.audioswitch.AudioDevice;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import org.webrtc.ExternalAudioProcessingFactory;
 import org.webrtc.MediaStreamTrack;
@@ -42,6 +48,10 @@ public class FlutterWebRTCPlugin implements FlutterPlugin, ActivityAware, EventC
     private LifeCycleObserver observer;
     private Lifecycle lifecycle;
     private EventChannel eventChannel;
+
+    /** The audio devices last reported with an onDeviceChange event. */
+    @Nullable
+    private List<AudioDevice> lastReportedAudioDevices;
 
     // eventSink is static because FlutterWebRTCPlugin can be instantiated multiple times
     // but the onListen(Object, EventChannel.EventSink) event only fires once for the first
@@ -143,8 +153,18 @@ public class FlutterWebRTCPlugin implements FlutterPlugin, ActivityAware, EventC
         methodChannel.setMethodCallHandler(methodCallHandler);
         eventChannel = new EventChannel( messenger,"FlutterWebRTC.Event");
         eventChannel.setStreamHandler(this);
+        lastReportedAudioDevices = null;
         AudioSwitchManager.instance.audioDeviceChangeListener = (devices, currentDevice) -> {
             Log.w(TAG, "audioFocusChangeListener " + devices+ " " + currentDevice);
+            // AudioSwitch also calls this when only the selected device changes,
+            // and on every selection when it doesn't handle audio routing. Dart
+            // re-enumerates all devices on each event, so only report changes
+            // to the device list.
+            if (devices.equals(lastReportedAudioDevices)) {
+                return null;
+            }
+            lastReportedAudioDevices = new ArrayList<>(devices);
+
             ConstraintsMap params = new ConstraintsMap();
             params.putString("event", "onDeviceChange");
             sendEvent(params.toMap());

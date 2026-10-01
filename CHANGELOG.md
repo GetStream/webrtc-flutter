@@ -7,6 +7,8 @@
 * [iOS/macOS] fix: detaching the plugin now clears the event sink of every data channel; the loop iterated the data channel dictionary's keys, so the sinks were never cleared.
 * [Android] Migrated the Android module to AGP's built-in Kotlin. The module no longer applies the Kotlin Gradle Plugin (KGP), whose application Android Gradle Plugin 9.0 removed — apps on AGP 9 failed to build because of it.
 * Increased minimum Flutter version to 3.44.0 (Dart 3.12.0), which is required for the built-in Kotlin migration: from 3.44 Flutter applies KGP to plugin modules that no longer declare it, keeping AGP 8 builds working.
+* [Android] Device enumeration (`getSources`) no longer runs on the main thread, and camera details are read once instead of on every enumeration. Each enumeration used to block the UI for several hundred milliseconds on some devices.
+* [Android] `onDeviceChange` is now only emitted when the list of audio devices changes. It was also emitted when only the selected output changed, and on every output selection when audio routing is not handled by the plugin (e.g. in normal audio mode), triggering needless device enumerations.
 
 [3.2.0] - 2026.09.03
 
