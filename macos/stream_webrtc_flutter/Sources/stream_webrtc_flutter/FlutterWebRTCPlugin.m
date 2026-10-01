@@ -133,6 +133,15 @@ void postEvent(FlutterEventSink _Nullable sink, id _Nullable event) {
 #if TARGET_OS_IPHONE
   FLutterRTCVideoPlatformViewFactory* _platformViewFactory;
   dispatch_block_t _stereoRefreshDebounceBlock;
+  /**
+   * Serial queue for AVAudioSession reconfiguration, both requested from Dart
+   * and triggered internally (track / peer-connection lifecycle).
+   * setCategory / setMode / setActive block for hundreds of milliseconds while
+   * the audio route changes, and since Flutter 3.29 the platform main thread is
+   * also the Dart UI thread, so running them there freezes the app. Serial so
+   * the requests still apply in the order they were made.
+   */
+  dispatch_queue_t _audioSessionQueue;
 #endif
 
   RTC_OBJC_TYPE(RTCCallbackLogger) * loggerCallback;
@@ -201,6 +210,9 @@ static FlutterWebRTCPlugin* sharedSingleton;
 
 #if TARGET_OS_IPHONE
     _preferredInput = AVAudioSessionPortHeadphones;
+    _audioSessionQueue = dispatch_queue_create(
+        "io.getstream.webrtc.flutter.audioSession",
+        dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0));
     self.viewController = viewController;
     _platformViewFactory = [[FLutterRTCVideoPlatformViewFactory alloc] initWithMessenger:messenger];
     [registrar registerViewFactory:_platformViewFactory
@@ -1346,24 +1358,43 @@ static FlutterWebRTCPlugin* sharedSingleton;
   else if ([@"enableSpeakerphone" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSNumber* enable = argsMap[@"enable"];
-    _speakerOn = enable.boolValue;
-    _speakerOnButPreferBluetooth = NO;
-    [AudioUtils setSpeakerphoneOn:_speakerOn];
-    postEvent(self.eventSink, @{@"event" : @"onDeviceChange"});
-    result(nil);
+    BOOL speakerOn = enable.boolValue;
+    dispatch_async(_audioSessionQueue, ^{
+      [AudioUtils setSpeakerphoneOn:speakerOn];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        // Only flip the flags once the route is applied.
+        self->_speakerOn = speakerOn;
+        self->_speakerOnButPreferBluetooth = NO;
+        postEvent(self.eventSink, @{@"event" : @"onDeviceChange"});
+        result(nil);
+      });
+    });
   } else if ([@"ensureAudioSession" isEqualToString:call.method]) {
     [self ensureAudioSession];
-    result(nil);
+    // Reply once the enqueued reconfiguration has run.
+    dispatch_async(_audioSessionQueue, ^{
+      dispatch_async(dispatch_get_main_queue(), ^{
+        result(nil);
+      });
+    });
   } else if ([@"enableSpeakerphoneButPreferBluetooth" isEqualToString:call.method]) {
-    _speakerOn = YES;
-    _speakerOnButPreferBluetooth = YES;
-    [AudioUtils setSpeakerphoneOnButPreferBluetooth];
-    result(nil);
+    dispatch_async(_audioSessionQueue, ^{
+      [AudioUtils setSpeakerphoneOnButPreferBluetooth];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        self->_speakerOn = YES;
+        self->_speakerOnButPreferBluetooth = YES;
+        result(nil);
+      });
+    });
   } else if ([@"setAppleAudioConfiguration" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSDictionary* configuration = argsMap[@"configuration"];
-    [AudioUtils setAppleAudioConfiguration:configuration];
-    result(nil);
+    dispatch_async(_audioSessionQueue, ^{
+      [AudioUtils setAppleAudioConfiguration:configuration];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        result(nil);
+      });
+    });
   }
 #endif
   else if ([@"getLocalDescription" isEqualToString:call.method]) {
@@ -2386,17 +2417,43 @@ static FlutterWebRTCPlugin* sharedSingleton;
 }
 #endif
 
+/**
+ * Both helpers run on _audioSessionQueue and read the track / peer-connection
+ * state when the block executes, not when it is enqueued: by then the state may
+ * have changed (e.g. the last peer connection closed and a new call started
+ * while a slow reconfiguration was still ahead in the queue), and the new
+ * call's ADM activates the session outside this queue.
+ *
+ * That state is owned by main, so the check hops there with dispatch_sync. This
+ * is deadlock-free as long as main never dispatch_syncs onto _audioSessionQueue.
+ */
 - (void)ensureAudioSession {
 #if TARGET_OS_IPHONE
-  [AudioUtils ensureAudioSessionWithRecording:[self hasLocalAudioTrack]];
+  dispatch_async(_audioSessionQueue, ^{
+    __block BOOL recording = NO;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+      recording = [self hasLocalAudioTrack];
+    });
+    [AudioUtils ensureAudioSessionWithRecording:recording];
+  });
 #endif
 }
 
 - (void)deactiveRtcAudioSession {
 #if TARGET_OS_IPHONE
-  if (![self hasLocalAudioTrack] && self.peerConnections.count == 0) {
-    [AudioUtils deactiveRtcAudioSession];
+  // Cheap early out; the condition is checked again when the block runs.
+  if ([self hasLocalAudioTrack] || self.peerConnections.count > 0) {
+    return;
   }
+  dispatch_async(_audioSessionQueue, ^{
+    __block BOOL shouldDeactivate = NO;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+      shouldDeactivate = ![self hasLocalAudioTrack] && self.peerConnections.count == 0;
+    });
+    if (shouldDeactivate) {
+      [AudioUtils deactiveRtcAudioSession];
+    }
+  });
 #endif
 }
 
