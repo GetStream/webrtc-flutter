@@ -1,10 +1,11 @@
 
 # Changelog
 
-[Unreleased]
+Upcoming
 
 * [Android/iOS/macOS] fix: `peerConnectionClose` and `peerConnectionDispose` now close the peer connection off the main thread, which froze the app for a few hundred milliseconds when leaving a call.
 * [iOS/macOS] fix: detaching the plugin now clears the event sink of every data channel; the loop iterated the data channel dictionary's keys, so the sinks were never cleared.
+* [iOS] fix: `setAppleAudioConfiguration`, `ensureAudioSession`, `enableSpeakerphone` and `enableSpeakerphoneButPreferBluetooth` now reconfigure the `AVAudioSession` on a serial background queue and reply once it is done, instead of on the main thread. Since Flutter 3.29 the main thread also runs Dart, so a slow category or route change froze the app while it ran.
 * [Android] Migrated the Android module to AGP's built-in Kotlin. The module no longer applies the Kotlin Gradle Plugin (KGP), whose application Android Gradle Plugin 9.0 removed — apps on AGP 9 failed to build because of it.
 * Increased minimum Flutter version to 3.44.0 (Dart 3.12.0), which is required for the built-in Kotlin migration: from 3.44 Flutter applies KGP to plugin modules that no longer declare it, keeping AGP 8 builds working.
 * [Android] Device enumeration (`getSources`) no longer runs on the main thread, and camera details are read once instead of on every enumeration. Each enumeration used to block the UI for several hundred milliseconds on some devices.
