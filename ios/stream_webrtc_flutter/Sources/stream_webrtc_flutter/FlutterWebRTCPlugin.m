@@ -966,6 +966,11 @@ static FlutterWebRTCPlugin* sharedSingleton;
              [@"peerConnectionDispose" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* peerConnectionId = argsMap[@"peerConnectionId"];
+    if (peerConnectionId == nil) {
+      // Nothing to close; removeObjectForKey:nil below would throw.
+      result(nil);
+      return;
+    }
 
     RTCPeerConnection* peerConnection = self.peerConnections[peerConnectionId];
     // Unregister it right away, so no call made while it closes can reach it.
