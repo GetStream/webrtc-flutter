@@ -52,4 +52,19 @@ public class Camera1Helper {
 
         return CameraEnumerationAndroid.getClosestSupportedSize(sizes, width, height);
     }
+
+    /**
+     * Returns the camera's sensor orientation in degrees (0/90/180/270), or -1 when unknown.
+     */
+    @SuppressWarnings("deprecation")
+    public static int getSensorOrientation(int cameraId) {
+        if (cameraId < 0) return -1;
+        try {
+            android.hardware.Camera.CameraInfo info = new android.hardware.Camera.CameraInfo();
+            android.hardware.Camera.getCameraInfo(cameraId, info);
+            return info.orientation;
+        } catch (Exception e) {
+            return -1;
+        }
+    }
 }
