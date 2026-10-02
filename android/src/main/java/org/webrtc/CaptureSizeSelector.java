@@ -36,33 +36,52 @@ public final class CaptureSizeSelector {
     @Nullable
     public static Size select(@Nullable List<Size> sizes, int width, int height) {
         if (sizes == null || sizes.isEmpty()) return null;
-        if (width <= 0 || height <= 0) {
-            return CameraEnumerationAndroid.getClosestSupportedSize(sizes, width, height);
+        // Formats are listed in sensor space (landscape), so compare the request the same way:
+        // a portrait 1080x1920 request must find 1920x1080 at difference 0, not 1280x720.
+        final int longEdge = Math.max(width, height);
+        final int shortEdge = Math.min(width, height);
+        if (shortEdge <= 0) {
+            return CameraEnumerationAndroid.getClosestSupportedSize(sizes, longEdge, shortEdge);
         }
 
-        final double wanted = aspect(width, height);
-        List<Size> candidates = new ArrayList<>();
-        double bestDeviation = Double.MAX_VALUE;
+        final double wanted = aspect(longEdge, shortEdge);
+        List<Size> candidates = sizesWithinTolerance(sizes, wanted);
+        if (candidates.isEmpty()) candidates = sizesWithNearestAspect(sizes, wanted);
+        if (candidates.isEmpty()) {
+            return CameraEnumerationAndroid.getClosestSupportedSize(sizes, longEdge, shortEdge);
+        }
+        return CameraEnumerationAndroid.getClosestSupportedSize(candidates, longEdge, shortEdge);
+    }
+
+    /** The sizes whose aspect ratio is within {@link #ASPECT_TOLERANCE} of {@code wanted}. */
+    private static List<Size> sizesWithinTolerance(List<Size> sizes, double wanted) {
+        List<Size> result = new ArrayList<>();
         for (Size size : sizes) {
             if (size.width <= 0 || size.height <= 0) continue;
-            double deviation = Math.abs(aspect(size.width, size.height) - wanted) / wanted;
-            if (deviation <= ASPECT_TOLERANCE) {
-                if (bestDeviation > ASPECT_TOLERANCE) candidates.clear();
-                bestDeviation = Math.min(bestDeviation, deviation);
-                candidates.add(size);
-            } else if (candidates.isEmpty() || bestDeviation > ASPECT_TOLERANCE) {
-                // No size with the requested aspect ratio seen yet: keep the nearest ones.
-                if (deviation < bestDeviation - 1e-9) {
-                    candidates.clear();
-                    bestDeviation = deviation;
-                    candidates.add(size);
-                } else if (Math.abs(deviation - bestDeviation) <= 1e-9) {
-                    candidates.add(size);
-                }
-            }
+            if (deviation(size, wanted) <= ASPECT_TOLERANCE) result.add(size);
         }
-        if (candidates.isEmpty()) return CameraEnumerationAndroid.getClosestSupportedSize(sizes, width, height);
-        return CameraEnumerationAndroid.getClosestSupportedSize(candidates, width, height);
+        return result;
+    }
+
+    /** The sizes whose aspect ratio is nearest to {@code wanted}; several when they share the same ratio. */
+    private static List<Size> sizesWithNearestAspect(List<Size> sizes, double wanted) {
+        double best = Double.MAX_VALUE;
+        for (Size size : sizes) {
+            if (size.width <= 0 || size.height <= 0) continue;
+            best = Math.min(best, deviation(size, wanted));
+        }
+        List<Size> result = new ArrayList<>();
+        for (Size size : sizes) {
+            if (size.width <= 0 || size.height <= 0) continue;
+            // Equal ratios divide to the same double, so exact comparison keeps e.g. both 2:1 sizes.
+            if (deviation(size, wanted) == best) result.add(size);
+        }
+        return result;
+    }
+
+    /** Relative difference between the size's aspect ratio and the wanted one. */
+    private static double deviation(Size size, double wanted) {
+        return Math.abs(aspect(size.width, size.height) - wanted) / wanted;
     }
 
     /** The distinct sizes of the given formats, in first-seen order; formats repeat per frame-rate range. */

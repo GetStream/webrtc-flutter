@@ -38,6 +38,20 @@ public class CaptureSizeSelectorTest {
     public void requestOrientationDoesNotMatter() {
         // The SDK may ask in portrait; formats are in sensor space.
         assertEquals(new Size(1920, 1080), CaptureSizeSelector.select(PIXEL_FRONT, 1440, 2560));
+        // Comparing the raw portrait request against landscape sizes would pick 1280x720 here
+        // (|1280-1080| + |720-1920| = 1400 beats |1920-1080| + |1080-1920| = 1680).
+        assertEquals(new Size(1920, 1080), CaptureSizeSelector.select(PIXEL_FRONT, 1080, 1920));
+        assertEquals(new Size(1280, 720), CaptureSizeSelector.select(PIXEL_FRONT, 720, 1280));
+        assertEquals(new Size(1600, 1200), CaptureSizeSelector.select(PIXEL_FRONT, 1080, 1440));
+    }
+
+    @Test
+    public void portraitRequestIsNormalisedInTheFallbacksToo() {
+        List<Size> only43and21 = Arrays.asList(new Size(2560, 1920), new Size(2560, 1280), new Size(640, 480));
+        assertEquals(new Size(2560, 1280), CaptureSizeSelector.select(only43and21, 1440, 2560));
+        List<Size> plain = Arrays.asList(new Size(1920, 1080), new Size(1280, 720));
+        assertEquals(new Size(1920, 1080), CaptureSizeSelector.select(plain, 0, 1920));
+        assertEquals(new Size(1920, 1080), CaptureSizeSelector.select(plain, 1920, 0));
     }
 
     @Test
@@ -45,6 +59,10 @@ public class CaptureSizeSelectorTest {
         List<Size> only43and21 = Arrays.asList(new Size(2560, 1920), new Size(2560, 1280), new Size(640, 480));
         // 2:1 (2.0) is nearer to 16:9 (1.78) than 4:3 (1.33) is.
         assertEquals(new Size(2560, 1280), CaptureSizeSelector.select(only43and21, 2560, 1440));
+        // Every size at the nearest ratio stays a candidate, so the closest-size rule still applies.
+        List<Size> two21 = Arrays.asList(new Size(2560, 1920), new Size(2560, 1280), new Size(640, 320));
+        assertEquals(new Size(640, 320), CaptureSizeSelector.select(two21, 640, 360));
+        assertEquals(new Size(2560, 1280), CaptureSizeSelector.select(two21, 2560, 1440));
     }
 
     @Test

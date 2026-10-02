@@ -67,9 +67,9 @@ import org.webrtc.Camera1Helper;
 import org.webrtc.Camera2Capturer;
 import org.webrtc.Camera2Enumerator;
 import org.webrtc.Camera2Helper;
-import org.webrtc.CaptureSizeSelector;
 import org.webrtc.CameraEnumerator;
 import org.webrtc.CameraVideoCapturer;
+import org.webrtc.CaptureSizeSelector;
 import org.webrtc.MediaConstraints;
 import org.webrtc.MediaStream;
 import org.webrtc.MediaStreamTrack;
@@ -1104,9 +1104,12 @@ public class GetUserMediaImpl {
         // Non-standard: tells callers the size above is already in frame orientation.
         if (sensorOrientation >= 0) settings.putInt("sensorOrientation", sensorOrientation);
         // Non-standard: the capture format the camera opened, in sensor space, so the Dart side can
-        // log the whole size path (requested -> capture format -> frame size) in one place.
-        settings.putInt("captureWidth", info.width);
-        settings.putInt("captureHeight", info.height);
+        // log the whole size path (requested -> capture format -> frame size) in one place. Left
+        // out when no supported sizes were found, since info then still holds the request.
+        if (actualSize != null) {
+            settings.putInt("captureWidth", actualSize.width);
+            settings.putInt("captureHeight", actualSize.height);
+        }
         settings.putInt("frameRate", info.fps);
         if (facingMode != null) settings.putString("facingMode", facingMode);
         trackParams.putMap("settings", settings.toMap());
