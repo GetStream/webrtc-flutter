@@ -18,7 +18,6 @@ package org.webrtc;
 
 import androidx.annotation.Nullable;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -40,17 +39,9 @@ public class Camera1Helper {
         return Camera1Enumerator.getSupportedFormats(cameraId);
     }
 
-    public static Size findClosestCaptureFormat(int cameraId, int width, int height) {
-        List<CameraEnumerationAndroid.CaptureFormat> formats = getSupportedFormats(cameraId);
-
-        List<Size> sizes = new ArrayList<>();
-        if (formats != null) {
-            for (CameraEnumerationAndroid.CaptureFormat format : formats) {
-                sizes.add(new Size(format.width, format.height));
-            }
-        }
-
-        return CameraEnumerationAndroid.getClosestSupportedSize(sizes, width, height);
+    /** The distinct capture sizes of the camera, in sensor space, or an empty list. */
+    public static List<Size> getSupportedSizes(int cameraId) {
+        return CaptureSizeSelector.distinctSizes(getSupportedFormats(cameraId));
     }
 
     /**
