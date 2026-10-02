@@ -402,10 +402,10 @@ public class NativePeerConnectionFactory {
 
     /**
      * Releases the factory, the ADM, and clears the GetUserMediaImpl audio
-     * device module reference. A camera open in flight on
-     * {@link #getUserMediaImpl} creates its video source on this factory, so
-     * then the factory and ADM are freed on the camera thread once that open
-     * has released its camera, instead of here under it.
+     * device module reference. Camera work in flight on
+     * {@link #getUserMediaImpl}, an open or a release, uses a video source on
+     * this factory, so then the factory and ADM are freed on the camera
+     * thread once that work is done, instead of here under it.
      */
     public void dispose() {
         if (disposed) {
@@ -437,7 +437,7 @@ public class NativePeerConnectionFactory {
         if (getUserMediaImpl.freeFactoryAfterCameraOpens(free)) {
             free.run();
         } else {
-            Log.i(TAG, "[dispose] camera open in flight; freeing the factory after it");
+            Log.i(TAG, "[dispose] camera work in flight; freeing the factory after it");
         }
     }
 

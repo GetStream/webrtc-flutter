@@ -1169,8 +1169,11 @@ public class GetUserMediaImpl {
     /**
      * Opens the camera described by {@code constraints}. Runs on
      * {@link #cameraOpenExecutor}: everything here is camera HAL work, and
-     * none of it touches the per-track maps. Returns null when no camera
-     * could be opened.
+     * none of it touches the per-track maps. Returns null only when no
+     * capturer or texture helper could be created. Otherwise it returns once
+     * the camera delivers its first frame, reports an error, or the wait
+     * times out, so a camera that failed to open still comes back and
+     * becomes a track, as it always has.
      */
     @Nullable
     private OpenedCamera openCamera(ConstraintsMap constraints) {
@@ -1301,8 +1304,9 @@ public class GetUserMediaImpl {
 
     /**
      * Registers an opened camera and creates its track. Main thread only: it
-     * writes the capturer, texture helper and video source maps, last, so a
-     * failure leaves no entry behind for the camera the caller then releases.
+     * registers the local track and writes the capturer, texture helper and
+     * video source maps, last, so a failure leaves no entry behind for the
+     * camera the caller then releases.
      */
     private ConstraintsMap attachVideo(OpenedCamera camera, MediaStream mediaStream) {
         final VideoCapturerInfoEx info = camera.info;
@@ -1317,8 +1321,6 @@ public class GetUserMediaImpl {
 
         LocalVideoTrack localVideoTrack = new LocalVideoTrack(track);
         videoSource.setVideoProcessor(localVideoTrack);
-
-        stateProvider.putLocalTrack(track.id(),localVideoTrack);
 
         ConstraintsMap trackParams = new ConstraintsMap();
 
@@ -1347,6 +1349,8 @@ public class GetUserMediaImpl {
         if (facingMode != null) settings.putString("facingMode", facingMode);
         trackParams.putMap("settings", settings.toMap());
 
+        // Registered last: a throw above leaves nothing behind for the camera the caller releases.
+        stateProvider.putLocalTrack(track.id(), localVideoTrack);
         mVideoCapturers.put(trackId, info);
         mSurfaceTextureHelpers.put(trackId, camera.surfaceTextureHelper);
         mVideoSources.put(trackId, videoSource);
