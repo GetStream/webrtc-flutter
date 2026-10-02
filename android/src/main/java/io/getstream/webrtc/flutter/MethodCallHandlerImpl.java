@@ -852,6 +852,13 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
               "factoryId argument is required", result);
           break;
         }
+        // A getUserMedia arriving from here on must not open a camera on a
+        // factory that is going away; one already opening is handled by the
+        // factory's dispose.
+        final NativePeerConnectionFactory disposingNf = factories.get(factoryId);
+        if (disposingNf != null) {
+          disposingNf.getUserMediaImpl.beginDispose();
+        }
         // Peer connections of this factory may still be closing on
         // peerConnectionCloseExecutor. Queueing behind them waits for them, and
         // their main-thread cleanup is posted ahead of this disposal.
