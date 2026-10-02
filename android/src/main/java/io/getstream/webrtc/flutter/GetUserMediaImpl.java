@@ -1301,7 +1301,8 @@ public class GetUserMediaImpl {
 
     /**
      * Registers an opened camera and creates its track. Main thread only: it
-     * writes the capturer, texture helper and video source maps.
+     * writes the capturer, texture helper and video source maps, last, so a
+     * failure leaves no entry behind for the camera the caller then releases.
      */
     private ConstraintsMap attachVideo(OpenedCamera camera, MediaStream mediaStream) {
         final VideoCapturerInfoEx info = camera.info;
@@ -1311,10 +1312,6 @@ public class GetUserMediaImpl {
         final int sensorOrientation = camera.sensorOrientation;
 
         String trackId = stateProvider.getNextTrackUUID();
-        mVideoCapturers.put(trackId, info);
-        mSurfaceTextureHelpers.put(trackId, camera.surfaceTextureHelper);
-        mVideoSources.put(trackId, videoSource);
-
         VideoTrack track = peerConnectionFactory().createVideoTrack(trackId, videoSource);
         mediaStream.addTrack(track);
 
@@ -1349,6 +1346,10 @@ public class GetUserMediaImpl {
         settings.putInt("frameRate", info.fps);
         if (facingMode != null) settings.putString("facingMode", facingMode);
         trackParams.putMap("settings", settings.toMap());
+
+        mVideoCapturers.put(trackId, info);
+        mSurfaceTextureHelpers.put(trackId, camera.surfaceTextureHelper);
+        mVideoSources.put(trackId, videoSource);
 
         return trackParams;
     }
