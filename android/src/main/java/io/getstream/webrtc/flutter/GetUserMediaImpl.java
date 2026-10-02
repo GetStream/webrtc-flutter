@@ -89,6 +89,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Collectors;
 
 import io.flutter.plugin.common.MethodChannel.Result;
@@ -120,7 +123,44 @@ public class GetUserMediaImpl {
     private final Map<String, SurfaceTextureHelper> mSurfaceTextureHelpers = new HashMap<>();
     private final Map<String, VideoSource> mVideoSources = new HashMap<>();
     private final Map<String, AudioSource> mAudioSources = new HashMap<>();
-    
+
+    /**
+     * Opens cameras off the main thread. Creating the capturer and its
+     * SurfaceTextureHelper, initialize, startCapture and the wait for the
+     * camera to open are camera HAL work measured in hundreds of
+     * milliseconds, and since Flutter 3.29 the main thread also runs Dart.
+     * Single-threaded so a camera is released, and the owning factory freed,
+     * behind any open still in flight; see {@link #freeFactoryAfterCameraOpens}.
+     */
+    private final ExecutorService cameraOpenExecutor =
+            Executors.newSingleThreadExecutor(r -> new Thread(r, "CameraOpen"));
+
+    /** Hands opened cameras back to the main thread, which owns the maps above. */
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    /**
+     * Set by {@link #beginDispose} the moment disposal of the owning factory
+     * is requested. New camera opens fail at once instead of queueing behind
+     * the disposal. Main thread only.
+     */
+    private boolean disposing;
+
+    /**
+     * Camera work queued on {@link #cameraOpenExecutor} that has not reported
+     * back to the main thread yet: opens, and releases of cameras that did
+     * not become a track. Each uses the owning factory. Main thread only.
+     */
+    private int pendingCameraWork;
+
+    /**
+     * Frees the owning factory. Set when its dispose found camera work in
+     * flight; run on the camera thread once {@link #pendingCameraWork} drops
+     * to zero, so the main thread never waits for the camera and the factory
+     * is never freed under it. Main thread only.
+     */
+    @Nullable
+    private Runnable deferredFactoryFree;
+
     private final StateProvider stateProvider;
     private final Context applicationContext;
 
@@ -789,50 +829,184 @@ public class GetUserMediaImpl {
      * Implements {@code getUserMedia} with the knowledge that the necessary permissions have already
      * been granted. If the necessary permissions have not been granted yet, they will NOT be
      * requested.
+     *
+     * The audio track is created here, on the main thread. The camera is opened on
+     * {@link #cameraOpenExecutor} and its track is created back on the main thread, which owns
+     * the capturer, texture helper and video source maps and the {@code result}.
      */
     private void getUserMedia(
             ConstraintsMap constraints,
             Result result,
             MediaStream mediaStream,
             List<String> grantedPermissions) {
-        ConstraintsMap[] trackParams = new ConstraintsMap[2];
+        final ConstraintsMap audioParams;
+        if (grantedPermissions.contains(PERMISSION_AUDIO)) {
+            audioParams = getUserAudio(constraints, mediaStream);
+            if (audioParams == null) {
+                failGetUserMedia(mediaStream, result);
+                return;
+            }
+        } else {
+            audioParams = null;
+        }
 
-        // If we fail to create either, destroy the other one and fail.
-        if ((grantedPermissions.contains(PERMISSION_AUDIO)
-                && (trackParams[0] = getUserAudio(constraints, mediaStream)) == null)
-                || (grantedPermissions.contains(PERMISSION_VIDEO)
-                && (trackParams[1] = getUserVideo(constraints, mediaStream)) == null)) {
-            for (MediaStreamTrack track : mediaStream.audioTracks) {
-                if (track != null) {
-                    track.dispose();
-                }
-            }
-            for (MediaStreamTrack track : mediaStream.videoTracks) {
-                if (track != null) {
-                    track.dispose();
-                }
-            }
-            // XXX The following does not follow the getUserMedia() algorithm
-            // specified by
-            // https://www.w3.org/TR/mediacapture-streams/#dom-mediadevices-getusermedia
-            // with respect to distinguishing the various causes of failure.
-            resultError("getUserMedia", "Failed to create new track.", result);
+        if (!grantedPermissions.contains(PERMISSION_VIDEO)) {
+            succeedGetUserMedia(audioParams, null, mediaStream, result);
             return;
         }
 
+        if (disposing) {
+            Log.w(TAG, "getUserMedia(video): factory is being disposed");
+            failGetUserMedia(mediaStream, result);
+            return;
+        }
+
+        pendingCameraWork++;
+        try {
+            cameraOpenExecutor.execute(() -> {
+                OpenedCamera camera = null;
+                Throwable error = null;
+                try {
+                    camera = openCamera(constraints);
+                } catch (Throwable t) {
+                    error = t;
+                }
+                final OpenedCamera openedCamera = camera;
+                final Throwable openError = error;
+                mainHandler.post(() -> onCameraOpened(
+                        openedCamera, openError, audioParams, mediaStream, result));
+            });
+        } catch (RejectedExecutionException e) {
+            pendingCameraWork--;
+            Log.w(TAG, "getUserMedia(video): camera open rejected, factory is disposed");
+            failGetUserMedia(mediaStream, result);
+        }
+    }
+
+    /**
+     * Completes a {@code getUserMedia} whose camera open finished. Main thread
+     * only. A camera that does not become a track is released through
+     * {@link #releaseCamera}, which keeps it counted as pending work, and the
+     * open itself is signed off with {@link #onCameraWorkDone} last.
+     */
+    private void onCameraOpened(
+            @Nullable OpenedCamera camera,
+            @Nullable Throwable openError,
+            @Nullable ConstraintsMap audioParams,
+            MediaStream mediaStream,
+            Result result) {
+        if (deferredFactoryFree != null) {
+            // The factory's dispose is waiting on this open: the camera must
+            // not become a track. The stream's tracks are left alone, the
+            // disposal evicted them already.
+            if (camera != null) {
+                releaseCamera(camera);
+            }
+            onCameraWorkDone();
+            resultError("getUserMedia", "Failed to create new track, factory is disposed.", result);
+            return;
+        }
+
+        if (camera == null) {
+            if (openError != null) {
+                Log.e(TAG, "getUserMedia(video): opening the camera failed", openError);
+            }
+            onCameraWorkDone();
+            failGetUserMedia(mediaStream, result);
+            return;
+        }
+
+        final ConstraintsMap videoParams;
+        try {
+            videoParams = attachVideo(camera, mediaStream);
+        } catch (Throwable t) {
+            Log.e(TAG, "getUserMedia(video): creating the video track failed", t);
+            releaseCamera(camera);
+            onCameraWorkDone();
+            failGetUserMedia(mediaStream, result);
+            return;
+        }
+        onCameraWorkDone();
+        succeedGetUserMedia(audioParams, videoParams, mediaStream, result);
+    }
+
+    /**
+     * Releases a camera that did not become a track, on the camera thread:
+     * closing it blocks until the HAL is done, and it still delivers to a
+     * video source on the owning factory. Counted as pending work until it
+     * has finished, so a factory dispose landing meanwhile defers the free
+     * behind it. Main thread only.
+     */
+    private void releaseCamera(OpenedCamera camera) {
+        pendingCameraWork++;
+        final Runnable release = () -> {
+            try {
+                camera.release();
+            } finally {
+                mainHandler.post(this::onCameraWorkDone);
+            }
+        };
+        try {
+            cameraOpenExecutor.execute(release);
+        } catch (RejectedExecutionException e) {
+            // Not reachable: the executor is only shut down with nothing pending.
+            new Thread(release, "CameraRelease").start();
+        }
+    }
+
+    /**
+     * Signs off one unit of camera work. Main thread only. Once nothing is
+     * pending, a factory free deferred by {@link #freeFactoryAfterCameraOpens}
+     * runs on the camera thread, behind every release queued there, and the
+     * executor shuts down after it.
+     */
+    private void onCameraWorkDone() {
+        pendingCameraWork--;
+        if (pendingCameraWork > 0 || deferredFactoryFree == null) {
+            return;
+        }
+        final Runnable free = deferredFactoryFree;
+        deferredFactoryFree = null;
+        cameraOpenExecutor.execute(() -> {
+            free.run();
+            cameraOpenExecutor.shutdown();
+        });
+    }
+
+    /** Fails {@code getUserMedia}, disposing the tracks already added to the stream. */
+    private void failGetUserMedia(MediaStream mediaStream, Result result) {
+        for (MediaStreamTrack track : mediaStream.audioTracks) {
+            if (track != null) {
+                track.dispose();
+            }
+        }
+        for (MediaStreamTrack track : mediaStream.videoTracks) {
+            if (track != null) {
+                track.dispose();
+            }
+        }
+        // XXX The following does not follow the getUserMedia() algorithm
+        // specified by
+        // https://www.w3.org/TR/mediacapture-streams/#dom-mediadevices-getusermedia
+        // with respect to distinguishing the various causes of failure.
+        resultError("getUserMedia", "Failed to create new track.", result);
+    }
+
+    /** Registers the stream and replies to {@code getUserMedia} with its tracks. */
+    private void succeedGetUserMedia(
+            @Nullable ConstraintsMap audioParams,
+            @Nullable ConstraintsMap videoParams,
+            MediaStream mediaStream,
+            Result result) {
         ConstraintsArray audioTracks = new ConstraintsArray();
         ConstraintsArray videoTracks = new ConstraintsArray();
         ConstraintsMap successResult = new ConstraintsMap();
 
-        for (ConstraintsMap trackParam : trackParams) {
-            if (trackParam == null) {
-                continue;
-            }
-            if (trackParam.getString("kind").equals("audio")) {
-                audioTracks.pushMap(trackParam);
-            } else {
-                videoTracks.pushMap(trackParam);
-            }
+        if (audioParams != null) {
+            audioTracks.pushMap(audioParams);
+        }
+        if (videoParams != null) {
+            videoTracks.pushMap(videoParams);
         }
 
         String streamId = mediaStream.getId();
@@ -845,7 +1019,73 @@ public class GetUserMediaImpl {
         result.success(successResult.toMap());
     }
 
-    private boolean isFacing = true;
+    /**
+     * Stops accepting camera opens. Called on the main thread as soon as
+     * disposal of the owning factory is requested, so a {@code getUserMedia}
+     * arriving before the disposal lands fails at once rather than opening a
+     * camera the disposal then has to wait for.
+     */
+    void beginDispose() {
+        disposing = true;
+    }
+
+    /**
+     * Called by the owning factory's dispose, on the main thread. Camera work
+     * in flight, an open or a release, uses that factory, so the factory must
+     * not be freed under it. With nothing pending the executor is shut down
+     * and this returns true: the caller frees the factory now. Otherwise
+     * {@code free} runs on the camera thread once the pending work is done,
+     * and this returns false.
+     */
+    boolean freeFactoryAfterCameraOpens(Runnable free) {
+        disposing = true;
+        if (pendingCameraWork == 0) {
+            cameraOpenExecutor.shutdown();
+            return true;
+        }
+        deferredFactoryFree = free;
+        return false;
+    }
+
+    /** A camera opened on {@link #cameraOpenExecutor}, waiting to become a track on the main thread. */
+    private static final class OpenedCamera {
+        final VideoCapturerInfoEx info;
+        final SurfaceTextureHelper surfaceTextureHelper;
+        final VideoSource videoSource;
+        final String deviceId;
+        @Nullable
+        final String facingMode;
+        final int sensorOrientation;
+
+        OpenedCamera(
+                VideoCapturerInfoEx info,
+                SurfaceTextureHelper surfaceTextureHelper,
+                VideoSource videoSource,
+                String deviceId,
+                @Nullable String facingMode,
+                int sensorOrientation) {
+            this.info = info;
+            this.surfaceTextureHelper = surfaceTextureHelper;
+            this.videoSource = videoSource;
+            this.deviceId = deviceId;
+            this.facingMode = facingMode;
+            this.sensorOrientation = sensorOrientation;
+        }
+
+        /** Closes the camera and frees the capturer and texture helper, as removeVideoCapturer does. */
+        void release() {
+            try {
+                info.capturer.stopCapture();
+                info.cameraEventsHandler.waitForCameraClosed();
+            } catch (InterruptedException e) {
+                Log.e(TAG, "release() Failed to stop video capturer");
+            } finally {
+                info.capturer.dispose();
+                surfaceTextureHelper.stopListening();
+                surfaceTextureHelper.dispose();
+            }
+        }
+    }
 
     /**
      * @return Returns the integer at the key, or the `ideal` property if it is a map.
@@ -926,7 +1166,14 @@ public class GetUserMediaImpl {
         return trackParams;
     }
 
-    private ConstraintsMap getUserVideo(ConstraintsMap constraints, MediaStream mediaStream) {
+    /**
+     * Opens the camera described by {@code constraints}. Runs on
+     * {@link #cameraOpenExecutor}: everything here is camera HAL work, and
+     * none of it touches the per-track maps. Returns null when no camera
+     * could be opened.
+     */
+    @Nullable
+    private OpenedCamera openCamera(ConstraintsMap constraints) {
         ConstraintsMap videoConstraintsMap = null;
         ConstraintsMap videoConstraintsMandatory = null;
         if (constraints.getType("video") == ObjectType.Map) {
@@ -956,7 +1203,7 @@ public class GetUserMediaImpl {
         }
 
         String facingMode = getFacingMode(videoConstraintsMap);
-        isFacing = facingMode == null || !facingMode.equals("environment");
+        boolean isFacing = facingMode == null || !facingMode.equals("environment");
         String deviceId = getSourceIdConstraint(videoConstraintsMap);
         CameraEventsHandler cameraEventsHandler = new CameraEventsHandler();
         Pair<String, VideoCapturer> result = createVideoCapturer(cameraEnumerator, isFacing, deviceId, cameraEventsHandler);
@@ -983,6 +1230,8 @@ public class GetUserMediaImpl {
 
         if (surfaceTextureHelper == null) {
             Log.e(TAG, "surfaceTextureHelper is null");
+            videoCapturer.dispose();
+            videoSource.dispose();
             return null;
         }
 
@@ -1045,15 +1294,28 @@ public class GetUserMediaImpl {
 
         cameraEventsHandler.waitForCameraOpen();
 
+        Log.d(TAG, "Target: " + targetWidth + "x" + targetHeight + "@" + targetFps + ", Actual: " + info.width + "x" + info.height + "@" + info.fps);
+
+        return new OpenedCamera(info, surfaceTextureHelper, videoSource, deviceId, facingMode, sensorOrientation);
+    }
+
+    /**
+     * Registers an opened camera and creates its track. Main thread only: it
+     * writes the capturer, texture helper and video source maps.
+     */
+    private ConstraintsMap attachVideo(OpenedCamera camera, MediaStream mediaStream) {
+        final VideoCapturerInfoEx info = camera.info;
+        final VideoSource videoSource = camera.videoSource;
+        final String deviceId = camera.deviceId;
+        final String facingMode = camera.facingMode;
+        final int sensorOrientation = camera.sensorOrientation;
 
         String trackId = stateProvider.getNextTrackUUID();
         mVideoCapturers.put(trackId, info);
-        mSurfaceTextureHelpers.put(trackId, surfaceTextureHelper);
+        mSurfaceTextureHelpers.put(trackId, camera.surfaceTextureHelper);
         mVideoSources.put(trackId, videoSource);
 
-        Log.d(TAG, "Target: " + targetWidth + "x" + targetHeight + "@" + targetFps + ", Actual: " + info.width + "x" + info.height + "@" + info.fps);
-
-        VideoTrack track = pcFactory.createVideoTrack(trackId, videoSource);
+        VideoTrack track = peerConnectionFactory().createVideoTrack(trackId, videoSource);
         mediaStream.addTrack(track);
 
         LocalVideoTrack localVideoTrack = new LocalVideoTrack(track);
