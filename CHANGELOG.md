@@ -3,6 +3,7 @@
 
 Upcoming
 
+* [Android] fix: the camera capture format is now chosen with the requested aspect ratio first. The capturer used libwebrtc's closest size by summed edge difference, which prefers a camera's 2:1 format over its 16:9 ones for a 2560x1440 request; Pixel 6a and Pixel 8 opened 2560x1280 and published a 1280x2560 portrait frame. They now open 1920x1080. An exact supported size still wins, cameras without odd formats behave as before, and when no size has the requested aspect ratio the nearest aspect ratio is used. Every capture start logs the request, the camera's supported sizes and the opened format at info level, and the track settings carry the opened format as `captureWidth`/`captureHeight` beside the frame-oriented `width`/`height`.
 * [Android/iOS/macOS] fix: `peerConnectionClose` and `peerConnectionDispose` now close the peer connection off the main thread, which froze the app for a few hundred milliseconds when leaving a call.
 * [iOS/macOS] fix: detaching the plugin now clears the event sink of every data channel; the loop iterated the data channel dictionary's keys, so the sinks were never cleared.
 * [iOS] fix: `setAppleAudioConfiguration`, `ensureAudioSession`, `enableSpeakerphone` and `enableSpeakerphoneButPreferBluetooth` now reconfigure the `AVAudioSession` on a serial background queue and reply once it is done, instead of on the main thread. Since Flutter 3.29 the main thread also runs Dart, so a slow category or route change froze the app while it ran.

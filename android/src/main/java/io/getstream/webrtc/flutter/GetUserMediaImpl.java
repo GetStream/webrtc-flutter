@@ -67,6 +67,7 @@ import org.webrtc.Camera1Helper;
 import org.webrtc.Camera2Capturer;
 import org.webrtc.Camera2Enumerator;
 import org.webrtc.Camera2Helper;
+import org.webrtc.CaptureSizeSelector;
 import org.webrtc.CameraEnumerator;
 import org.webrtc.CameraVideoCapturer;
 import org.webrtc.MediaConstraints;
@@ -1019,29 +1020,47 @@ public class GetUserMediaImpl {
         info.cameraName = deviceId;
         info.isFrontFacing = cameraEnumerator.isFrontFacing(deviceId);
 
-        // Find actual capture format.
+        // Choose the capture format ourselves, keeping the requested aspect ratio, and ask the
+        // capturer for exactly that size. Left to itself the capturer takes libwebrtc's closest
+        // size by summed edge difference, which prefers a camera's 2:1 format over its 16:9 ones
+        // for a 2560x1440 request (Pixel 6a and Pixel 8 opened 2560x1280 that way).
+        List<Size> supportedSizes = null;
         Size actualSize = null;
         int sensorOrientation = -1;
         if (videoCapturer instanceof Camera1Capturer) {
             int cameraId = Camera1Helper.getCameraId(deviceId);
-            actualSize = Camera1Helper.findClosestCaptureFormat(cameraId, targetWidth, targetHeight);
+            supportedSizes = Camera1Helper.getSupportedSizes(cameraId);
             sensorOrientation = Camera1Helper.getSensorOrientation(cameraId);
         } else if (videoCapturer instanceof Camera2Capturer) {
             CameraManager cameraManager = (CameraManager) applicationContext.getSystemService(Context.CAMERA_SERVICE);
-            actualSize = Camera2Helper.findClosestCaptureFormat(cameraManager, deviceId, targetWidth, targetHeight);
+            supportedSizes = Camera2Helper.getSupportedSizes(cameraManager, deviceId);
             sensorOrientation = Camera2Helper.getSensorOrientation(cameraManager, deviceId);
         }
+        actualSize = CaptureSizeSelector.select(supportedSizes, targetWidth, targetHeight);
         if (sensorOrientation < 0) {
             Log.w(TAG, "Sensor orientation unavailable for camera " + deviceId + "; reporting the capture size unrotated");
         }
 
+        int captureWidth = targetWidth;
+        int captureHeight = targetHeight;
         if (actualSize != null) {
+            captureWidth = actualSize.width;
+            captureHeight = actualSize.height;
             info.width = actualSize.width;
             info.height = actualSize.height;
         }
 
+        // One line per capture start with the whole size decision, at info so a profile build's
+        // logcat shows it: the request, every format the camera offers, and what was opened.
+        Log.i(TAG, "Camera " + deviceId + " capture: requested " + targetWidth + "x" + targetHeight + "@" + targetFps
+                + ", supported [" + CaptureSizeSelector.describe(supportedSizes) + "]"
+                + ", opening " + captureWidth + "x" + captureHeight
+                + " (sensor orientation " + sensorOrientation + ")");
+
         info.cameraEventsHandler = cameraEventsHandler;
-        videoCapturer.startCapture(targetWidth, targetHeight, targetFps);
+        // The capturer applies libwebrtc's closest-size rule to this request; an exact supported
+        // size is found at difference 0, so the camera opens the format chosen above.
+        videoCapturer.startCapture(captureWidth, captureHeight, targetFps);
 
         cameraEventsHandler.waitForCameraOpen();
 
@@ -1084,6 +1103,10 @@ public class GetUserMediaImpl {
         }
         // Non-standard: tells callers the size above is already in frame orientation.
         if (sensorOrientation >= 0) settings.putInt("sensorOrientation", sensorOrientation);
+        // Non-standard: the capture format the camera opened, in sensor space, so the Dart side can
+        // log the whole size path (requested -> capture format -> frame size) in one place.
+        settings.putInt("captureWidth", info.width);
+        settings.putInt("captureHeight", info.height);
         settings.putInt("frameRate", info.fps);
         if (facingMode != null) settings.putString("facingMode", facingMode);
         trackParams.putMap("settings", settings.toMap());

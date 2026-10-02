@@ -40,6 +40,11 @@ public class Camera1Helper {
         return Camera1Enumerator.getSupportedFormats(cameraId);
     }
 
+    /** The distinct capture sizes of the camera, in sensor space, or an empty list. */
+    public static List<Size> getSupportedSizes(int cameraId) {
+        return CaptureSizeSelector.distinctSizes(getSupportedFormats(cameraId));
+    }
+
     public static Size findClosestCaptureFormat(int cameraId, int width, int height) {
         List<CameraEnumerationAndroid.CaptureFormat> formats = getSupportedFormats(cameraId);
 
