@@ -1057,6 +1057,9 @@ public class GetUserMediaImpl {
         @Nullable
         final String facingMode;
         final int sensorOrientation;
+        /** The capture format the camera opened, in sensor space; null when no supported sizes were found. */
+        @Nullable
+        final Size captureSize;
 
         OpenedCamera(
                 VideoCapturerInfoEx info,
@@ -1064,13 +1067,15 @@ public class GetUserMediaImpl {
                 VideoSource videoSource,
                 String deviceId,
                 @Nullable String facingMode,
-                int sensorOrientation) {
+                int sensorOrientation,
+                @Nullable Size captureSize) {
             this.info = info;
             this.surfaceTextureHelper = surfaceTextureHelper;
             this.videoSource = videoSource;
             this.deviceId = deviceId;
             this.facingMode = facingMode;
             this.sensorOrientation = sensorOrientation;
+            this.captureSize = captureSize;
         }
 
         /** Closes the camera and frees the capturer and texture helper, as removeVideoCapturer does. */
@@ -1318,7 +1323,7 @@ public class GetUserMediaImpl {
 
         Log.d(TAG, "Target: " + targetWidth + "x" + targetHeight + "@" + targetFps + ", Actual: " + info.width + "x" + info.height + "@" + info.fps);
 
-        return new OpenedCamera(info, surfaceTextureHelper, videoSource, deviceId, facingMode, sensorOrientation);
+        return new OpenedCamera(info, surfaceTextureHelper, videoSource, deviceId, facingMode, sensorOrientation, actualSize);
     }
 
     /**
@@ -1367,9 +1372,10 @@ public class GetUserMediaImpl {
         // Non-standard: the capture format the camera opened, in sensor space, so the Dart side can
         // log the whole size path (requested -> capture format -> frame size) in one place. Left
         // out when no supported sizes were found, since info then still holds the request.
-        if (actualSize != null) {
-            settings.putInt("captureWidth", actualSize.width);
-            settings.putInt("captureHeight", actualSize.height);
+        final Size captureSize = camera.captureSize;
+        if (captureSize != null) {
+            settings.putInt("captureWidth", captureSize.width);
+            settings.putInt("captureHeight", captureSize.height);
         }
         settings.putInt("frameRate", info.fps);
         if (facingMode != null) settings.putString("facingMode", facingMode);
