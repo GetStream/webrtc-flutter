@@ -1767,9 +1767,11 @@ static FlutterWebRTCPlugin* sharedSingleton;
     [self getDesktopSources:argsMap result:result];
   } else if ([@"isSystemContentPickerSupported" isEqualToString:call.method]) {
     BOOL supported = NO;
+#if TARGET_OS_OSX
     if (@available(macOS 14.0, *)) {
       supported = YES;
     }
+#endif
     result(@{@"result" : @(supported)});
   } else if ([@"updateDesktopSources" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;

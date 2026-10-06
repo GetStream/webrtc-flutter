@@ -7,7 +7,9 @@
 #import "include/stream_webrtc_flutter/Broadcast/FlutterBroadcastScreenCapturer.h"
 #import "include/stream_webrtc_flutter/FlutterRPScreenRecorder.h"
 #endif
+#if TARGET_OS_OSX
 #import "include/stream_webrtc_flutter/FlutterSCStreamCapturer.h"
+#endif
 #import "include/stream_webrtc_flutter/LocalVideoTrack.h"
 #import "include/stream_webrtc_flutter/NativePeerConnectionFactory.h"
 #import "include/stream_webrtc_flutter/VideoProcessingAdapter.h"
