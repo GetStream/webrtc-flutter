@@ -16,11 +16,11 @@
 
 package org.webrtc;
 
+import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 
 import androidx.annotation.Nullable;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -36,16 +36,23 @@ public class Camera2Helper {
         return Camera2Enumerator.getSupportedFormats(cameraManager, cameraId);
     }
 
-    public static Size findClosestCaptureFormat(CameraManager cameraManager, @Nullable String cameraId, int width, int height) {
-        List<CameraEnumerationAndroid.CaptureFormat> formats = getSupportedFormats(cameraManager, cameraId);
+    /** The distinct capture sizes of the camera, in sensor space, or an empty list. */
+    public static List<Size> getSupportedSizes(CameraManager cameraManager, @Nullable String cameraId) {
+        return CaptureSizeSelector.distinctSizes(getSupportedFormats(cameraManager, cameraId));
+    }
 
-        List<Size> sizes = new ArrayList<>();
-        if (formats != null) {
-            for (CameraEnumerationAndroid.CaptureFormat format : formats) {
-                sizes.add(new Size(format.width, format.height));
-            }
+    /**
+     * Returns the camera's sensor orientation in degrees (0/90/180/270), or -1 when unknown.
+     */
+    public static int getSensorOrientation(CameraManager cameraManager, @Nullable String cameraId) {
+        if (cameraId == null) return -1;
+        try {
+            Integer orientation = cameraManager
+                    .getCameraCharacteristics(cameraId)
+                    .get(CameraCharacteristics.SENSOR_ORIENTATION);
+            return orientation == null ? -1 : orientation;
+        } catch (Exception e) {
+            return -1;
         }
-
-        return CameraEnumerationAndroid.getClosestSupportedSize(sizes, width, height);
     }
 }

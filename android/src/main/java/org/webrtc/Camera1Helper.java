@@ -18,7 +18,6 @@ package org.webrtc;
 
 import androidx.annotation.Nullable;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -40,16 +39,23 @@ public class Camera1Helper {
         return Camera1Enumerator.getSupportedFormats(cameraId);
     }
 
-    public static Size findClosestCaptureFormat(int cameraId, int width, int height) {
-        List<CameraEnumerationAndroid.CaptureFormat> formats = getSupportedFormats(cameraId);
+    /** The distinct capture sizes of the camera, in sensor space, or an empty list. */
+    public static List<Size> getSupportedSizes(int cameraId) {
+        return CaptureSizeSelector.distinctSizes(getSupportedFormats(cameraId));
+    }
 
-        List<Size> sizes = new ArrayList<>();
-        if (formats != null) {
-            for (CameraEnumerationAndroid.CaptureFormat format : formats) {
-                sizes.add(new Size(format.width, format.height));
-            }
+    /**
+     * Returns the camera's sensor orientation in degrees (0/90/180/270), or -1 when unknown.
+     */
+    @SuppressWarnings("deprecation")
+    public static int getSensorOrientation(int cameraId) {
+        if (cameraId < 0) return -1;
+        try {
+            android.hardware.Camera.CameraInfo info = new android.hardware.Camera.CameraInfo();
+            android.hardware.Camera.getCameraInfo(cameraId, info);
+            return info.orientation;
+        } catch (Exception e) {
+            return -1;
         }
-
-        return CameraEnumerationAndroid.getClosestSupportedSize(sizes, width, height);
     }
 }

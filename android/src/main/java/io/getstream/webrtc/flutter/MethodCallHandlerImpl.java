@@ -89,6 +89,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.RejectedExecutionException;
 
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.EventChannel;
@@ -140,7 +142,39 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   }
 
   ExecutorService executor = Executors.newSingleThreadExecutor();
+
+  /**
+   * Runs the camera and microphone part of {@link #getSources}, which is slow
+   * enough (camera HAL queries) to stall the UI when run on the main thread.
+   */
+  private final ExecutorService deviceEnumerationExecutor =
+      Executors.newSingleThreadExecutor(r -> new Thread(r, "DeviceEnumeration"));
+
+  /**
+   * Camera entries of {@link #getSources}, reused while the number of cameras
+   * stays the same. Only touched on {@link #deviceEnumerationExecutor}.
+   */
+  @Nullable
+  private List<ConstraintsMap> cachedCameraSources;
   Handler mainHandler = new Handler(Looper.getMainLooper());
+
+  /**
+   * Closes peer connections off the main thread. Closing is a synchronous call
+   * into WebRTC's signaling thread that waits for the whole teardown, hundreds
+   * of milliseconds with media running, and since Flutter 3.29 the main thread
+   * also runs Dart. Single-threaded so factory disposal can wait for pending
+   * closes by queueing behind them.
+   */
+  private final ExecutorService peerConnectionCloseExecutor =
+      Executors.newSingleThreadExecutor(r -> new Thread(r, "PeerConnectionClose"));
+
+  /**
+   * Peer connections being disposed: closing on peerConnectionCloseExecutor,
+   * then freed on the main thread. They are already out of
+   * mPeerConnectionObservers, so audio shutdown and engine detach find them
+   * here. Main thread only.
+   */
+  private final Map<String, PeerConnectionObserver> disposingPeerConnections = new HashMap<>();
 
   public static LogSink logSink = new LogSink();
 
@@ -165,6 +199,39 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
    */
   void dispose() {
     encryptionManager.disposeAll();
+    deviceEnumerationExecutor.shutdown();
+
+    // Peer connections closed or disposed from Dart may still be closing on
+    // peerConnectionCloseExecutor. Wait for them and free them here, or the
+    // factories below are freed under them. Their pending main-thread posts
+    // then find nothing to do.
+    peerConnectionCloseExecutor.shutdown();
+    String notClosed = null;
+    try {
+      if (!peerConnectionCloseExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+        notClosed = "timed out";
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      notClosed = "interrupted";
+    }
+    // A connection still inside close() uses its factory's native state, so
+    // freeing either is a use-after-free. When the wait fails, leak the peer
+    // connections and the factories instead.
+    final boolean closed = notClosed == null;
+    if (closed) {
+      for (final PeerConnectionObserver pco : disposingPeerConnections.values()) {
+        try {
+          pco.dispose();
+        } catch (Throwable t) {
+          Log.w(TAG, "dispose: peer connection dispose failed: " + t);
+        }
+      }
+    } else {
+      Log.w(TAG, "dispose: " + notClosed + " waiting for peer connections to close;"
+          + " leaking them and their factories");
+    }
+    disposingPeerConnections.clear();
 
     if (AudioSwitchManager.instance != null) {
       AudioSwitchManager.instance.setAudioFocusChangeListener(null);
@@ -175,8 +242,10 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     }
 
     try {
-      for (final PeerConnectionObserver connection : mPeerConnectionObservers.values()) {
-        peerConnectionDispose(connection);
+      if (closed) {
+        for (final PeerConnectionObserver connection : mPeerConnectionObservers.values()) {
+          peerConnectionDispose(connection);
+        }
       }
       mPeerConnectionObservers.clear();
 
@@ -202,11 +271,13 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       Log.e(TAG, "dispose: error disposing resources", e);
     }
 
-    for (NativePeerConnectionFactory nf : factories.values()) {
-      try {
-        nf.dispose();
-      } catch (Throwable t) {
-        Log.w(TAG, "[dispose] native factory dispose failed: " + t);
+    if (closed) {
+      for (NativePeerConnectionFactory nf : factories.values()) {
+        try {
+          nf.dispose();
+        } catch (Throwable t) {
+          Log.w(TAG, "[dispose] native factory dispose failed: " + t);
+        }
       }
     }
 
@@ -781,8 +852,28 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
               "factoryId argument is required", result);
           break;
         }
-        disposePeerConnectionFactoryHandler(factoryId);
-        result.success(null);
+        // A getUserMedia arriving from here on must not open a camera on a
+        // factory that is going away; one already opening is handled by the
+        // factory's dispose.
+        final NativePeerConnectionFactory disposingNf = factories.get(factoryId);
+        if (disposingNf != null) {
+          disposingNf.getUserMediaImpl.beginDispose();
+        }
+        // Peer connections of this factory may still be closing on
+        // peerConnectionCloseExecutor. Queueing behind them waits for them, and
+        // their main-thread cleanup is posted ahead of this disposal.
+        // Posted runnables run outside MethodChannel's try/catch, so reply
+        // with an error instead of crashing and leaving Dart waiting.
+        peerConnectionCloseExecutor.execute(() -> mainHandler.post(() -> {
+          try {
+            disposePeerConnectionFactoryHandler(factoryId);
+          } catch (Throwable t) {
+            Log.e(TAG, "disposePeerConnectionFactory failed", t);
+            resultError("disposePeerConnectionFactory", t.toString(), result);
+            return;
+          }
+          result.success(null);
+        }));
         break;
       }
       case "getUserMedia": {
@@ -1015,14 +1106,12 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       }
       case "peerConnectionClose": {
         String peerConnectionId = call.argument("peerConnectionId");
-        peerConnectionClose(peerConnectionId);
-        result.success(null);
+        peerConnectionCloseAsync(peerConnectionId, result);
         break;
       }
       case "peerConnectionDispose": {
         String peerConnectionId = call.argument("peerConnectionId");
-        peerConnectionDispose(peerConnectionId);
-        result.success(null);
+        peerConnectionDisposeAsync(peerConnectionId, result);
         break;
       }
       case "createVideoRenderer": {
@@ -2240,15 +2329,60 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
   }
 
   public void getSources(Result result) {
-    ConstraintsArray array = new ConstraintsArray();
-    String[] names = new String[Camera.getNumberOfCameras()];
+    final Result safeResult = new AnyThreadResult(result);
 
-    for (int i = 0; i < Camera.getNumberOfCameras(); ++i) {
+    // AudioSwitch is driven from the main thread, so read its devices here.
+    final List<ConstraintsMap> audioOutputSources = getAudioOutputSources();
+
+    try {
+      deviceEnumerationExecutor.execute(() -> {
+        try {
+          ConstraintsArray array = new ConstraintsArray();
+          for (ConstraintsMap source : getCameraSources()) {
+            array.pushMap(source);
+          }
+          for (ConstraintsMap source : getAudioInputSources()) {
+            array.pushMap(source);
+          }
+          for (ConstraintsMap source : audioOutputSources) {
+            array.pushMap(source);
+          }
+
+          ConstraintsMap map = new ConstraintsMap();
+          map.putArray("sources", array.toArrayList());
+          safeResult.success(map.toMap());
+        } catch (Throwable t) {
+          resultError("getSources", "Failed to enumerate devices: " + t, safeResult);
+        }
+      });
+    } catch (RejectedExecutionException e) {
+      resultError("getSources", "Device enumeration is shut down", safeResult);
+    }
+  }
+
+  private List<ConstraintsMap> getCameraSources() {
+    final int cameraCount = Camera.getNumberOfCameras();
+    if (cachedCameraSources != null && cachedCameraSources.size() == cameraCount) {
+      return cachedCameraSources;
+    }
+
+    List<ConstraintsMap> sources = new ArrayList<>();
+    for (int i = 0; i < cameraCount; ++i) {
       ConstraintsMap info = getCameraInfo(i);
       if (info != null) {
-        array.pushMap(info);
+        sources.add(info);
       }
     }
+
+    // Keep failed lookups out of the cache so they are retried next time.
+    if (sources.size() == cameraCount) {
+      cachedCameraSources = sources;
+    }
+    return sources;
+  }
+
+  private List<ConstraintsMap> getAudioInputSources() {
+    List<ConstraintsMap> sources = new ArrayList<>();
 
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
       ConstraintsMap audio = new ConstraintsMap();
@@ -2256,40 +2390,40 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       audio.putString("deviceId", "audio-1");
       audio.putString("kind", "audioinput");
       audio.putString("groupId", "microphone");
-      array.pushMap(audio);
-    } else {
-      android.media.AudioManager audioManager = ((android.media.AudioManager) context
-              .getSystemService(Context.AUDIO_SERVICE));
-      final AudioDeviceInfo[] devices = audioManager.getDevices(android.media.AudioManager.GET_DEVICES_INPUTS);
-      for (int i = 0; i < devices.length; i++) {
-        AudioDeviceInfo device = devices[i];
-        if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_MIC || device.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                device.getType() == AudioDeviceInfo.TYPE_WIRED_HEADSET) {
-          ConstraintsMap audio = new ConstraintsMap();
-          audio.putString("label", AudioUtils.getAudioDeviceLabel(device));
-          audio.putString("deviceId", AudioUtils.getAudioDeviceId(device));
-          audio.putString("groupId", AudioUtils.getAudioGroupId(device));
-          audio.putString("kind", "audioinput");
-          array.pushMap(audio);
-        }
-      }
+      sources.add(audio);
+      return sources;
     }
 
-    List<? extends AudioDevice> audioOutputs = AudioSwitchManager.instance.availableAudioDevices();
+    android.media.AudioManager audioManager = ((android.media.AudioManager) context
+            .getSystemService(Context.AUDIO_SERVICE));
+    final AudioDeviceInfo[] devices = audioManager.getDevices(android.media.AudioManager.GET_DEVICES_INPUTS);
+    for (AudioDeviceInfo device : devices) {
+      if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_MIC || device.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+              device.getType() == AudioDeviceInfo.TYPE_WIRED_HEADSET) {
+        ConstraintsMap audio = new ConstraintsMap();
+        audio.putString("label", AudioUtils.getAudioDeviceLabel(device));
+        audio.putString("deviceId", AudioUtils.getAudioDeviceId(device));
+        audio.putString("groupId", AudioUtils.getAudioGroupId(device));
+        audio.putString("kind", "audioinput");
+        sources.add(audio);
+      }
+    }
+    return sources;
+  }
 
+  private List<ConstraintsMap> getAudioOutputSources() {
+    List<ConstraintsMap> sources = new ArrayList<>();
+
+    List<? extends AudioDevice> audioOutputs = AudioSwitchManager.instance.availableAudioDevices();
     for (AudioDevice audioOutput : audioOutputs) {
       ConstraintsMap audioOutputMap = new ConstraintsMap();
       audioOutputMap.putString("label", audioOutput.getName());
       audioOutputMap.putString("deviceId", AudioDeviceKind.fromAudioDevice(audioOutput).typeName);
       audioOutputMap.putString("groupId", AudioDeviceKind.fromAudioDevice(audioOutput).typeName);
       audioOutputMap.putString("kind", "audiooutput");
-      array.pushMap(audioOutputMap);
+      sources.add(audioOutputMap);
     }
-
-    ConstraintsMap map = new ConstraintsMap();
-    map.putArray("sources", array.toArrayList());
-
-    result.success(map.toMap());
+    return sources;
   }
 
   private void createLocalMediaStream(@Nullable String factoryId, Result result) {
@@ -2703,12 +2837,118 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     }
   }
 
-  public void peerConnectionClose(final String id) {
-    PeerConnectionObserver pco = mPeerConnectionObservers.get(id);
+  /**
+   * Closes the peer connection off the main thread and replies once it is
+   * closed. The connection stays registered: only a dispose unregisters it.
+   */
+  private void peerConnectionCloseAsync(final String id, final Result result) {
+    final PeerConnectionObserver pco = mPeerConnectionObservers.get(id);
     if (pco == null || pco.getPeerConnection() == null) {
-      Log.d(TAG, "peerConnectionClose() peerConnection is null");
+      if (!replyAfterPendingClose(id, result)) {
+        Log.d(TAG, "peerConnectionClose() peerConnection is null");
+        result.success(null);
+      }
+      return;
+    }
+    peerConnectionCloseExecutor.execute(() -> {
+      final Throwable closeError = closeNativeQuietly(pco, "peerConnectionClose");
+      mainHandler.post(() -> {
+        Throwable error = closeError;
+        try {
+          pco.onClosed();
+        } catch (Throwable t) {
+          Log.w(TAG, "peerConnectionClose() cleanup failed", t);
+          if (error == null) {
+            error = t;
+          }
+        }
+        replyClosed("peerConnectionClose", error, result);
+      });
+    });
+  }
+
+  /**
+   * Closes the peer connection off the main thread, then frees it on the main
+   * thread (see {@link PeerConnectionObserver#dispose()}) and replies. It is
+   * unregistered right away, so no call made meanwhile can reach it; a repeat
+   * close or dispose waits for this one instead.
+   */
+  private void peerConnectionDisposeAsync(final String id, final Result result) {
+    final PeerConnectionObserver pco = mPeerConnectionObservers.get(id);
+    if (pco == null || pco.getPeerConnection() == null) {
+      if (!replyAfterPendingClose(id, result)) {
+        // Nothing native to tear down: same bookkeeping as the synchronous path.
+        peerConnectionDispose(id);
+        result.success(null);
+      }
+      return;
+    }
+    mPeerConnectionObservers.remove(id);
+    disposingPeerConnections.put(id, pco);
+    peerConnectionCloseExecutor.execute(() -> {
+      final Throwable closeError = closeNativeQuietly(pco, "peerConnectionDispose");
+      mainHandler.post(() -> {
+        Throwable error = closeError;
+        // Already freed if the engine detached meanwhile.
+        if (disposingPeerConnections.remove(id) != null) {
+          // Dispose even after a failed close: it is the only chance to free it.
+          try {
+            pco.dispose();
+          } catch (Throwable t) {
+            Log.w(TAG, "peerConnectionDispose() dispose failed", t);
+            if (error == null) {
+              error = t;
+            }
+          }
+          try {
+            onPeerConnectionDisposed(id);
+          } catch (Throwable t) {
+            Log.w(TAG, "peerConnectionDispose() cleanup failed", t);
+            if (error == null) {
+              error = t;
+            }
+          }
+        }
+        replyClosed("peerConnectionDispose", error, result);
+      });
+    });
+  }
+
+  /**
+   * A close or dispose for a connection that a dispose is still closing on
+   * peerConnectionCloseExecutor (see {@link #disposingPeerConnections}).
+   * Replies once that close is done, so the reply still means closed; the
+   * running dispose does the bookkeeping. Returns false if none is running.
+   */
+  private boolean replyAfterPendingClose(final String id, final Result result) {
+    if (!disposingPeerConnections.containsKey(id)) {
+      return false;
+    }
+    peerConnectionCloseExecutor.execute(() -> mainHandler.post(() -> result.success(null)));
+    return true;
+  }
+
+  /** Runs {@link PeerConnectionObserver#closeNative()}, returning what it threw. */
+  private static Throwable closeNativeQuietly(PeerConnectionObserver pco, String method) {
+    try {
+      pco.closeNative();
+      return null;
+    } catch (Throwable t) {
+      Log.w(TAG, method + "() close failed", t);
+      return t;
+    }
+  }
+
+  /**
+   * Replies to a close or dispose from a posted runnable. Those run outside
+   * MethodChannel's try/catch, so a failure is reported as an error reply
+   * instead of crashing the looper and leaving Dart waiting.
+   */
+  private static void replyClosed(String method, Throwable error, Result result) {
+    if (error == null) {
+      result.success(null);
     } else {
-      pco.close();
+      resultError(method, error.toString(), result);
     }
   }
 
@@ -2722,7 +2962,11 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     } else {
       Log.d(TAG, "peerConnectionDispose() peerConnectionObserver is null");
     }
+    onPeerConnectionDisposed(id);
+  }
 
+  /** Factory bookkeeping and audio-routing shutdown after a dispose. */
+  private void onPeerConnectionDisposed(final String id) {
     // Drop the PC from per-call factory bookkeeping.
     final String factoryId = pcFactoryId.remove(id);
     if (factoryId != null) {
@@ -2732,7 +2976,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       }
     }
 
-    if (mPeerConnectionObservers.size() == 0) {
+    if (mPeerConnectionObservers.isEmpty() && disposingPeerConnections.isEmpty()) {
       AudioSwitchManager.instance.stop();
     }
   }
