@@ -3,6 +3,7 @@
 
 Upcoming
 
+* [Android] Added the Stream Maven repository (`https://stream-io-repo.com`) to the Android build repositories.
 * [Android] fix: the camera capture format now keeps the requested aspect ratio, so Pixel 6a/8 no longer open 2560x1280 for a 2560x1440 request.
 * [Android] fix: `getUserMedia` now opens the camera on a dedicated thread instead of the main thread. Creating the capturer, starting capture and waiting for the camera to open is camera HAL work that took most of a second on a Pixel 8, and since Flutter 3.29 the main thread also runs Dart, so the whole app froze while the camera started.
 * [Android/iOS/macOS] fix: `peerConnectionClose` and `peerConnectionDispose` now close the peer connection off the main thread, which froze the app for a few hundred milliseconds when leaving a call.
