@@ -22,6 +22,7 @@ import com.twilio.audioswitch.AudioDevice;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.webrtc.ExternalAudioProcessingFactory;
 import org.webrtc.MediaStreamTrack;
@@ -53,10 +54,14 @@ public class FlutterWebRTCPlugin implements FlutterPlugin, ActivityAware, EventC
     @Nullable
     private List<AudioDevice> lastReportedAudioDevices;
 
-    // eventSink is static because FlutterWebRTCPlugin can be instantiated multiple times
-    // but the onListen(Object, EventChannel.EventSink) event only fires once for the first
-    // FlutterWebRTCPlugin instance, so for the next instances eventSink will be == null
-    public static EventChannel.EventSink eventSink;
+    // The sinks of every engine listening on FlutterWebRTC.Event. An app can run more
+    // than one engine (e.g. a background engine for push messages), each with its own
+    // plugin instance, and every one of them receives every event.
+    private static final List<EventChannel.EventSink> eventSinks = new CopyOnWriteArrayList<>();
+
+    /** This engine's sink, while its Dart side listens. */
+    @Nullable
+    private EventChannel.EventSink eventSink;
 
     public FlutterWebRTCPlugin() {
         if (sharedSingleton == null) {
@@ -177,6 +182,7 @@ public class FlutterWebRTCPlugin implements FlutterPlugin, ActivityAware, EventC
         methodCallHandler = null;
         methodChannel.setMethodCallHandler(null);
         eventChannel.setStreamHandler(null);
+        removeEventSink();
         if (AudioSwitchManager.instance != null) {
             Log.d(TAG, "Stopping the audio manager...");
             AudioSwitchManager.instance.stop();
@@ -185,16 +191,27 @@ public class FlutterWebRTCPlugin implements FlutterPlugin, ActivityAware, EventC
 
     @Override
     public void onListen(Object arguments, EventChannel.EventSink events) {
+        removeEventSink();
         eventSink = new AnyThreadSink(events);
-    }
-    @Override
-    public void onCancel(Object arguments) {
-        eventSink = null;
+        eventSinks.add(eventSink);
     }
 
+    @Override
+    public void onCancel(Object arguments) {
+        removeEventSink();
+    }
+
+    private void removeEventSink() {
+        if (eventSink != null) {
+            eventSinks.remove(eventSink);
+            eventSink = null;
+        }
+    }
+
+    /** Sends the event to every engine listening on FlutterWebRTC.Event. */
     public void sendEvent(Object event) {
-        if(eventSink != null) {
-            eventSink.success(event);
+        for (EventChannel.EventSink sink : eventSinks) {
+            sink.success(event);
         }
     }
 
