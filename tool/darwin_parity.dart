@@ -55,7 +55,9 @@ const iosOnly = <String>{
 
 /// Files that exist only in the macOS tree, as paths relative to [macosTree].
 const macosOnly = <String>{
+  'FlutterSCStreamCapturer.m',
   'StreamMacAudioDevices.m',
+  'include/stream_webrtc_flutter/FlutterSCStreamCapturer.h',
   'include/stream_webrtc_flutter/StreamMacAudioDevices.h',
 };
 
