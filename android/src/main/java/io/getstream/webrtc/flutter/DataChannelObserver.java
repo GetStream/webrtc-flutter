@@ -18,7 +18,7 @@ class DataChannelObserver implements DataChannel.Observer, EventChannel.StreamHa
     private final DataChannel dataChannel;
 
     private final EventChannel eventChannel;
-    private EventChannel.EventSink eventSink;
+    private volatile EventChannel.EventSink eventSink;
     private final ArrayList eventQueue = new ArrayList();
 
     DataChannelObserver(BinaryMessenger messenger, String peerConnectionId, String flutterId,
@@ -46,11 +46,16 @@ class DataChannelObserver implements DataChannel.Observer, EventChannel.StreamHa
 
     @Override
     public void onListen(Object o, EventChannel.EventSink sink) {
-        eventSink = new AnyThreadSink(sink);
-        for(Object event : eventQueue) {
-            eventSink.success(event);
+        final EventChannel.EventSink target = new AnyThreadSink(sink);
+        // Events are sent from WebRTC's signaling thread; hold the queue lock so
+        // none is queued after the flush or appended while it is iterated.
+        synchronized (eventQueue) {
+            for(Object event : eventQueue) {
+                target.success(event);
+            }
+            eventQueue.clear();
+            eventSink = target;
         }
-        eventQueue.clear();
     }
 
     @Override
@@ -103,10 +108,13 @@ class DataChannelObserver implements DataChannel.Observer, EventChannel.StreamHa
     }
 
     private void sendEvent(ConstraintsMap params) {
-        if (eventSink != null) {
-            eventSink.success(params.toMap());
-        } else {
-            eventQueue.add(params.toMap());
+        synchronized (eventQueue) {
+            final EventChannel.EventSink sink = eventSink;
+            if (sink != null) {
+                sink.success(params.toMap());
+            } else {
+                eventQueue.add(params.toMap());
+            }
         }
     }
 }

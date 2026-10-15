@@ -1,3 +1,8 @@
+[Unreleased]
+
+* [Android] fix: a crash (`NullPointerException` in `FlutterRTCVideoRenderer.onFrameResolutionChanged`, followed by a WebRTC JNI abort) when a video renderer's event stream was cancelled while a frame was being rendered. The renderer, peer connection and data channel event sinks are now read once per event, so a concurrent cancel can no longer null them between the check and the call.
+* [Android] fix: plugin events now reach every Flutter engine that listens, not only the one that listened last.
+
 [4.0.0] - 2026.10.09
 
 * [Android] Added the Stream Maven repository (`https://stream-io-repo.com`) to the Android build repositories.
