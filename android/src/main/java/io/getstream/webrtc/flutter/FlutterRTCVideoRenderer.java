@@ -50,13 +50,22 @@ public class FlutterRTCVideoRenderer implements EventChannel.StreamHandler {
             private int _rotation = -1;
             private int _width = 0, _height = 0;
 
+            // These callbacks run on WebRTC's video thread while onCancel clears
+            // eventSink on the main thread, so read the field once into a local.
+            // An exception escaping here propagates into JNI and aborts the process.
             @Override
             public void onFirstFrameRendered() {
-                ConstraintsMap params = new ConstraintsMap();
-                params.putString("event", "didFirstFrameRendered");
-                params.putInt("id", id);
-                if (eventSink != null) {
-                    eventSink.success(params.toMap());
+                final EventChannel.EventSink sink = eventSink;
+                if (sink == null) {
+                    return;
+                }
+                try {
+                    ConstraintsMap params = new ConstraintsMap();
+                    params.putString("event", "didFirstFrameRendered");
+                    params.putInt("id", id);
+                    sink.success(params.toMap());
+                } catch (Exception e) {
+                    Log.e(TAG, "onFirstFrameRendered failed", e);
                 }
             }
 
@@ -64,8 +73,11 @@ public class FlutterRTCVideoRenderer implements EventChannel.StreamHandler {
             public void onFrameResolutionChanged(
                     int videoWidth, int videoHeight,
                     int rotation) {
-
-                if (eventSink != null) {
+                final EventChannel.EventSink sink = eventSink;
+                if (sink == null) {
+                    return;
+                }
+                try {
                     if (_width != videoWidth || _height != videoHeight) {
                         ConstraintsMap params = new ConstraintsMap();
                         params.putString("event", "didTextureChangeVideoSize");
@@ -74,7 +86,7 @@ public class FlutterRTCVideoRenderer implements EventChannel.StreamHandler {
                         params.putDouble("height", (double) videoHeight);
                         _width = videoWidth;
                         _height = videoHeight;
-                        eventSink.success(params.toMap());
+                        sink.success(params.toMap());
                     }
 
                     if (_rotation != rotation) {
@@ -83,8 +95,10 @@ public class FlutterRTCVideoRenderer implements EventChannel.StreamHandler {
                         params2.putInt("id", id);
                         params2.putInt("rotation", rotation);
                         _rotation = rotation;
-                        eventSink.success(params2.toMap());
+                        sink.success(params2.toMap());
                     }
+                } catch (Exception e) {
+                    Log.e(TAG, "onFrameResolutionChanged failed", e);
                 }
             }
         };
@@ -98,7 +112,7 @@ public class FlutterRTCVideoRenderer implements EventChannel.StreamHandler {
     private VideoTrack videoTrack;
 
     EventChannel eventChannel;
-    EventChannel.EventSink eventSink;
+    volatile EventChannel.EventSink eventSink;
 
     public FlutterRTCVideoRenderer(TextureRegistry.SurfaceProducer producer) {
         this.surfaceTextureRenderer = new SurfaceTextureRenderer("");
