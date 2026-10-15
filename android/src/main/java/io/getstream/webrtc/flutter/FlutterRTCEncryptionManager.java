@@ -53,7 +53,7 @@ class FlutterRTCEncryptionManager {
   private static class Handle implements EventChannel.StreamHandler {
     final EncryptionManager manager;
     final EventChannel eventChannel;
-    @Nullable EventChannel.EventSink sink;
+    @Nullable volatile EventChannel.EventSink sink;
 
     Handle(EncryptionManager manager, EventChannel eventChannel) {
       this.manager = manager;

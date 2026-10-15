@@ -56,7 +56,7 @@ class PeerConnectionObserver implements PeerConnection.Observer, EventChannel.St
   final Map<String, RtpTransceiver> transceivers = new HashMap<>();
   private final StateProvider stateProvider;
   private final EventChannel eventChannel;
-  private EventChannel.EventSink eventSink;
+  private volatile EventChannel.EventSink eventSink;
 
   PeerConnectionObserver(PeerConnection.RTCConfiguration configuration, StateProvider stateProvider, BinaryMessenger messenger, String id) {
     this.configuration = configuration;
@@ -470,8 +470,11 @@ class PeerConnectionObserver implements PeerConnection.Observer, EventChannel.St
   }
 
   void sendEvent(ConstraintsMap event) {
-    if (eventSink != null) {
-      eventSink.success(event.toMap());
+    // Called from WebRTC's signaling thread while onCancel clears eventSink on
+    // the main thread, so read the field once.
+    final EventChannel.EventSink sink = eventSink;
+    if (sink != null) {
+      sink.success(event.toMap());
     }
   }
 
