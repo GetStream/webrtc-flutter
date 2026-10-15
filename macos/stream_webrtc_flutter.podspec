@@ -3,7 +3,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'stream_webrtc_flutter'
-  s.version          = '3.2.0'
+  s.version          = '4.0.0'
   s.summary          = 'Flutter WebRTC plugin for macOS.'
   s.description      = <<-DESC
 A new flutter plugin project.
@@ -24,6 +24,7 @@ A new flutter plugin project.
     rm Frameworks/StreamWebRTC.zip
   CMD
   s.ios.deployment_target = '13.0'
+  s.osx.weak_frameworks = 'ScreenCaptureKit'
   s.static_framework = true
   s.osx.deployment_target = '11.0'
 end

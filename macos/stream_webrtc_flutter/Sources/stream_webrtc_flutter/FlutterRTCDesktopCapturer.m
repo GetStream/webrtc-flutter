@@ -7,6 +7,9 @@
 #import "include/stream_webrtc_flutter/Broadcast/FlutterBroadcastScreenCapturer.h"
 #import "include/stream_webrtc_flutter/FlutterRPScreenRecorder.h"
 #endif
+#if TARGET_OS_OSX
+#import "include/stream_webrtc_flutter/FlutterSCStreamCapturer.h"
+#endif
 #import "include/stream_webrtc_flutter/LocalVideoTrack.h"
 #import "include/stream_webrtc_flutter/NativePeerConnectionFactory.h"
 #import "include/stream_webrtc_flutter/VideoProcessingAdapter.h"
@@ -15,6 +18,10 @@
 RTCDesktopMediaList* _screen = nil;
 RTCDesktopMediaList* _window = nil;
 NSArray<RTCDesktopSource*>* _captureSources;
+
+// Set by the system picker path just before `getDisplayMedia` re-enters with this source id.
+static NSString* const kSystemPickerSelectedSourceId = @"system-picker-selected";
+static id _pendingContentFilter = nil;
 #endif
 
 @implementation FlutterWebRTCPlugin (DesktopCapturer)
@@ -22,6 +29,12 @@ NSArray<RTCDesktopSource*>* _captureSources;
 - (void)getDisplayMedia:(NSDictionary*)constraints
               factoryId:(NSString*)factoryId
                  result:(FlutterResult)result {
+#if TARGET_OS_OSX
+  if ([self isSystemPickerRequest:constraints]) {
+    [self presentSystemPickerForDisplayMedia:constraints factoryId:factoryId result:result];
+    return;
+  }
+#endif
   NSString* mediaStreamId = [[NSUUID UUID] UUIDString];
   NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
   if (nf == nil || nf.factory == nil) {
@@ -36,6 +49,39 @@ NSArray<RTCDesktopSource*>* _captureSources;
   NSString* trackUUID = [[NSUUID UUID] UUIDString];
   VideoProcessingAdapter* videoProcessingAdapter =
       [[VideoProcessingAdapter alloc] initWithRTCVideoSource:videoSource];
+
+  // Adds the track to the stream and reports it. Runs once the capturer is delivering frames.
+  void (^finishTrack)(void) = ^{
+    RTCVideoTrack* videoTrack = [nf.factory videoTrackWithSource:videoSource trackId:trackUUID];
+    [mediaStream addVideoTrack:videoTrack];
+
+    LocalVideoTrack* localVideoTrack = [[LocalVideoTrack alloc] initWithTrack:videoTrack
+                                                              videoProcessing:videoProcessingAdapter];
+
+    [self.localTracks setObject:localVideoTrack forKey:trackUUID];
+
+    if (nf.factoryId != nil) {
+      self.trackFactoryId[trackUUID] = nf.factoryId;
+    }
+
+    NSMutableArray* audioTracks = [NSMutableArray array];
+    NSMutableArray* videoTracks = [NSMutableArray array];
+
+    for (RTCVideoTrack* track in mediaStream.videoTracks) {
+      [videoTracks addObject:@{
+        @"id" : track.trackId,
+        @"kind" : track.kind,
+        @"label" : track.trackId,
+        @"enabled" : @(track.isEnabled),
+        @"remote" : @(YES),
+        @"readyState" : @"live"
+      }];
+    }
+
+    self.localStreams[mediaStreamId] = mediaStream;
+    result(
+        @{@"streamId" : mediaStreamId, @"audioTracks" : audioTracks, @"videoTracks" : videoTracks});
+  };
 
 #if TARGET_OS_IPHONE
   BOOL useBroadcastExtension = false;
@@ -140,6 +186,43 @@ NSArray<RTCDesktopSource*>* _captureSources;
   RTCDesktopCapturer* desktopCapturer;
   RTCDesktopSource* source = nil;
 
+  if ([sourceId isEqualToString:kSystemPickerSelectedSourceId]) {
+    if (@available(macOS 14.0, *)) {
+      SCContentFilter* filter = _pendingContentFilter;
+      _pendingContentFilter = nil;
+      if (filter == nil) {
+        result(@{@"error" : @"No content selected in the system picker"});
+        return;
+      }
+      FlutterSCStreamCapturer* streamCapturer =
+          [[FlutterSCStreamCapturer alloc] initWithDelegate:videoProcessingAdapter filter:filter];
+      // Same event Android sends when its screen share is ended from the system UI.
+      streamCapturer.onStopped = ^{
+        [self postEventWithName:@"screenSharingStopped" data:@{@"trackId" : trackUUID}];
+      };
+      self.videoCapturerStopHandlers[trackUUID] = ^(CompletionHandler handler) {
+        NSLog(@"stop desktop capture: system picker, trackID %@", trackUUID);
+        [streamCapturer stopCaptureWithCompletionHandler:handler];
+      };
+      NSLog(@"start desktop capture: system picker, fps: %ld", (long)fps);
+      [streamCapturer startCaptureWithFPS:fps
+                        completionHandler:^(NSError* error) {
+                          dispatch_async(dispatch_get_main_queue(), ^{
+                            if (error != nil) {
+                              [self.videoCapturerStopHandlers removeObjectForKey:trackUUID];
+                              result([FlutterError errorWithCode:@"getDisplayMedia"
+                                                         message:error.localizedDescription
+                                                         details:nil]);
+                              return;
+                            }
+                            finishTrack();
+                          });
+                        }];
+      return;
+    }
+    result(@{@"error" : @"The system picker requires macOS 14"});
+    return;
+  }
   if (useDefaultScreen) {
     desktopCapturer = [[RTCDesktopCapturer alloc] initWithDefaultScreen:self
                                                         captureDelegate:videoProcessingAdapter];
@@ -165,35 +248,7 @@ NSArray<RTCDesktopSource*>* _captureSources;
   };
 #endif
 
-  RTCVideoTrack* videoTrack = [nf.factory videoTrackWithSource:videoSource trackId:trackUUID];
-  [mediaStream addVideoTrack:videoTrack];
-
-  LocalVideoTrack* localVideoTrack = [[LocalVideoTrack alloc] initWithTrack:videoTrack
-                                                            videoProcessing:videoProcessingAdapter];
-
-  [self.localTracks setObject:localVideoTrack forKey:trackUUID];
-
-  if (nf.factoryId != nil) {
-    self.trackFactoryId[trackUUID] = nf.factoryId;
-  }
-
-  NSMutableArray* audioTracks = [NSMutableArray array];
-  NSMutableArray* videoTracks = [NSMutableArray array];
-
-  for (RTCVideoTrack* track in mediaStream.videoTracks) {
-    [videoTracks addObject:@{
-      @"id" : track.trackId,
-      @"kind" : track.kind,
-      @"label" : track.trackId,
-      @"enabled" : @(track.isEnabled),
-      @"remote" : @(YES),
-      @"readyState" : @"live"
-    }];
-  }
-
-  self.localStreams[mediaStreamId] = mediaStream;
-  result(
-      @{@"streamId" : mediaStreamId, @"audioTracks" : audioTracks, @"videoTracks" : videoTracks});
+  finishTrack();
 }
 
 - (void)getDesktopSources:(NSDictionary*)argsMap result:(FlutterResult)result {
@@ -277,6 +332,50 @@ NSArray<RTCDesktopSource*>* _captureSources;
 }
 
 #if TARGET_OS_OSX
+- (BOOL)isSystemPickerRequest:(NSDictionary*)constraints {
+  id video = constraints[@"video"];
+  if (![video isKindOfClass:[NSDictionary class]]) return NO;
+  id deviceId = ((NSDictionary*)video)[@"deviceId"];
+  if (![deviceId isKindOfClass:[NSDictionary class]]) return NO;
+  return [((NSDictionary*)deviceId)[@"exact"] isEqual:kFlutterSystemPickerSourceId];
+}
+
+/// Shows the system picker, then re-enters `getDisplayMedia` with the chosen content.
+- (void)presentSystemPickerForDisplayMedia:(NSDictionary*)constraints
+                                 factoryId:(NSString*)factoryId
+                                    result:(FlutterResult)result {
+  NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
+  if (nf == nil || nf.factory == nil) {
+    result([FlutterError
+        errorWithCode:@"getDisplayMedia"
+              message:[NSString stringWithFormat:@"unknown factoryId %@", factoryId]
+              details:nil]);
+    return;
+  }
+  if (@available(macOS 14.0, *)) {
+    [FlutterContentSharingPicker
+        presentWithCompletion:^(SCContentFilter* filter, NSError* error) {
+          if (filter == nil) {
+            result([FlutterError
+                errorWithCode:error != nil ? @"getDisplayMedia" : @"cancelled"
+                      message:error.localizedDescription ?: @"The system picker was cancelled"
+                      details:nil]);
+            return;
+          }
+          _pendingContentFilter = filter;
+          NSMutableDictionary* video = [constraints[@"video"] mutableCopy];
+          video[@"deviceId"] = @{@"exact" : kSystemPickerSelectedSourceId};
+          NSMutableDictionary* updated = [constraints mutableCopy];
+          updated[@"video"] = video;
+          [self getDisplayMedia:updated factoryId:factoryId result:result];
+        }];
+  } else {
+    result([FlutterError errorWithCode:@"getDisplayMedia"
+                               message:@"The system picker requires macOS 14"
+                               details:nil]);
+  }
+}
+
 - (NSImage*)resizeImage:(NSImage*)sourceImage forSize:(CGSize)targetSize {
   CGSize imageSize = sourceImage.size;
   CGFloat width = imageSize.width;
