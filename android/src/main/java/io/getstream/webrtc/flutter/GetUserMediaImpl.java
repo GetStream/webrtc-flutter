@@ -1382,10 +1382,14 @@ public class GetUserMediaImpl {
         trackParams.putMap("settings", settings.toMap());
 
         // Registered last: a throw above leaves nothing behind for the camera the caller releases.
-        stateProvider.putLocalTrack(track.id(), localVideoTrack);
+        // The capturer and source go in before the local track: putLocalTrack attributes the track
+        // to its factory through ownsTrack(), which reads these maps. Unattributed, the factory's
+        // dispose neither detaches renderers from the track nor releases it, and a renderer that
+        // later lets go of the freed track crashes in VideoTrack.removeSink.
         mVideoCapturers.put(trackId, info);
         mSurfaceTextureHelpers.put(trackId, camera.surfaceTextureHelper);
         mVideoSources.put(trackId, videoSource);
+        stateProvider.putLocalTrack(track.id(), localVideoTrack);
 
         return trackParams;
     }
