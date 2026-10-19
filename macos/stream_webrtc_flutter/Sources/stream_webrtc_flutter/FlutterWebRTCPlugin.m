@@ -480,6 +480,23 @@ static FlutterWebRTCPlugin* sharedSingleton;
     NSLog(@"[createPeerConnectionFactory] built id: %@", factoryId);
     result(@{@"factoryId" : factoryId});
   } else if ([@"disposePeerConnectionFactory" isEqualToString:call.method]) {
+    // Close the connections the SDK left open the same way peerConnectionClose
+    // does: off main, behind the calls still queued for them, with the cleanup
+    // back on main.
+    NSString* factoryIdArg = call.arguments[@"factoryId"];
+    NativePeerConnectionFactory* disposing = nil;
+    if (factoryIdArg != nil) {
+      @synchronized(self) {
+        disposing = _factories[factoryIdArg];
+      }
+    }
+    for (NSString* pcId in [disposing.ownedPcIds.allObjects copy]) {
+      if (self.peerConnections[pcId] != nil) {
+        [self closePeerConnectionWithId:pcId
+                                 result:^(id _Nullable value){
+                                 }];
+      }
+    }
     // Peer connections of this factory may still be closing on
     // _peerConnectionCloseQueue. Going through that queue first waits for them,
     // and their main-thread cleanup is queued ahead of this disposal.
@@ -529,6 +546,9 @@ static FlutterWebRTCPlugin* sharedSingleton;
 
     NSString* peerConnectionId = [[NSUUID UUID] UUIDString];
     peerConnection.flutterId = peerConnectionId;
+    peerConnection.operationQueue = dispatch_queue_create(
+        "io.getstream.webrtc.flutter.peerConnectionOperation",
+        dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0));
 
     /*Create Event Channel.*/
     peerConnection.eventChannel = [FlutterEventChannel
@@ -759,13 +779,19 @@ static FlutterWebRTCPlugin* sharedSingleton;
     id trackId = argsMap[@"trackId"];
     RTCPeerConnection* peerConnection = self.peerConnections[peerConnectionId];
     if (peerConnection) {
-      if (trackId != nil && trackId != [NSNull null]) {
-        return [self peerConnectionGetStatsForTrackId:trackId
-                                       peerConnection:peerConnection
-                                               result:result];
-      } else {
-        return [self peerConnectionGetStats:peerConnection result:result];
-      }
+      // Off main, behind the connection's queued calls: collecting stats is a
+      // blocking call into the signaling thread, which a description call may
+      // hold for as long as it waits for the audio session.
+      FlutterResult reply = FlutterRTCReplyOnMain(result);
+      FlutterRTCRunOnOperationQueue(peerConnection, ^{
+        if (trackId != nil && trackId != [NSNull null]) {
+          [self peerConnectionGetStatsForTrackId:trackId
+                                  peerConnection:peerConnection
+                                          result:reply];
+        } else {
+          [self peerConnectionGetStats:peerConnection result:reply];
+        }
+      });
     } else {
       result([FlutterError
           errorWithCode:[NSString stringWithFormat:@"%@Failed", call.method]
@@ -984,76 +1010,7 @@ static FlutterWebRTCPlugin* sharedSingleton;
       return;
     }
 
-    RTCPeerConnection* peerConnection = self.peerConnections[peerConnectionId];
-    // Unregister it right away, so no call made while it closes can reach it.
-    [self.peerConnections removeObjectForKey:peerConnectionId];
-
-    // What has to happen once the connection is closed, on the main thread.
-    void (^finish)(void) = ^{
-      if (peerConnection) {
-        [self->_closingPeerConnections removeObject:peerConnection];
-        for (NSString* trackId in peerConnection.remoteTracks) {
-          [self.pausedTrackVolumes removeObjectForKey:trackId];
-          [self.trackVolumeCache removeObjectForKey:trackId];
-        }
-
-        // Clean up peerConnection's streams and tracks
-        [peerConnection.remoteStreams removeAllObjects];
-        [peerConnection.remoteTracks removeAllObjects];
-
-        // Clean up peerConnection's dataChannels.
-        NSMutableDictionary<NSString*, RTCDataChannel*>* dataChannels = peerConnection.dataChannels;
-        for (NSString* dataChannelId in dataChannels) {
-          dataChannels[dataChannelId].delegate = nil;
-          // There is no need to close the RTCDataChannel because it is owned by the
-          // RTCPeerConnection and the latter will close the former.
-        }
-        [dataChannels removeAllObjects];
-      }
-
-      NSString* factoryIdForPc = self.pcFactoryId[peerConnectionId];
-      if (factoryIdForPc != nil) {
-        [self.pcFactoryId removeObjectForKey:peerConnectionId];
-        NativePeerConnectionFactory* nf;
-        @synchronized(self) {
-          nf = self.factories[factoryIdForPc];
-        }
-        if (nf != nil) {
-          [nf.ownedPcIds removeObject:peerConnectionId];
-        }
-      }
-      [self deactiveRtcAudioSession];
-      result(nil);
-    };
-
-    if (peerConnection == nil) {
-      // A close of this connection may still be running, e.g. a dispose sent
-      // without awaiting the close. Queue behind it, so the reply still means
-      // closed and the audio session isn't deactivated under running I/O.
-      BOOL isClosing = NO;
-      for (RTCPeerConnection* closing in _closingPeerConnections) {
-        if ([closing.flutterId isEqualToString:peerConnectionId]) {
-          isClosing = YES;
-          break;
-        }
-      }
-      if (isClosing) {
-        dispatch_async(_peerConnectionCloseQueue, ^{
-          dispatch_async(dispatch_get_main_queue(), finish);
-        });
-      } else {
-        finish();
-      }
-      return;
-    }
-
-    // Close off the main thread (see _peerConnectionCloseQueue) and reply once
-    // it is done, so the caller still sees a closed connection.
-    [_closingPeerConnections addObject:peerConnection];
-    dispatch_async(_peerConnectionCloseQueue, ^{
-      [peerConnection close];
-      dispatch_async(dispatch_get_main_queue(), finish);
-    });
+    [self closePeerConnectionWithId:peerConnectionId result:result];
   } else if ([@"createVideoRenderer" isEqualToString:call.method]) {
     FlutterRTCVideoRenderer* render = [self createWithTextureRegistry:_textures
                                                             messenger:_messenger];
@@ -1391,13 +1348,18 @@ static FlutterWebRTCPlugin* sharedSingleton;
     NSString* peerConnectionId = argsMap[@"peerConnectionId"];
     RTCPeerConnection* peerConnection = self.peerConnections[peerConnectionId];
     if (peerConnection) {
-      RTCSessionDescription* sdp = peerConnection.localDescription;
-      if (nil == sdp) {
-        result(nil);
-      } else {
-        NSString* type = [RTCSessionDescription stringForType:sdp.type];
-        result(@{@"sdp" : sdp.sdp, @"type" : type});
-      }
+      // On the connection's queue: reading it is a blocking call into the
+      // signaling thread, and it must see the description calls queued before.
+      FlutterResult reply = FlutterRTCReplyOnMain(result);
+      FlutterRTCRunOnOperationQueue(peerConnection, ^{
+        RTCSessionDescription* sdp = peerConnection.localDescription;
+        if (nil == sdp) {
+          reply(nil);
+        } else {
+          NSString* type = [RTCSessionDescription stringForType:sdp.type];
+          reply(@{@"sdp" : sdp.sdp, @"type" : type});
+        }
+      });
     } else {
       result([FlutterError
           errorWithCode:[NSString stringWithFormat:@"%@Failed", call.method]
@@ -1409,13 +1371,18 @@ static FlutterWebRTCPlugin* sharedSingleton;
     NSString* peerConnectionId = argsMap[@"peerConnectionId"];
     RTCPeerConnection* peerConnection = self.peerConnections[peerConnectionId];
     if (peerConnection) {
-      RTCSessionDescription* sdp = peerConnection.remoteDescription;
-      if (nil == sdp) {
-        result(nil);
-      } else {
-        NSString* type = [RTCSessionDescription stringForType:sdp.type];
-        result(@{@"sdp" : sdp.sdp, @"type" : type});
-      }
+      // On the connection's queue: reading it is a blocking call into the
+      // signaling thread, and it must see the description calls queued before.
+      FlutterResult reply = FlutterRTCReplyOnMain(result);
+      FlutterRTCRunOnOperationQueue(peerConnection, ^{
+        RTCSessionDescription* sdp = peerConnection.remoteDescription;
+        if (nil == sdp) {
+          reply(nil);
+        } else {
+          NSString* type = [RTCSessionDescription stringForType:sdp.type];
+          reply(@{@"sdp" : sdp.sdp, @"type" : type});
+        }
+      });
     } else {
       result([FlutterError
           errorWithCode:[NSString stringWithFormat:@"%@Failed", call.method]
@@ -1740,12 +1707,15 @@ static FlutterWebRTCPlugin* sharedSingleton;
       return;
     }
 
-    NSMutableArray* senders = [NSMutableArray array];
-    for (RTCRtpSender* sender in peerConnection.senders) {
-      [senders addObject:[self rtpSenderToMap:sender]];
-    }
-
-    result(@{@"senders" : senders});
+    // On the connection's queue, like the description getters.
+    FlutterResult reply = FlutterRTCReplyOnMain(result);
+    FlutterRTCRunOnOperationQueue(peerConnection, ^{
+      NSMutableArray* senders = [NSMutableArray array];
+      for (RTCRtpSender* sender in peerConnection.senders) {
+        [senders addObject:[self rtpSenderToMap:sender]];
+      }
+      reply(@{@"senders" : senders});
+    });
   } else if ([@"getReceivers" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* peerConnectionId = argsMap[@"peerConnectionId"];
@@ -1758,12 +1728,15 @@ static FlutterWebRTCPlugin* sharedSingleton;
       return;
     }
 
-    NSMutableArray* receivers = [NSMutableArray array];
-    for (RTCRtpReceiver* receiver in peerConnection.receivers) {
-      [receivers addObject:[self receiverToMap:receiver]];
-    }
-
-    result(@{@"receivers" : receivers});
+    // On the connection's queue, like the description getters.
+    FlutterResult reply = FlutterRTCReplyOnMain(result);
+    FlutterRTCRunOnOperationQueue(peerConnection, ^{
+      NSMutableArray* receivers = [NSMutableArray array];
+      for (RTCRtpReceiver* receiver in peerConnection.receivers) {
+        [receivers addObject:[self receiverToMap:receiver]];
+      }
+      reply(@{@"receivers" : receivers});
+    });
   } else if ([@"getTransceivers" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* peerConnectionId = argsMap[@"peerConnectionId"];
@@ -1776,12 +1749,15 @@ static FlutterWebRTCPlugin* sharedSingleton;
       return;
     }
 
-    NSMutableArray* transceivers = [NSMutableArray array];
-    for (RTCRtpTransceiver* transceiver in peerConnection.transceivers) {
-      [transceivers addObject:[self transceiverToMap:transceiver]];
-    }
-
-    result(@{@"transceivers" : transceivers});
+    // On the connection's queue, like the description getters.
+    FlutterResult reply = FlutterRTCReplyOnMain(result);
+    FlutterRTCRunOnOperationQueue(peerConnection, ^{
+      NSMutableArray* transceivers = [NSMutableArray array];
+      for (RTCRtpTransceiver* transceiver in peerConnection.transceivers) {
+        [transceivers addObject:[self transceiverToMap:transceiver]];
+      }
+      reply(@{@"transceivers" : transceivers});
+    });
   } else if ([@"getDesktopSources" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     [self getDesktopSources:argsMap result:result];
@@ -2436,6 +2412,96 @@ static FlutterWebRTCPlugin* sharedSingleton;
 #endif
 }
 
+/**
+ * Closes and unregisters a peer connection. Main thread only. The close itself
+ * runs on `_peerConnectionCloseQueue`, behind the connection's queued calls on
+ * its operation queue; the cleanup and `result` follow on main.
+ */
+- (void)closePeerConnectionWithId:(nonnull NSString*)peerConnectionId
+                           result:(nonnull FlutterResult)result {
+  RTCPeerConnection* peerConnection = self.peerConnections[peerConnectionId];
+  // Unregister it right away, so no call made while it closes can reach it.
+  [self.peerConnections removeObjectForKey:peerConnectionId];
+
+  // What has to happen once the connection is closed, on the main thread.
+  void (^finish)(void) = ^{
+    if (peerConnection) {
+      [self->_closingPeerConnections removeObject:peerConnection];
+      for (NSString* trackId in peerConnection.remoteTracks) {
+        [self.pausedTrackVolumes removeObjectForKey:trackId];
+        [self.trackVolumeCache removeObjectForKey:trackId];
+      }
+
+      // Clean up peerConnection's streams and tracks
+      [peerConnection.remoteStreams removeAllObjects];
+      [peerConnection.remoteTracks removeAllObjects];
+
+      // Clean up peerConnection's dataChannels.
+      NSMutableDictionary<NSString*, RTCDataChannel*>* dataChannels = peerConnection.dataChannels;
+      for (NSString* dataChannelId in dataChannels) {
+        dataChannels[dataChannelId].delegate = nil;
+        // There is no need to close the RTCDataChannel because it is owned by the
+        // RTCPeerConnection and the latter will close the former.
+      }
+      [dataChannels removeAllObjects];
+    }
+
+    NSString* factoryIdForPc = self.pcFactoryId[peerConnectionId];
+    if (factoryIdForPc != nil) {
+      [self.pcFactoryId removeObjectForKey:peerConnectionId];
+      NativePeerConnectionFactory* nf;
+      @synchronized(self) {
+        nf = self.factories[factoryIdForPc];
+      }
+      if (nf != nil) {
+        [nf.ownedPcIds removeObject:peerConnectionId];
+      }
+    }
+    [self deactiveRtcAudioSession];
+    result(nil);
+  };
+
+  if (peerConnection == nil) {
+    // A close of this connection may still be running, e.g. a dispose sent
+    // without awaiting the close. Queue behind it, so the reply still means
+    // closed and the audio session isn't deactivated under running I/O.
+    BOOL isClosing = NO;
+    for (RTCPeerConnection* closing in _closingPeerConnections) {
+      if ([closing.flutterId isEqualToString:peerConnectionId]) {
+        isClosing = YES;
+        break;
+      }
+    }
+    if (isClosing) {
+      dispatch_async(_peerConnectionCloseQueue, ^{
+        dispatch_async(dispatch_get_main_queue(), finish);
+      });
+    } else {
+      finish();
+    }
+    return;
+  }
+
+  // Close off the main thread (see _peerConnectionCloseQueue) and reply once
+  // it is done, so the caller still sees a closed connection. The close runs
+  // on the connection's operation queue, after the description and candidate
+  // calls already queued there, while the close queue waits for it so factory
+  // disposal still waits for pending closes. Nothing on an operation queue
+  // waits for the close queue or main, so the dispatch_sync cannot deadlock.
+  [_closingPeerConnections addObject:peerConnection];
+  dispatch_queue_t operationQueue = peerConnection.operationQueue;
+  dispatch_async(_peerConnectionCloseQueue, ^{
+    if (operationQueue != nil) {
+      dispatch_sync(operationQueue, ^{
+        [peerConnection close];
+      });
+    } else {
+      [peerConnection close];
+    }
+    dispatch_async(dispatch_get_main_queue(), finish);
+  });
+}
+
 - (void)disposePeerConnectionFactory:(FlutterMethodCall*)call result:(FlutterResult)result {
   NSDictionary* argsMap = call.arguments;
   NSString* factoryId = argsMap[@"factoryId"];
@@ -2465,7 +2531,17 @@ static FlutterWebRTCPlugin* sharedSingleton;
   for (NSString* pcId in pcIdsSnapshot) {
     RTCPeerConnection* peerConnection = self.peerConnections[pcId];
     if (peerConnection != nil) {
-      [peerConnection close];
+      // Last resort: the disposePeerConnectionFactory branch already closed
+      // this factory's connections off main. Behind the calls still queued for
+      // it, which must not reach the connection once its factory is gone.
+      dispatch_queue_t operationQueue = peerConnection.operationQueue;
+      if (operationQueue != nil) {
+        dispatch_sync(operationQueue, ^{
+          [peerConnection close];
+        });
+      } else {
+        [peerConnection close];
+      }
       [self.peerConnections removeObjectForKey:pcId];
     }
     [self.pcFactoryId removeObjectForKey:pcId];

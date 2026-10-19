@@ -23,8 +23,9 @@
 }
 
 - (void)setEventSink:(FlutterEventSink)eventSink {
-  objc_setAssociatedObject(self, @selector(eventSink), eventSink,
-                           OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  // Atomic: WebRTC's threads read the sink while main sets or clears it, and an
+  // atomic association hands the reader a retained reference.
+  objc_setAssociatedObject(self, @selector(eventSink), eventSink, OBJC_ASSOCIATION_RETAIN);
 }
 
 - (FlutterEventChannel*)eventChannel {
@@ -33,6 +34,15 @@
 
 - (void)setEventChannel:(FlutterEventChannel*)eventChannel {
   objc_setAssociatedObject(self, @selector(eventChannel), eventChannel,
+                           OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+- (dispatch_queue_t)operationQueue {
+  return objc_getAssociatedObject(self, _cmd);
+}
+
+- (void)setOperationQueue:(dispatch_queue_t)operationQueue {
+  objc_setAssociatedObject(self, @selector(operationQueue), operationQueue,
                            OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
@@ -85,91 +95,143 @@
   [peerConnection setConfiguration:configuration];
 }
 
+/**
+ * Wraps a method-channel reply so it is delivered on the main thread. WebRTC
+ * calls completion handlers on its signaling thread.
+ */
+FlutterResult FlutterRTCReplyOnMain(FlutterResult result) {
+  return ^(id _Nullable value) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      result(value);
+    });
+  };
+}
+
+/**
+ * Runs `operation` on the connection's serial `operationQueue` instead of the
+ * caller's thread. The WebRTC Objective-C API blocks its caller until the
+ * signaling and worker threads have handled a call, and setting a description
+ * can wait there for the RTCAudioSession lock that an audio session
+ * reconfiguration holds for its whole duration. Since Flutter 3.29 the main
+ * thread also runs Dart, so these calls must not run on it.
+ *
+ * Main thread only: the operations of one connection then run in the order the
+ * method calls arrived. The block retains the connection, so a close requested
+ * meanwhile cannot free it, and close itself goes through the same queue.
+ */
+void FlutterRTCRunOnOperationQueue(RTCPeerConnection* peerConnection, dispatch_block_t operation) {
+  dispatch_queue_t queue = peerConnection.operationQueue;
+  if (queue == nil) {
+    operation();
+    return;
+  }
+  dispatch_async(queue, operation);
+}
+
 - (void)peerConnectionCreateOffer:(NSDictionary*)constraints
                    peerConnection:(RTCPeerConnection*)peerConnection
                            result:(FlutterResult)result {
-  [peerConnection
-      offerForConstraints:[self parseMediaConstraints:constraints]
-        completionHandler:^(RTCSessionDescription* sdp, NSError* error) {
-          if (error) {
-            result([FlutterError
-                errorWithCode:@"CreateOfferFailed"
-                      message:[NSString stringWithFormat:@"Error %@", error.userInfo[@"error"]]
-                      details:nil]);
-          } else {
-            NSString* type = [RTCSessionDescription stringForType:sdp.type];
-            result(@{@"sdp" : sdp.sdp, @"type" : type});
-          }
-        }];
+  RTCMediaConstraints* mediaConstraints = [self parseMediaConstraints:constraints];
+  FlutterResult reply = FlutterRTCReplyOnMain(result);
+  FlutterRTCRunOnOperationQueue(peerConnection, ^{
+    [peerConnection
+        offerForConstraints:mediaConstraints
+          completionHandler:^(RTCSessionDescription* sdp, NSError* error) {
+            if (error) {
+              reply([FlutterError
+                  errorWithCode:@"CreateOfferFailed"
+                        message:[NSString stringWithFormat:@"Error %@", error.userInfo[@"error"]]
+                        details:nil]);
+            } else {
+              NSString* type = [RTCSessionDescription stringForType:sdp.type];
+              reply(@{@"sdp" : sdp.sdp, @"type" : type});
+            }
+          }];
+  });
 }
 
 - (void)peerConnectionCreateAnswer:(NSDictionary*)constraints
                     peerConnection:(RTCPeerConnection*)peerConnection
                             result:(FlutterResult)result {
-  [peerConnection
-      answerForConstraints:[self parseMediaConstraints:constraints]
-         completionHandler:^(RTCSessionDescription* sdp, NSError* error) {
-           if (error) {
-             result([FlutterError
-                 errorWithCode:@"CreateAnswerFailed"
-                       message:[NSString stringWithFormat:@"Error %@", error.userInfo[@"error"]]
-                       details:nil]);
-           } else {
-             NSString* type = [RTCSessionDescription stringForType:sdp.type];
-             result(@{@"sdp" : sdp.sdp, @"type" : type});
-           }
-         }];
+  RTCMediaConstraints* mediaConstraints = [self parseMediaConstraints:constraints];
+  FlutterResult reply = FlutterRTCReplyOnMain(result);
+  FlutterRTCRunOnOperationQueue(peerConnection, ^{
+    [peerConnection
+        answerForConstraints:mediaConstraints
+           completionHandler:^(RTCSessionDescription* sdp, NSError* error) {
+             if (error) {
+               reply([FlutterError
+                   errorWithCode:@"CreateAnswerFailed"
+                         message:[NSString stringWithFormat:@"Error %@", error.userInfo[@"error"]]
+                         details:nil]);
+             } else {
+               NSString* type = [RTCSessionDescription stringForType:sdp.type];
+               reply(@{@"sdp" : sdp.sdp, @"type" : type});
+             }
+           }];
+  });
 }
 
 - (void)peerConnectionSetLocalDescription:(RTCSessionDescription*)sdp
                            peerConnection:(RTCPeerConnection*)peerConnection
                                    result:(FlutterResult)result {
-  [peerConnection
-      setLocalDescription:sdp
-        completionHandler:^(NSError* error) {
-          if (error) {
-            result([FlutterError
-                errorWithCode:@"SetLocalDescriptionFailed"
-                      message:[NSString stringWithFormat:@"Error %@", error.localizedDescription]
-                      details:nil]);
-          } else {
-            result(nil);
-          }
-        }];
+  FlutterResult reply = FlutterRTCReplyOnMain(result);
+  FlutterRTCRunOnOperationQueue(peerConnection, ^{
+    [peerConnection
+        setLocalDescription:sdp
+          completionHandler:^(NSError* error) {
+            if (error) {
+              reply([FlutterError
+                  errorWithCode:@"SetLocalDescriptionFailed"
+                        message:[NSString stringWithFormat:@"Error %@", error.localizedDescription]
+                        details:nil]);
+            } else {
+              reply(nil);
+            }
+          }];
+  });
 }
 
 - (void)peerConnectionSetRemoteDescription:(RTCSessionDescription*)sdp
                             peerConnection:(RTCPeerConnection*)peerConnection
                                     result:(FlutterResult)result {
-  [peerConnection
-      setRemoteDescription:sdp
-         completionHandler:^(NSError* error) {
-           if (error) {
-             result([FlutterError
-                 errorWithCode:@"SetRemoteDescriptionFailed"
-                       message:[NSString stringWithFormat:@"Error %@", error.localizedDescription]
-                       details:nil]);
-           } else {
-             result(nil);
-           }
-         }];
+  FlutterResult reply = FlutterRTCReplyOnMain(result);
+  FlutterRTCRunOnOperationQueue(peerConnection, ^{
+    [peerConnection
+        setRemoteDescription:sdp
+           completionHandler:^(NSError* error) {
+             if (error) {
+               reply([FlutterError
+                   errorWithCode:@"SetRemoteDescriptionFailed"
+                         message:[NSString stringWithFormat:@"Error %@", error.localizedDescription]
+                         details:nil]);
+             } else {
+               reply(nil);
+             }
+           }];
+  });
 }
 
 - (void)peerConnectionAddICECandidate:(RTCIceCandidate*)candidate
                        peerConnection:(RTCPeerConnection*)peerConnection
                                result:(FlutterResult)result {
-  [peerConnection
-        addIceCandidate:candidate
-      completionHandler:^(NSError* _Nullable error) {
-        if (error) {
-          result([FlutterError
-              errorWithCode:@"AddIceCandidateFailed"
-                    message:[NSString stringWithFormat:@"Error %@", error.localizedDescription]
-                    details:nil]);
-        } else {
-          result(nil);
-        }
-      }];
+  // Same queue as the descriptions: a candidate sent right after
+  // setRemoteDescription, without awaiting it, must not reach WebRTC first.
+  FlutterResult reply = FlutterRTCReplyOnMain(result);
+  FlutterRTCRunOnOperationQueue(peerConnection, ^{
+    [peerConnection
+          addIceCandidate:candidate
+        completionHandler:^(NSError* _Nullable error) {
+          if (error) {
+            reply([FlutterError
+                errorWithCode:@"AddIceCandidateFailed"
+                      message:[NSString stringWithFormat:@"Error %@", error.localizedDescription]
+                      details:nil]);
+          } else {
+            reply(nil);
+          }
+        }];
+  });
 }
 
 - (void)peerConnectionClose:(RTCPeerConnection*)peerConnection {
@@ -471,31 +533,21 @@
 - (void)peerConnection:(RTCPeerConnection*)peerConnection didAddStream:(RTCMediaStream*)stream {
   NSMutableArray* audioTracks = [NSMutableArray array];
   NSMutableArray* videoTracks = [NSMutableArray array];
+  NSArray<RTCAudioTrack*>* streamAudioTracks = stream.audioTracks;
+  NSArray<RTCVideoTrack*>* streamVideoTracks = stream.videoTracks;
 
-  BOOL hasAudio = NO;
-  for (RTCAudioTrack* track in stream.audioTracks) {
-    peerConnection.remoteTracks[track.trackId] = track;
-    NSString* trackId = track.trackId;
-    if (self.trackVolumeCache[trackId] == nil) {
-      self.trackVolumeCache[trackId] = @(1.0);
-    }
-    if (self.isAudioPlayoutPaused) {
-      self.pausedTrackVolumes[trackId] = self.trackVolumeCache[trackId];
-      track.source.volume = 0.0;
-    }
+  for (RTCAudioTrack* track in streamAudioTracks) {
     [audioTracks addObject:@{
-      @"id" : trackId,
+      @"id" : track.trackId,
       @"kind" : track.kind,
-      @"label" : trackId,
+      @"label" : track.trackId,
       @"enabled" : @(track.isEnabled),
       @"remote" : @(YES),
       @"readyState" : @"live"
     }];
-    hasAudio = YES;
   }
 
-  for (RTCVideoTrack* track in stream.videoTracks) {
-    peerConnection.remoteTracks[track.trackId] = track;
+  for (RTCVideoTrack* track in streamVideoTracks) {
     [videoTracks addObject:@{
       @"id" : track.trackId,
       @"kind" : track.kind,
@@ -507,48 +559,72 @@
   }
 
   NSString* streamId = stream.streamId;
-  peerConnection.remoteStreams[streamId] = stream;
 
-  if (hasAudio) {
-    [self ensureAudioSession];
-  }
+  // The track bookkeeping is owned by main; see peerConnection:didAddReceiver:.
+  dispatch_async(dispatch_get_main_queue(), ^{
+    for (RTCAudioTrack* track in streamAudioTracks) {
+      NSString* trackId = track.trackId;
+      peerConnection.remoteTracks[trackId] = track;
+      if (self.trackVolumeCache[trackId] == nil) {
+        self.trackVolumeCache[trackId] = @(1.0);
+      }
+      if (self.isAudioPlayoutPaused) {
+        self.pausedTrackVolumes[trackId] = self.trackVolumeCache[trackId];
+        track.source.volume = 0.0;
+      }
+    }
+    for (RTCVideoTrack* track in streamVideoTracks) {
+      peerConnection.remoteTracks[track.trackId] = track;
+    }
+    peerConnection.remoteStreams[streamId] = stream;
 
-  FlutterEventSink eventSink = peerConnection.eventSink;
-  if (eventSink) {
-    postEvent(eventSink, @{
-      @"event" : @"onAddStream",
-      @"streamId" : streamId,
-      @"audioTracks" : audioTracks,
-      @"videoTracks" : videoTracks,
-    });
-  }
+    if (streamAudioTracks.count > 0) {
+      [self ensureAudioSession];
+    }
+
+    FlutterEventSink eventSink = peerConnection.eventSink;
+    if (eventSink) {
+      eventSink(@{
+        @"event" : @"onAddStream",
+        @"streamId" : streamId,
+        @"audioTracks" : audioTracks,
+        @"videoTracks" : videoTracks,
+      });
+    }
+  });
 }
 
 - (void)peerConnection:(RTCPeerConnection*)peerConnection didRemoveStream:(RTCMediaStream*)stream {
-  NSArray* keysArray = [peerConnection.remoteStreams allKeysForObject:stream];
-  // We assume there can be only one object for 1 key
-  if (keysArray.count > 1) {
-    NSLog(@"didRemoveStream - more than one stream entry found for stream instance with id: %@",
-          stream.streamId);
-  }
   NSString* streamId = stream.streamId;
+  NSArray<RTCAudioTrack*>* streamAudioTracks = stream.audioTracks;
+  NSArray<RTCVideoTrack*>* streamVideoTracks = stream.videoTracks;
 
-  for (RTCVideoTrack* track in stream.videoTracks) {
-    [peerConnection.remoteTracks removeObjectForKey:track.trackId];
-  }
-  for (RTCAudioTrack* track in stream.audioTracks) {
-    [peerConnection.remoteTracks removeObjectForKey:track.trackId];
-    [self.pausedTrackVolumes removeObjectForKey:track.trackId];
-    [self.trackVolumeCache removeObjectForKey:track.trackId];
-  }
+  // The track bookkeeping is owned by main; see peerConnection:didAddReceiver:.
+  dispatch_async(dispatch_get_main_queue(), ^{
+    NSArray* keysArray = [peerConnection.remoteStreams allKeysForObject:stream];
+    // We assume there can be only one object for 1 key
+    if (keysArray.count > 1) {
+      NSLog(@"didRemoveStream - more than one stream entry found for stream instance with id: %@",
+            streamId);
+    }
 
-  FlutterEventSink eventSink = peerConnection.eventSink;
-  if (eventSink) {
-    postEvent(eventSink, @{
-      @"event" : @"onRemoveStream",
-      @"streamId" : streamId,
-    });
-  }
+    for (RTCVideoTrack* track in streamVideoTracks) {
+      [peerConnection.remoteTracks removeObjectForKey:track.trackId];
+    }
+    for (RTCAudioTrack* track in streamAudioTracks) {
+      [peerConnection.remoteTracks removeObjectForKey:track.trackId];
+      [self.pausedTrackVolumes removeObjectForKey:track.trackId];
+      [self.trackVolumeCache removeObjectForKey:track.trackId];
+    }
+
+    FlutterEventSink eventSink = peerConnection.eventSink;
+    if (eventSink) {
+      eventSink(@{
+        @"event" : @"onRemoveStream",
+        @"streamId" : streamId,
+      });
+    }
+  });
 }
 
 - (void)peerConnectionShouldNegotiate:(RTCPeerConnection*)peerConnection {
@@ -648,7 +724,18 @@
     didStartReceivingOnTransceiver:(RTCRtpTransceiver*)transceiver {
 }
 
-/** Called when a receiver and its track are created. */
+/**
+ * Called when a receiver and its track are created.
+ *
+ * WebRTC calls this on its signaling thread, typically from inside
+ * setRemoteDescription. The event is built here, where reading the receiver and
+ * the transceivers needs no thread hop, but the track bookkeeping
+ * (`remoteTracks`, `remoteStreams`, the volume caches) is owned by main, which
+ * reads and enumerates it, and the description calls no longer block main while
+ * WebRTC runs these callbacks. So it is updated on main, and the event is sent
+ * from that same block, straight to the sink: posting it again would let a
+ * signaling-state event sent after it overtake it.
+ */
 - (void)peerConnection:(RTCPeerConnection*)peerConnection
         didAddReceiver:(RTCRtpReceiver*)rtpReceiver
                streams:(NSArray<RTCMediaStream*>*)mediaStreams {
@@ -657,54 +744,65 @@
   for (RTCMediaStream* stream in mediaStreams) {
     [streams addObject:[self mediaStreamToMap:stream ownerTag:peerConnection.flutterId]];
   }
-  FlutterEventSink eventSink = peerConnection.eventSink;
-  if (eventSink) {
-    NSMutableDictionary* event = [NSMutableDictionary dictionary];
-    [event addEntriesFromDictionary:@{
-      @"event" : @"onTrack",
-      @"track" : [self mediaTrackToMap:rtpReceiver.track],
-      @"receiver" : [self receiverToMap:rtpReceiver],
-      @"streams" : streams,
-    }];
+  RTCMediaStreamTrack* track = rtpReceiver.track;
+  NSMutableDictionary* event = [NSMutableDictionary dictionary];
+  [event addEntriesFromDictionary:@{
+    @"event" : @"onTrack",
+    @"track" : [self mediaTrackToMap:track],
+    @"receiver" : [self receiverToMap:rtpReceiver],
+    @"streams" : streams,
+  }];
 
-    if (peerConnection.configuration.sdpSemantics == RTCSdpSemanticsUnifiedPlan) {
-      for (RTCRtpTransceiver* transceiver in peerConnection.transceivers) {
-        if (transceiver.receiver != nil &&
-            [transceiver.receiver.receiverId isEqualToString:rtpReceiver.receiverId]) {
-          [event setValue:[self transceiverToMap:transceiver] forKey:@"transceiver"];
-        }
+  if (peerConnection.configuration.sdpSemantics == RTCSdpSemanticsUnifiedPlan) {
+    for (RTCRtpTransceiver* transceiver in peerConnection.transceivers) {
+      if (transceiver.receiver != nil &&
+          [transceiver.receiver.receiverId isEqualToString:rtpReceiver.receiverId]) {
+        [event setValue:[self transceiverToMap:transceiver] forKey:@"transceiver"];
       }
     }
+  }
 
-    peerConnection.remoteTracks[rtpReceiver.track.trackId] = rtpReceiver.track;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    FlutterEventSink eventSink = peerConnection.eventSink;
+    if (!eventSink) {
+      return;
+    }
+
+    peerConnection.remoteTracks[track.trackId] = track;
     if (mediaStreams.count > 0) {
       peerConnection.remoteStreams[mediaStreams[0].streamId] = mediaStreams[0];
     }
 
-    if ([rtpReceiver.track.kind isEqualToString:@"audio"]) {
+    if ([track.kind isEqualToString:@"audio"]) {
       [self ensureAudioSession];
-      NSString* trackId = rtpReceiver.track.trackId;
+      NSString* trackId = track.trackId;
       if (self.trackVolumeCache[trackId] == nil) {
         self.trackVolumeCache[trackId] = @(1.0);
       }
-      if (self.isAudioPlayoutPaused &&
-          [rtpReceiver.track isKindOfClass:[RTCAudioTrack class]]) {
-        RTCAudioTrack* audioTrack = (RTCAudioTrack*)rtpReceiver.track;
+      if (self.isAudioPlayoutPaused && [track isKindOfClass:[RTCAudioTrack class]]) {
+        RTCAudioTrack* audioTrack = (RTCAudioTrack*)track;
         self.pausedTrackVolumes[trackId] = self.trackVolumeCache[trackId];
+        // On main, like setVolume / pauseAudioPlayout / resumeAudioPlayout:
+        // queued elsewhere it could land after a resume and mute the track.
         audioTrack.source.volume = 0.0;
       }
     }
-    postEvent(eventSink, event);
-  }
+    eventSink(event);
+  });
 }
 
 /** Called when the receiver and its track are removed. */
 - (void)peerConnection:(RTCPeerConnection*)peerConnection
      didRemoveReceiver:(RTCRtpReceiver*)rtpReceiver {
-  if (rtpReceiver.track != nil) {
-    [self.pausedTrackVolumes removeObjectForKey:rtpReceiver.track.trackId];
-    [self.trackVolumeCache removeObjectForKey:rtpReceiver.track.trackId];
+  NSString* trackId = rtpReceiver.track.trackId;
+  if (trackId == nil) {
+    return;
   }
+  // Owned by main; see peerConnection:didAddReceiver:.
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [self.pausedTrackVolumes removeObjectForKey:trackId];
+    [self.trackVolumeCache removeObjectForKey:trackId];
+  });
 }
 
 /** Called when the selected ICE candidate pair is changed. */
