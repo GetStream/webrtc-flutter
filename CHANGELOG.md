@@ -3,6 +3,10 @@
 * [Android] fix: a native crash (`SIGSEGV` in `VideoTrack.removeSink`) when a peer connection factory was disposed while a renderer still showed a camera track created through it. The camera track is now attributed to its factory, so the factory's dispose detaches renderers from it and releases it.
 * [Android] fix: a crash (`NullPointerException` in `FlutterRTCVideoRenderer.onFrameResolutionChanged`, followed by a WebRTC JNI abort) when a video renderer's event stream was cancelled while a frame was being rendered. The renderer, peer connection and data channel event sinks are now read once per event, so a concurrent cancel can no longer null them between the check and the call.
 * [Android] fix: plugin events now reach every Flutter engine that listens, not only the one that listened last.
+* [iOS] fix: `createPeerConnectionFactory` now applies its `appleAudioConfiguration` on the serial audio-session queue, in order with the other `AVAudioSession` changes, instead of on the main thread. It still replies once the configuration is applied.
+* [iOS] fix: `setAppleAudioConfiguration` no longer reconfigures the `AVAudioSession` when its category, category options and mode already match the requested configuration.
+* [iOS] fix: `resumeAudioPeerConnectionFactory` now restores the latest `setAppleAudioConfiguration` instead of the configuration the factory was built with, so a speaker or earpiece choice made during the call survives a suspend and resume. A configuration set while a factory is suspended (for example by another active call) is not recorded for it, so it resumes with its own. The configuration is now restored on the audio-session queue, in order with other `AVAudioSession` changes, and only then is the audio device module restarted.
+* [iOS] fix: `selectAudioOutput` and `selectAudioInput` replied twice to the method call, `selectAudioOutput` when overriding the output port failed and `selectAudioInput` on every call.
 
 [4.0.0] - 2026.10.09
 

@@ -142,6 +142,13 @@ void postEvent(FlutterEventSink _Nullable sink, id _Nullable event) {
    * the requests still apply in the order they were made.
    */
   dispatch_queue_t _audioSessionQueue;
+  /**
+   * Ids of factories whose audio is suspended, as seen from _audioSessionQueue.
+   * Suspend and resume pass through that queue before the factory's ADM queue,
+   * so resume can tell there, in order, whether to restore the configuration.
+   * _audioSessionQueue only.
+   */
+  NSMutableSet<NSString*>* _audioSuspendedFactoryIds;
 #endif
 
   RTC_OBJC_TYPE(RTCCallbackLogger) * loggerCallback;
@@ -231,6 +238,7 @@ static FlutterWebRTCPlugin* sharedSingleton;
     _audioSessionQueue = dispatch_queue_create(
         "io.getstream.webrtc.flutter.audioSession",
         dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0));
+    _audioSuspendedFactoryIds = [NSMutableSet set];
     self.viewController = viewController;
     _platformViewFactory = [[FLutterRTCVideoPlatformViewFactory alloc] initWithMessenger:messenger];
     [registrar registerViewFactory:_platformViewFactory
@@ -470,14 +478,32 @@ static FlutterWebRTCPlugin* sharedSingleton;
     @synchronized(self) {
       _factories[factoryId] = nf;
     }
+    NSLog(@"[createPeerConnectionFactory] built id: %@", factoryId);
 #if TARGET_OS_IPHONE
     // Replay any process-wide ADM prefs that were set before this factory
     // existed (notably the stereo-playout preference set by the SDK during
     // StreamVideo init). Without this, per-call factories created later
     // miss the stereo-playout settings and incoming Opus stereo plays mono.
     [self applyPersistentAdmStateToFactory:nf];
+    if (audioConfig != nil) {
+      // Apply the factory's audio configuration on the audio-session queue
+      // rather than on main, ordered with every other AVAudioSession change,
+      // and reply once it is applied so the factory id only reaches Dart with
+      // the session already configured, as before.
+      NSDictionary* configuration = [audioConfig copy];
+      dispatch_async(_audioSessionQueue, ^{
+        // A setAppleAudioConfiguration queued earlier may have already merged
+        // its configuration into this factory's snapshot; the session ends up
+        // on this configuration, so the snapshot has to as well.
+        nf.audioConfigSnapshot = configuration;
+        [AudioUtils setAppleAudioConfiguration:configuration];
+        dispatch_async(dispatch_get_main_queue(), ^{
+          result(@{@"factoryId" : factoryId});
+        });
+      });
+      return;
+    }
 #endif
-    NSLog(@"[createPeerConnectionFactory] built id: %@", factoryId);
     result(@{@"factoryId" : factoryId});
   } else if ([@"disposePeerConnectionFactory" isEqualToString:call.method]) {
     // Peer connections of this factory may still be closing on
@@ -1378,7 +1404,42 @@ static FlutterWebRTCPlugin* sharedSingleton;
   } else if ([@"setAppleAudioConfiguration" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSDictionary* configuration = argsMap[@"configuration"];
+    if (![configuration isKindOfClass:[NSDictionary class]]) {
+      configuration = nil;
+    }
     dispatch_async(_audioSessionQueue, ^{
+      if (configuration != nil) {
+        // resumeAudioPeerConnectionFactory restores each factory's snapshot, so
+        // keep it in step with the latest configuration; otherwise a speaker or
+        // earpiece choice made after the factory was built is lost on resume.
+        NSArray<NativePeerConnectionFactory*>* factories;
+        @synchronized(self) {
+          factories = [self.factories.allValues copy];
+        }
+        // Merged rather than replaced: a configuration may carry only some of
+        // the keys (nulls are left out on the Dart side), and resume should
+        // restore the whole configuration, not only the keys sent last.
+        //
+        // Suspended factories are skipped: the configuration belongs to the
+        // call that is active now, and a suspended call must resume with its
+        // own. _audioSuspendedFactoryIds is only touched on this queue, so the
+        // check is in order with suspend and resume.
+        for (NativePeerConnectionFactory* nf in factories) {
+          if ([self->_audioSuspendedFactoryIds containsObject:nf.factoryId]) {
+            continue;
+          }
+          NSMutableDictionary* merged =
+              [nf.audioConfigSnapshot mutableCopy] ?: [NSMutableDictionary dictionary];
+          // A category sent without options is applied with no options, so
+          // drop the old ones rather than restore them with the new category.
+          if (configuration[@"appleAudioCategory"] != nil &&
+              configuration[@"appleAudioCategoryOptions"] == nil) {
+            [merged removeObjectForKey:@"appleAudioCategoryOptions"];
+          }
+          [merged addEntriesFromDictionary:configuration];
+          nf.audioConfigSnapshot = merged;
+        }
+      }
       [AudioUtils setAppleAudioConfiguration:configuration];
       dispatch_async(dispatch_get_main_queue(), ^{
         result(nil);
@@ -2109,23 +2170,36 @@ static FlutterWebRTCPlugin* sharedSingleton;
       });
       return;
     }
-    dispatch_async(nf.admQueue, ^{
-      // Idempotent: only the first suspend snapshots and stops.
-      if (!nf.audioSuspended) {
-        BOOL wasPlaying = adm.isPlaying;
-        BOOL wasRecording = adm.isRecording;
-        nf.wasPlayingBeforeSuspend = wasPlaying;
-        nf.wasRecordingBeforeSuspend = wasRecording;
-        nf.audioSuspended = YES;
-        if (wasRecording)
-          [adm stopRecording];
-        if (wasPlaying)
-          [adm stopPlayout];
-      }
-      dispatch_async(dispatch_get_main_queue(), ^{
-        result(nil);
+    dispatch_block_t suspendAdm = ^{
+      dispatch_async(nf.admQueue, ^{
+        // Idempotent: only the first suspend snapshots and stops.
+        if (!nf.audioSuspended) {
+          BOOL wasPlaying = adm.isPlaying;
+          BOOL wasRecording = adm.isRecording;
+          nf.wasPlayingBeforeSuspend = wasPlaying;
+          nf.wasRecordingBeforeSuspend = wasRecording;
+          nf.audioSuspended = YES;
+          if (wasRecording)
+            [adm stopRecording];
+          if (wasPlaying)
+            [adm stopPlayout];
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+          result(nil);
+        });
       });
+    };
+#if TARGET_OS_IPHONE
+    // Through _audioSessionQueue first, like resume, so a suspend and a resume
+    // reach the ADM queue in the order they were made.
+    NSString* suspendedFactoryId = nf.factoryId;
+    dispatch_async(_audioSessionQueue, ^{
+      [self->_audioSuspendedFactoryIds addObject:suspendedFactoryId];
+      suspendAdm();
     });
+#else
+    suspendAdm();
+#endif
   } else if ([@"resumeAudioPeerConnectionFactory" isEqualToString:call.method]) {
     NSString* factoryId = call.arguments[@"factoryId"];
     NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
@@ -2149,32 +2223,47 @@ static FlutterWebRTCPlugin* sharedSingleton;
       });
       return;
     }
-    dispatch_async(nf.admQueue, ^{
-      if (nf.audioSuspended) {
+    dispatch_block_t resumeAdm = ^{
+      dispatch_async(nf.admQueue, ^{
+        if (nf.audioSuspended) {
+          BOOL restorePlaying = nf.wasPlayingBeforeSuspend;
+          BOOL restoreRecording = nf.wasRecordingBeforeSuspend;
+          if (restorePlaying) {
+            [adm initPlayout];
+            [adm startPlayout];
+          }
+          if (restoreRecording) {
+            [adm initRecording];
+            [adm startRecording];
+          }
+          nf.wasPlayingBeforeSuspend = NO;
+          nf.wasRecordingBeforeSuspend = NO;
+          nf.audioSuspended = NO;
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+          result(nil);
+        });
+      });
+    };
 #if TARGET_OS_IPHONE
+    // Restore the configuration on _audioSessionQueue, ordered with every other
+    // AVAudioSession change so a concurrent setAppleAudioConfiguration cannot be
+    // overwritten by an older one, then restart the ADM as before. Chained
+    // asynchronously: neither queue ever waits on the other.
+    NSString* resumedFactoryId = nf.factoryId;
+    dispatch_async(_audioSessionQueue, ^{
+      if ([self->_audioSuspendedFactoryIds containsObject:resumedFactoryId]) {
+        [self->_audioSuspendedFactoryIds removeObject:resumedFactoryId];
         NSDictionary* audioConfigSnapshot = nf.audioConfigSnapshot;
         if (audioConfigSnapshot != nil) {
           [AudioUtils setAppleAudioConfiguration:audioConfigSnapshot];
         }
-#endif
-        BOOL restorePlaying = nf.wasPlayingBeforeSuspend;
-        BOOL restoreRecording = nf.wasRecordingBeforeSuspend;
-        if (restorePlaying) {
-          [adm initPlayout];
-          [adm startPlayout];
-        }
-        if (restoreRecording) {
-          [adm initRecording];
-          [adm startRecording];
-        }
-        nf.wasPlayingBeforeSuspend = NO;
-        nf.wasRecordingBeforeSuspend = NO;
-        nf.audioSuspended = NO;
       }
-      dispatch_async(dispatch_get_main_queue(), ^{
-        result(nil);
-      });
+      resumeAdm();
     });
+#else
+    resumeAdm();
+#endif
   } else if ([@"isVoiceProcessingEnabled" isEqualToString:call.method]) {
     NSString* factoryId = call.arguments[@"factoryId"];
     NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryId];
@@ -2455,6 +2544,11 @@ static FlutterWebRTCPlugin* sharedSingleton;
     result(nil);
     return;
   }
+#if TARGET_OS_IPHONE
+  dispatch_async(_audioSessionQueue, ^{
+    [self->_audioSuspendedFactoryIds removeObject:factoryId];
+  });
+#endif
   NSLog(@"[disposePeerConnectionFactory] disposing id: %@, ownedPcs: %lu, "
          "ownedTracks: %lu, ownedStreams: %lu",
         factoryId, (unsigned long)nf.ownedPcIds.count, (unsigned long)nf.ownedTrackIds.count,

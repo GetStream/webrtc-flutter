@@ -190,8 +190,6 @@
   NSArray* appleAudioCategoryOptions = configuration[@"appleAudioCategoryOptions"];
   NSString* appleAudioMode = configuration[@"appleAudioMode"];
 
-  [session lockForConfiguration];
-
   AVAudioSessionCategoryOptions desiredOptions = 0;
   BOOL haveOptions = NO;
   if (appleAudioCategoryOptions != nil) {
@@ -223,6 +221,29 @@
   if (appleAudioMode != nil) {
     desiredMode = [AudioUtils audioSessionModeFromString:appleAudioMode];
     config.mode = desiredMode;
+  }
+
+  // The configuration is re-applied at factory creation, at join, on every
+  // output device change and on resume, and usually matches what the session
+  // already has. Skip setCategory / setMode when nothing would change. The
+  // WebRTC configuration above is still updated, since WebRTC reads it when it
+  // activates the session. A category is always applied together with
+  // desiredOptions (0 when none were given), so both are compared. The check
+  // runs under the configuration lock (it is recursive), so a concurrent
+  // writer cannot change the session between the check and the set.
+  //
+  // The options are compared exactly. voiceChat and videoChat imply some
+  // options (allowBluetooth, and defaultToSpeaker for videoChat); a request
+  // that leaves those out may never match and is then applied every time, as
+  // before. The SDK's audio policies list the implied options explicitly.
+  [session lockForConfiguration];
+  BOOL categoryChanges =
+      desiredCategory != nil && (![desiredCategory isEqualToString:session.category] ||
+                                 session.categoryOptions != desiredOptions);
+  BOOL modeChanges = desiredMode != nil && ![desiredMode isEqualToString:session.mode];
+  if (!categoryChanges && !modeChanges) {
+    [session unlockForConfiguration];
+    return;
   }
 
   NSError* err = nil;

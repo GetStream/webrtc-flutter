@@ -26,8 +26,12 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @property(nonatomic, strong, readonly) dispatch_queue_t admQueue;
 
-/** Snapshot of the appleAudioConfiguration used to build this factory. */
-@property(nonatomic, copy, readonly, nullable) NSDictionary* audioConfigSnapshot;
+/**
+ * The appleAudioConfiguration to restore when audio resumes. Starts as the one
+ * used to build this factory and follows later setAppleAudioConfiguration
+ * calls. Atomic: written on the audio-session queue, read on the ADM queue.
+ */
+@property(atomic, copy, nullable) NSDictionary* audioConfigSnapshot;
 
 /** Whether voice-processing was bypassed at build time. */
 @property(nonatomic, assign, readonly) BOOL bypassVoiceProcessing;
