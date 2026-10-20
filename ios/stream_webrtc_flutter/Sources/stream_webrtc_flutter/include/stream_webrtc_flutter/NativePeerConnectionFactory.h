@@ -29,7 +29,8 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * The appleAudioConfiguration to restore when audio resumes. Starts as the one
  * used to build this factory and follows later setAppleAudioConfiguration
- * calls. Atomic: written on the audio-session queue, read on the ADM queue.
+ * calls that the session accepted. Read and written on the audio-session queue
+ * (the initial value is set in init).
  */
 @property(atomic, copy, nullable) NSDictionary* audioConfigSnapshot;
 

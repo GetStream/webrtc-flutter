@@ -182,7 +182,7 @@
   return AVAudioSessionCategoryAmbient;
 }
 
-+ (void)setAppleAudioConfiguration:(NSDictionary*)configuration {
++ (BOOL)setAppleAudioConfiguration:(NSDictionary*)configuration error:(NSError**)outError {
   RTCAudioSession* session = [RTCAudioSession sharedInstance];
   RTCAudioSessionConfiguration* config = [RTCAudioSessionConfiguration webRTCConfiguration];
 
@@ -229,8 +229,7 @@
   // WebRTC configuration above is still updated, since WebRTC reads it when it
   // activates the session. A category is always applied together with
   // desiredOptions (0 when none were given), so both are compared. The check
-  // runs under the configuration lock (it is recursive), so a concurrent
-  // writer cannot change the session between the check and the set.
+  // and the set run under one configuration lock.
   //
   // The options are compared exactly. voiceChat and videoChat imply some
   // options (allowBluetooth, and defaultToSpeaker for videoChat); a request
@@ -243,28 +242,38 @@
   BOOL modeChanges = desiredMode != nil && ![desiredMode isEqualToString:session.mode];
   if (!categoryChanges && !modeChanges) {
     [session unlockForConfiguration];
-    return;
+    return YES;
   }
 
+  BOOL ok = YES;
   NSError* err = nil;
   if (desiredCategory != nil && desiredMode != nil && haveOptions) {
-    BOOL ok = [session setCategory:desiredCategory
-                              mode:desiredMode
-                           options:desiredOptions
-                             error:&err];
-    if (!ok) {
+    if (![session setCategory:desiredCategory mode:desiredMode options:desiredOptions error:&err]) {
       NSLog(@"setCategory:mode:options: failed: %@", err);
+      ok = NO;
     }
   } else {
-    if (desiredCategory != nil) {
-      [session setCategory:desiredCategory withOptions:desiredOptions error:nil];
+    if (desiredCategory != nil &&
+        ![session setCategory:desiredCategory withOptions:desiredOptions error:&err]) {
+      NSLog(@"setCategory:withOptions: failed: %@", err);
+      ok = NO;
     }
-    if (desiredMode != nil) {
-      [session setMode:desiredMode error:nil];
+    // Still try the mode when the category failed; the first error is reported.
+    NSError* modeErr = nil;
+    if (desiredMode != nil && ![session setMode:desiredMode error:&modeErr]) {
+      NSLog(@"setMode: failed: %@", modeErr);
+      if (ok) {
+        err = modeErr;
+      }
+      ok = NO;
     }
   }
 
   [session unlockForConfiguration];
+  if (!ok && outError != NULL) {
+    *outError = err;
+  }
+  return ok;
 }
 
 @end

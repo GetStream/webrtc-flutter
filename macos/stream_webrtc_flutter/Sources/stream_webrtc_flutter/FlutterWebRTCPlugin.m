@@ -488,15 +488,21 @@ static FlutterWebRTCPlugin* sharedSingleton;
     if (audioConfig != nil) {
       // Apply the factory's audio configuration on the audio-session queue
       // rather than on main, ordered with every other AVAudioSession change,
-      // and reply once it is applied so the factory id only reaches Dart with
-      // the session already configured, as before.
+      // and reply once it has been attempted so the factory id only reaches
+      // Dart after the session was configured, as before. A configuration the
+      // session rejects is logged and does not fail the factory, as before.
       NSDictionary* configuration = [audioConfig copy];
       dispatch_async(_audioSessionQueue, ^{
-        // A setAppleAudioConfiguration queued earlier may have already merged
-        // its configuration into this factory's snapshot; the session ends up
-        // on this configuration, so the snapshot has to as well.
-        nf.audioConfigSnapshot = configuration;
-        [AudioUtils setAppleAudioConfiguration:configuration];
+        NSError* error = nil;
+        if ([AudioUtils setAppleAudioConfiguration:configuration error:&error]) {
+          // A setAppleAudioConfiguration queued earlier may have already merged
+          // its configuration into this factory's snapshot; the session is now
+          // on this configuration, so the snapshot has to be as well.
+          nf.audioConfigSnapshot = configuration;
+        } else {
+          NSLog(@"[createPeerConnectionFactory] audio configuration failed for id %@: %@",
+                factoryId, error);
+        }
         dispatch_async(dispatch_get_main_queue(), ^{
           result(@{@"factoryId" : factoryId});
         });
@@ -1408,6 +1414,17 @@ static FlutterWebRTCPlugin* sharedSingleton;
       configuration = nil;
     }
     dispatch_async(_audioSessionQueue, ^{
+      NSError* error = nil;
+      if (![AudioUtils setAppleAudioConfiguration:configuration error:&error]) {
+        // The snapshots are left as they were: resume must not restore a
+        // configuration the session has rejected.
+        dispatch_async(dispatch_get_main_queue(), ^{
+          result([FlutterError errorWithCode:@"setAppleAudioConfiguration"
+                                     message:error.localizedDescription
+                                     details:nil]);
+        });
+        return;
+      }
       if (configuration != nil) {
         // resumeAudioPeerConnectionFactory restores each factory's snapshot, so
         // keep it in step with the latest configuration; otherwise a speaker or
@@ -1440,7 +1457,6 @@ static FlutterWebRTCPlugin* sharedSingleton;
           nf.audioConfigSnapshot = merged;
         }
       }
-      [AudioUtils setAppleAudioConfiguration:configuration];
       dispatch_async(dispatch_get_main_queue(), ^{
         result(nil);
       });
@@ -2172,8 +2188,9 @@ static FlutterWebRTCPlugin* sharedSingleton;
     }
     dispatch_block_t suspendAdm = ^{
       dispatch_async(nf.admQueue, ^{
-        // Idempotent: only the first suspend snapshots and stops.
-        if (!nf.audioSuspended) {
+        // Idempotent: only the first suspend snapshots and stops. A disposed
+        // factory has queued its own stops and is left alone.
+        if (!nf.isDisposed && !nf.audioSuspended) {
           BOOL wasPlaying = adm.isPlaying;
           BOOL wasRecording = adm.isRecording;
           nf.wasPlayingBeforeSuspend = wasPlaying;
@@ -2194,7 +2211,9 @@ static FlutterWebRTCPlugin* sharedSingleton;
     // reach the ADM queue in the order they were made.
     NSString* suspendedFactoryId = nf.factoryId;
     dispatch_async(_audioSessionQueue, ^{
-      [self->_audioSuspendedFactoryIds addObject:suspendedFactoryId];
+      if (!nf.isDisposed) {
+        [self->_audioSuspendedFactoryIds addObject:suspendedFactoryId];
+      }
       suspendAdm();
     });
 #else
@@ -2225,7 +2244,11 @@ static FlutterWebRTCPlugin* sharedSingleton;
     }
     dispatch_block_t resumeAdm = ^{
       dispatch_async(nf.admQueue, ^{
-        if (nf.audioSuspended) {
+        // A resume that was waiting on _audioSessionQueue can land here after
+        // dispose queued its stops; restarting then would leave the disposed
+        // factory's ADM running with no owner. dispose sets isDisposed on main
+        // before queuing the stops, so the check is reliable on this queue.
+        if (!nf.isDisposed && nf.audioSuspended) {
           BOOL restorePlaying = nf.wasPlayingBeforeSuspend;
           BOOL restoreRecording = nf.wasRecordingBeforeSuspend;
           if (restorePlaying) {
@@ -2254,9 +2277,16 @@ static FlutterWebRTCPlugin* sharedSingleton;
     dispatch_async(_audioSessionQueue, ^{
       if ([self->_audioSuspendedFactoryIds containsObject:resumedFactoryId]) {
         [self->_audioSuspendedFactoryIds removeObject:resumedFactoryId];
+        // A disposed factory's call has ended; its configuration must not
+        // overwrite the one the remaining call has set.
         NSDictionary* audioConfigSnapshot = nf.audioConfigSnapshot;
-        if (audioConfigSnapshot != nil) {
-          [AudioUtils setAppleAudioConfiguration:audioConfigSnapshot];
+        NSError* error = nil;
+        if (!nf.isDisposed && audioConfigSnapshot != nil &&
+            ![AudioUtils setAppleAudioConfiguration:audioConfigSnapshot error:&error]) {
+          // Audio is still restarted below; a rejected configuration should not
+          // also leave the call without audio.
+          NSLog(@"[resumeAudioPeerConnectionFactory] audio configuration failed for id %@: %@",
+                resumedFactoryId, error);
         }
       }
       resumeAdm();
