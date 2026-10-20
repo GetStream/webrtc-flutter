@@ -143,6 +143,14 @@ void postEvent(FlutterEventSink _Nullable sink, id _Nullable event) {
    */
   dispatch_queue_t _audioSessionQueue;
 #endif
+  /**
+   * Serial queue for device enumeration (`getSources`). Enumeration calls
+   * into the media daemons and can take hundreds of milliseconds, and the main
+   * thread also runs Dart.
+   * Kept apart from `_audioSessionQueue` so that a camera lookup (e.g. on a
+   * camera flip) never waits behind a slow audio session reconfiguration.
+   */
+  dispatch_queue_t _deviceEnumerationQueue;
 
   RTC_OBJC_TYPE(RTCCallbackLogger) * loggerCallback;
 
@@ -234,6 +242,9 @@ static FlutterWebRTCPlugin* sharedSingleton;
     _closingPeerConnections = [NSMutableSet set];
     _disposingFactoryIds = [NSMutableSet set];
 
+    _deviceEnumerationQueue = dispatch_queue_create(
+        "io.getstream.webrtc.flutter.deviceEnumeration",
+        dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0));
 #if TARGET_OS_IPHONE
     _preferredInput = AVAudioSessionPortHeadphones;
     _audioSessionQueue = dispatch_queue_create(
@@ -306,6 +317,10 @@ static FlutterWebRTCPlugin* sharedSingleton;
                                        eventSink:(nonnull FlutterEventSink)sink {
   _eventSink = sink;
   return nil;
+}
+
+- (dispatch_queue_t)deviceEnumerationQueue {
+  return _deviceEnumerationQueue;
 }
 
 - (void)didSessionRouteChange:(NSNotification*)notification {
