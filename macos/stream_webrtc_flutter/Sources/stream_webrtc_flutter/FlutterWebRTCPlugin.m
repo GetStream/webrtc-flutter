@@ -160,6 +160,13 @@ void postEvent(FlutterEventSink _Nullable sink, id _Nullable event) {
    */
   NSMutableSet<RTCPeerConnection*>* _closingPeerConnections;
 
+  /**
+   * Factories whose disposal is waiting for their connections to close.
+   * `createPeerConnection` rejects them, so no connection can appear on a
+   * factory after its connections were closed. Main thread only.
+   */
+  NSMutableSet<NSString*>* _disposingFactoryIds;
+
   /** Snapshot of the most-recent [WebRTC.initialize] options. */
   RTCInitializeSnapshot* _initializeSnapshot;
 }
@@ -225,6 +232,7 @@ static FlutterWebRTCPlugin* sharedSingleton;
         "io.getstream.webrtc.flutter.peerConnectionClose",
         dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0));
     _closingPeerConnections = [NSMutableSet set];
+    _disposingFactoryIds = [NSMutableSet set];
 
 #if TARGET_OS_IPHONE
     _preferredInput = AVAudioSessionPortHeadphones;
@@ -490,6 +498,9 @@ static FlutterWebRTCPlugin* sharedSingleton;
         disposing = _factories[factoryIdArg];
       }
     }
+    if (disposing != nil) {
+      [_disposingFactoryIds addObject:factoryIdArg];
+    }
     for (NSString* pcId in [disposing.ownedPcIds.allObjects copy]) {
       if (self.peerConnections[pcId] != nil) {
         [self closePeerConnectionWithId:pcId
@@ -503,6 +514,9 @@ static FlutterWebRTCPlugin* sharedSingleton;
     dispatch_async(_peerConnectionCloseQueue, ^{
       dispatch_async(dispatch_get_main_queue(), ^{
         [self disposePeerConnectionFactory:call result:result];
+        if (factoryIdArg != nil) {
+          [self->_disposingFactoryIds removeObject:factoryIdArg];
+        }
       });
     });
   } else if ([@"setVideoEffects" isEqualToString:call.method]) {
@@ -531,6 +545,13 @@ static FlutterWebRTCPlugin* sharedSingleton;
       result([FlutterError
           errorWithCode:@"createPeerConnection"
                 message:[NSString stringWithFormat:@"unknown factoryId %@", factoryIdArg]
+                details:nil]);
+      return;
+    }
+    if ([_disposingFactoryIds containsObject:factoryIdArg]) {
+      result([FlutterError
+          errorWithCode:@"createPeerConnection"
+                message:[NSString stringWithFormat:@"factoryId %@ is being disposed", factoryIdArg]
                 details:nil]);
       return;
     }
@@ -627,8 +648,12 @@ static FlutterWebRTCPlugin* sharedSingleton;
     RTCPeerConnection* peerConnection = self.peerConnections[peerConnectionId];
 
     if (peerConnection && stream) {
-      [peerConnection addStream:stream];
-      result(@"");
+      // On the connection's queue, in order with the description calls.
+      FlutterResult reply = FlutterRTCReplyOnMain(result);
+      FlutterRTCRunOnOperationQueue(peerConnection, ^{
+        [peerConnection addStream:stream];
+        reply(@"");
+      });
     } else {
       result([FlutterError
           errorWithCode:[NSString stringWithFormat:@"%@Failed", call.method]
@@ -646,8 +671,12 @@ static FlutterWebRTCPlugin* sharedSingleton;
     RTCPeerConnection* peerConnection = self.peerConnections[peerConnectionId];
 
     if (peerConnection && stream) {
-      [peerConnection removeStream:stream];
-      result(nil);
+      // On the connection's queue, in order with the description calls.
+      FlutterResult reply = FlutterRTCReplyOnMain(result);
+      FlutterRTCRunOnOperationQueue(peerConnection, ^{
+        [peerConnection removeStream:stream];
+        reply(nil);
+      });
     } else {
       result([FlutterError
           errorWithCode:[NSString stringWithFormat:@"%@Failed", call.method]
@@ -997,8 +1026,12 @@ static FlutterWebRTCPlugin* sharedSingleton;
                                  message:nil
                                  details:nil]);
     } else {
-      [peerConnection restartIce];
-      result(nil);
+      // On the connection's queue, in order with the description calls.
+      FlutterResult reply = FlutterRTCReplyOnMain(result);
+      FlutterRTCRunOnOperationQueue(peerConnection, ^{
+        [peerConnection restartIce];
+        reply(nil);
+      });
     }
   } else if ([@"peerConnectionClose" isEqualToString:call.method] ||
              [@"peerConnectionDispose" isEqualToString:call.method]) {
@@ -1395,9 +1428,13 @@ static FlutterWebRTCPlugin* sharedSingleton;
     NSDictionary* configuration = argsMap[@"configuration"];
     RTCPeerConnection* peerConnection = self.peerConnections[peerConnectionId];
     if (peerConnection) {
-      [self peerConnectionSetConfiguration:[self RTCConfiguration:configuration]
-                            peerConnection:peerConnection];
-      result(nil);
+      // On the connection's queue, in order with the description calls.
+      RTCConfiguration* rtcConfiguration = [self RTCConfiguration:configuration];
+      FlutterResult reply = FlutterRTCReplyOnMain(result);
+      FlutterRTCRunOnOperationQueue(peerConnection, ^{
+        [self peerConnectionSetConfiguration:rtcConfiguration peerConnection:peerConnection];
+        reply(nil);
+      });
     } else {
       result([FlutterError
           errorWithCode:[NSString stringWithFormat:@"%@Failed", call.method]
@@ -1425,16 +1462,20 @@ static FlutterWebRTCPlugin* sharedSingleton;
                                  details:nil]);
       return;
     }
-    RTCRtpSender* sender = [peerConnection addTrack:track streamIds:streamIds];
-    if (sender == nil) {
-      result([FlutterError
-          errorWithCode:[NSString stringWithFormat:@"%@Failed", call.method]
-                message:[NSString stringWithFormat:@"Error: peerConnection.addTrack failed!"]
-                details:nil]);
-      return;
-    }
-
-    result([self rtpSenderToMap:sender]);
+    // On the connection's queue, in order with the description calls.
+    NSString* method = call.method;
+    FlutterResult reply = FlutterRTCReplyOnMain(result);
+    FlutterRTCRunOnOperationQueue(peerConnection, ^{
+      RTCRtpSender* sender = [peerConnection addTrack:track streamIds:streamIds];
+      if (sender == nil) {
+        reply([FlutterError
+            errorWithCode:[NSString stringWithFormat:@"%@Failed", method]
+                  message:[NSString stringWithFormat:@"Error: peerConnection.addTrack failed!"]
+                  details:nil]);
+        return;
+      }
+      reply([self rtpSenderToMap:sender]);
+    });
   } else if ([@"removeTrack" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* peerConnectionId = argsMap[@"peerConnectionId"];
@@ -1447,14 +1488,19 @@ static FlutterWebRTCPlugin* sharedSingleton;
                 details:nil]);
       return;
     }
-    RTCRtpSender* sender = [self getRtpSenderById:peerConnection Id:senderId];
-    if (sender == nil) {
-      result([FlutterError errorWithCode:[NSString stringWithFormat:@"%@Failed", call.method]
-                                 message:[NSString stringWithFormat:@"Error: sender not found!"]
-                                 details:nil]);
-      return;
-    }
-    result(@{@"result" : @([peerConnection removeTrack:sender])});
+    // On the connection's queue, in order with the description calls.
+    NSString* method = call.method;
+    FlutterResult reply = FlutterRTCReplyOnMain(result);
+    FlutterRTCRunOnOperationQueue(peerConnection, ^{
+      RTCRtpSender* sender = [self getRtpSenderById:peerConnection Id:senderId];
+      if (sender == nil) {
+        reply([FlutterError errorWithCode:[NSString stringWithFormat:@"%@Failed", method]
+                                  message:[NSString stringWithFormat:@"Error: sender not found!"]
+                                  details:nil]);
+        return;
+      }
+      reply(@{@"result" : @([peerConnection removeTrack:sender])});
+    });
   } else if ([@"addTransceiver" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* peerConnectionId = argsMap[@"peerConnectionId"];
@@ -1469,46 +1515,46 @@ static FlutterWebRTCPlugin* sharedSingleton;
                 details:nil]);
       return;
     }
-    RTCRtpTransceiver* transceiver = nil;
-    BOOL hasAudio = NO;
-    if (trackId != nil) {
-      RTCMediaStreamTrack* track = [self trackForId:trackId peerConnectionId:nil];
-      if (transceiverInit != nil) {
-        RTCRtpTransceiverInit* init = [self mapToTransceiverInit:transceiverInit];
-        transceiver = [peerConnection addTransceiverWithTrack:track init:init];
-      } else {
-        transceiver = [peerConnection addTransceiverWithTrack:track];
-      }
-      if ([track.kind isEqualToString:@"audio"]) {
-        hasAudio = YES;
-      }
-    } else if (mediaType != nil) {
-      RTCRtpMediaType rtpMediaType = [self stringToRtpMediaType:mediaType];
-      if (transceiverInit != nil) {
-        RTCRtpTransceiverInit* init = [self mapToTransceiverInit:transceiverInit];
-        transceiver = [peerConnection addTransceiverOfType:(rtpMediaType) init:init];
-      } else {
-        transceiver = [peerConnection addTransceiverOfType:rtpMediaType];
-      }
-      if (rtpMediaType == RTCRtpMediaTypeAudio) {
-        hasAudio = YES;
-      }
-    } else {
+    if (trackId == nil && mediaType == nil) {
       result([FlutterError
           errorWithCode:[NSString stringWithFormat:@"%@Failed", call.method]
                 message:[NSString stringWithFormat:@"Error: Incomplete parameters!"]
                 details:nil]);
       return;
     }
+    RTCMediaStreamTrack* track = trackId != nil ? [self trackForId:trackId peerConnectionId:nil] : nil;
+    RTCRtpTransceiverInit* init =
+        transceiverInit != nil ? [self mapToTransceiverInit:transceiverInit] : nil;
 
-    if (transceiver == nil) {
-      result([FlutterError errorWithCode:[NSString stringWithFormat:@"%@Failed", call.method]
-                                 message:[NSString stringWithFormat:@"Error: can't addTransceiver!"]
-                                 details:nil]);
-      return;
-    }
+    // On the connection's queue, in order with the description calls: a
+    // transceiver added after setRemoteDescription must see the offer's m-lines.
+    NSString* method = call.method;
+    FlutterResult reply = FlutterRTCReplyOnMain(result);
+    FlutterRTCRunOnOperationQueue(peerConnection, ^{
+      RTCRtpTransceiver* transceiver = nil;
+      if (trackId != nil) {
+        if (init != nil) {
+          transceiver = [peerConnection addTransceiverWithTrack:track init:init];
+        } else {
+          transceiver = [peerConnection addTransceiverWithTrack:track];
+        }
+      } else {
+        RTCRtpMediaType rtpMediaType = [self stringToRtpMediaType:mediaType];
+        if (init != nil) {
+          transceiver = [peerConnection addTransceiverOfType:rtpMediaType init:init];
+        } else {
+          transceiver = [peerConnection addTransceiverOfType:rtpMediaType];
+        }
+      }
 
-    result([self transceiverToMap:transceiver]);
+      if (transceiver == nil) {
+        reply([FlutterError errorWithCode:[NSString stringWithFormat:@"%@Failed", method]
+                                  message:[NSString stringWithFormat:@"Error: can't addTransceiver!"]
+                                  details:nil]);
+        return;
+      }
+      reply([self transceiverToMap:transceiver]);
+    });
   } else if ([@"rtpTransceiverSetDirection" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* peerConnectionId = argsMap[@"peerConnectionId"];
@@ -1522,16 +1568,21 @@ static FlutterWebRTCPlugin* sharedSingleton;
                 details:nil]);
       return;
     }
-    RTCRtpTransceiver* transcevier = [self getRtpTransceiverById:peerConnection Id:transceiverId];
-    if (transcevier == nil) {
-      result([FlutterError
-          errorWithCode:[NSString stringWithFormat:@"%@Failed", call.method]
-                message:[NSString stringWithFormat:@"Error: transcevier not found!"]
-                details:nil]);
-      return;
-    }
-    [transcevier setDirection:[self stringToTransceiverDirection:direction] error:nil];
-    result(nil);
+    // On the connection's queue, in order with the description calls.
+    NSString* method = call.method;
+    FlutterResult reply = FlutterRTCReplyOnMain(result);
+    FlutterRTCRunOnOperationQueue(peerConnection, ^{
+      RTCRtpTransceiver* transcevier = [self getRtpTransceiverById:peerConnection Id:transceiverId];
+      if (transcevier == nil) {
+        reply([FlutterError
+            errorWithCode:[NSString stringWithFormat:@"%@Failed", method]
+                  message:[NSString stringWithFormat:@"Error: transcevier not found!"]
+                  details:nil]);
+        return;
+      }
+      [transcevier setDirection:[self stringToTransceiverDirection:direction] error:nil];
+      reply(nil);
+    });
   } else if ([@"rtpTransceiverGetCurrentDirection" isEqualToString:call.method] ||
              [@"rtpTransceiverGetDirection" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
@@ -1545,25 +1596,30 @@ static FlutterWebRTCPlugin* sharedSingleton;
                 details:nil]);
       return;
     }
-    RTCRtpTransceiver* transcevier = [self getRtpTransceiverById:peerConnection Id:transceiverId];
-    if (transcevier == nil) {
-      result([FlutterError
-          errorWithCode:[NSString stringWithFormat:@"%@Failed", call.method]
-                message:[NSString stringWithFormat:@"Error: transcevier not found!"]
-                details:nil]);
-      return;
-    }
-
-    if ([@"rtpTransceiverGetDirection" isEqualToString:call.method]) {
-      result(@{@"result" : [self transceiverDirectionString:transcevier.direction]});
-    } else if ([@"rtpTransceiverGetCurrentDirection" isEqualToString:call.method]) {
-      RTCRtpTransceiverDirection directionOut = transcevier.direction;
-      if ([transcevier currentDirection:&directionOut]) {
-        result(@{@"result" : [self transceiverDirectionString:directionOut]});
-      } else {
-        result(nil);
+    // On the connection's queue, in order with the description calls.
+    NSString* method = call.method;
+    FlutterResult reply = FlutterRTCReplyOnMain(result);
+    FlutterRTCRunOnOperationQueue(peerConnection, ^{
+      RTCRtpTransceiver* transcevier = [self getRtpTransceiverById:peerConnection Id:transceiverId];
+      if (transcevier == nil) {
+        reply([FlutterError
+            errorWithCode:[NSString stringWithFormat:@"%@Failed", method]
+                  message:[NSString stringWithFormat:@"Error: transcevier not found!"]
+                  details:nil]);
+        return;
       }
-    }
+
+      if ([@"rtpTransceiverGetDirection" isEqualToString:method]) {
+        reply(@{@"result" : [self transceiverDirectionString:transcevier.direction]});
+      } else if ([@"rtpTransceiverGetCurrentDirection" isEqualToString:method]) {
+        RTCRtpTransceiverDirection directionOut = transcevier.direction;
+        if ([transcevier currentDirection:&directionOut]) {
+          reply(@{@"result" : [self transceiverDirectionString:directionOut]});
+        } else {
+          reply(nil);
+        }
+      }
+    });
   } else if ([@"rtpTransceiverStop" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* peerConnectionId = argsMap[@"peerConnectionId"];
@@ -1576,16 +1632,21 @@ static FlutterWebRTCPlugin* sharedSingleton;
                 details:nil]);
       return;
     }
-    RTCRtpTransceiver* transcevier = [self getRtpTransceiverById:peerConnection Id:transceiverId];
-    if (transcevier == nil) {
-      result([FlutterError
-          errorWithCode:[NSString stringWithFormat:@"%@Failed", call.method]
-                message:[NSString stringWithFormat:@"Error: transcevier not found!"]
-                details:nil]);
-      return;
-    }
-    [transcevier stopInternal];
-    result(nil);
+    // On the connection's queue, in order with the description calls.
+    NSString* method = call.method;
+    FlutterResult reply = FlutterRTCReplyOnMain(result);
+    FlutterRTCRunOnOperationQueue(peerConnection, ^{
+      RTCRtpTransceiver* transcevier = [self getRtpTransceiverById:peerConnection Id:transceiverId];
+      if (transcevier == nil) {
+        reply([FlutterError
+            errorWithCode:[NSString stringWithFormat:@"%@Failed", method]
+                  message:[NSString stringWithFormat:@"Error: transcevier not found!"]
+                  details:nil]);
+        return;
+      }
+      [transcevier stopInternal];
+      reply(nil);
+    });
   } else if ([@"rtpSenderSetParameters" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* peerConnectionId = argsMap[@"peerConnectionId"];
@@ -1599,16 +1660,20 @@ static FlutterWebRTCPlugin* sharedSingleton;
                 details:nil]);
       return;
     }
-    RTCRtpSender* sender = [self getRtpSenderById:peerConnection Id:senderId];
-    if (sender == nil) {
-      result([FlutterError errorWithCode:[NSString stringWithFormat:@"%@Failed", call.method]
-                                 message:[NSString stringWithFormat:@"Error: sender not found!"]
-                                 details:nil]);
-      return;
-    }
-    [sender setParameters:[self updateRtpParameters:sender.parameters with:parameters]];
-
-    result(@{@"result" : @(YES)});
+    // On the connection's queue, in order with the description calls.
+    NSString* method = call.method;
+    FlutterResult reply = FlutterRTCReplyOnMain(result);
+    FlutterRTCRunOnOperationQueue(peerConnection, ^{
+      RTCRtpSender* sender = [self getRtpSenderById:peerConnection Id:senderId];
+      if (sender == nil) {
+        reply([FlutterError errorWithCode:[NSString stringWithFormat:@"%@Failed", method]
+                                  message:[NSString stringWithFormat:@"Error: sender not found!"]
+                                  details:nil]);
+        return;
+      }
+      [sender setParameters:[self updateRtpParameters:sender.parameters with:parameters]];
+      reply(@{@"result" : @(YES)});
+    });
   } else if ([@"rtpSenderReplaceTrack" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* peerConnectionId = argsMap[@"peerConnectionId"];
@@ -1622,13 +1687,6 @@ static FlutterWebRTCPlugin* sharedSingleton;
                 details:nil]);
       return;
     }
-    RTCRtpSender* sender = [self getRtpSenderById:peerConnection Id:senderId];
-    if (sender == nil) {
-      result([FlutterError errorWithCode:[NSString stringWithFormat:@"%@Failed", call.method]
-                                 message:[NSString stringWithFormat:@"Error: sender not found!"]
-                                 details:nil]);
-      return;
-    }
     RTCMediaStreamTrack* track = nil;
     if ([trackId length] > 0) {
       track = [self trackForId:trackId peerConnectionId:nil];
@@ -1639,8 +1697,20 @@ static FlutterWebRTCPlugin* sharedSingleton;
         return;
       }
     }
-    [sender setTrack:track];
-    result(nil);
+    // On the connection's queue, in order with the description calls.
+    NSString* method = call.method;
+    FlutterResult reply = FlutterRTCReplyOnMain(result);
+    FlutterRTCRunOnOperationQueue(peerConnection, ^{
+      RTCRtpSender* sender = [self getRtpSenderById:peerConnection Id:senderId];
+      if (sender == nil) {
+        reply([FlutterError errorWithCode:[NSString stringWithFormat:@"%@Failed", method]
+                                  message:[NSString stringWithFormat:@"Error: sender not found!"]
+                                  details:nil]);
+        return;
+      }
+      [sender setTrack:track];
+      reply(nil);
+    });
   } else if ([@"rtpSenderSetTrack" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* peerConnectionId = argsMap[@"peerConnectionId"];
@@ -1654,13 +1724,6 @@ static FlutterWebRTCPlugin* sharedSingleton;
                 details:nil]);
       return;
     }
-    RTCRtpSender* sender = [self getRtpSenderById:peerConnection Id:senderId];
-    if (sender == nil) {
-      result([FlutterError errorWithCode:[NSString stringWithFormat:@"%@Failed", call.method]
-                                 message:[NSString stringWithFormat:@"Error: sender not found!"]
-                                 details:nil]);
-      return;
-    }
     RTCMediaStreamTrack* track = nil;
     if ([trackId length] > 0) {
       track = [self trackForId:trackId peerConnectionId:nil];
@@ -1671,8 +1734,20 @@ static FlutterWebRTCPlugin* sharedSingleton;
         return;
       }
     }
-    [sender setTrack:track];
-    result(nil);
+    // On the connection's queue, in order with the description calls.
+    NSString* method = call.method;
+    FlutterResult reply = FlutterRTCReplyOnMain(result);
+    FlutterRTCRunOnOperationQueue(peerConnection, ^{
+      RTCRtpSender* sender = [self getRtpSenderById:peerConnection Id:senderId];
+      if (sender == nil) {
+        reply([FlutterError errorWithCode:[NSString stringWithFormat:@"%@Failed", method]
+                                  message:[NSString stringWithFormat:@"Error: sender not found!"]
+                                  details:nil]);
+        return;
+      }
+      [sender setTrack:track];
+      reply(nil);
+    });
   } else if ([@"rtpSenderSetStreams" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* peerConnectionId = argsMap[@"peerConnectionId"];
@@ -1686,15 +1761,20 @@ static FlutterWebRTCPlugin* sharedSingleton;
                 details:nil]);
       return;
     }
-    RTCRtpSender* sender = [self getRtpSenderById:peerConnection Id:senderId];
-    if (sender == nil) {
-      result([FlutterError errorWithCode:[NSString stringWithFormat:@"%@Failed", call.method]
-                                 message:[NSString stringWithFormat:@"Error: sender not found!"]
-                                 details:nil]);
-      return;
-    }
-    [sender setStreamIds:streamIds];
-    result(nil);
+    // On the connection's queue, in order with the description calls.
+    NSString* method = call.method;
+    FlutterResult reply = FlutterRTCReplyOnMain(result);
+    FlutterRTCRunOnOperationQueue(peerConnection, ^{
+      RTCRtpSender* sender = [self getRtpSenderById:peerConnection Id:senderId];
+      if (sender == nil) {
+        reply([FlutterError errorWithCode:[NSString stringWithFormat:@"%@Failed", method]
+                                  message:[NSString stringWithFormat:@"Error: sender not found!"]
+                                  details:nil]);
+        return;
+      }
+      [sender setStreamIds:streamIds];
+      reply(nil);
+    });
   } else if ([@"getSenders" isEqualToString:call.method]) {
     NSDictionary* argsMap = call.arguments;
     NSString* peerConnectionId = argsMap[@"peerConnectionId"];
@@ -2531,9 +2611,10 @@ static FlutterWebRTCPlugin* sharedSingleton;
   for (NSString* pcId in pcIdsSnapshot) {
     RTCPeerConnection* peerConnection = self.peerConnections[pcId];
     if (peerConnection != nil) {
-      // Last resort: the disposePeerConnectionFactory branch already closed
-      // this factory's connections off main. Behind the calls still queued for
-      // it, which must not reach the connection once its factory is gone.
+      // Not expected: handleMethodCall closes this factory's connections off
+      // main before calling this, and rejects createPeerConnection for it while
+      // they close. If one is still open, close it behind the calls still
+      // queued for it, which must not reach it once its factory is gone.
       dispatch_queue_t operationQueue = peerConnection.operationQueue;
       if (operationQueue != nil) {
         dispatch_sync(operationQueue, ^{

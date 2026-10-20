@@ -116,7 +116,9 @@ FlutterResult FlutterRTCReplyOnMain(FlutterResult result) {
  * thread also runs Dart, so these calls must not run on it.
  *
  * Main thread only: the operations of one connection then run in the order the
- * method calls arrived. The block retains the connection, so a close requested
+ * method calls arrived. Every call that reaches into the connection or its
+ * senders and transceivers goes through here, so a call made without awaiting
+ * an earlier one still reaches WebRTC after it. The block retains the connection, so a close requested
  * meanwhile cannot free it, and close itself goes through the same queue.
  */
 void FlutterRTCRunOnOperationQueue(RTCPeerConnection* peerConnection, dispatch_block_t operation) {
@@ -987,41 +989,46 @@ NSDictionary<NSString*, NSString*>* stringToParameters(NSString* str) {
   NativePeerConnectionFactory* nf = [self resolveFactoryForId:factoryIdForPc];
   RTCPeerConnectionFactory* factory = nf.factory;
   NSString* transceiverId = argsMap[@"transceiverId"];
-  RTCRtpTransceiver* transcevier = [self getRtpTransceiverById:peerConnection Id:transceiverId];
-  if (transcevier == nil) {
-    result([FlutterError errorWithCode:@"transceiverSetCodecPreferencesFailed"
-                               message:[NSString stringWithFormat:@"Error: transcevier not found!"]
-                               details:nil]);
-    return;
-  }
   id codecs = argsMap[@"codecs"];
-  NSMutableArray* codecCaps = [NSMutableArray array];
-  for (id c in codecs) {
-    NSArray* kindAndName = [c[@"mimeType"] componentsSeparatedByString:@"/"];
-    NSString* kind = [kindAndName[0] lowercaseString];
-    NSString* name = kindAndName[1];
-    NSLog(@"codec %@/%@", kind, name);
-    NSDictionary<NSString*, NSString*>* parameters = nil;
-    if (c[@"sdpFmtpLine"] != nil && ![((NSString*)c[@"sdpFmtpLine"]) isEqualToString:@""]) {
-      parameters = stringToParameters((NSString*)c[@"sdpFmtpLine"]);
+  // On the connection's queue, in order with the description calls: the
+  // preferences must be set before the offer that should carry them.
+  FlutterResult reply = FlutterRTCReplyOnMain(result);
+  FlutterRTCRunOnOperationQueue(peerConnection, ^{
+    RTCRtpTransceiver* transcevier = [self getRtpTransceiverById:peerConnection Id:transceiverId];
+    if (transcevier == nil) {
+      reply([FlutterError errorWithCode:@"transceiverSetCodecPreferencesFailed"
+                                message:[NSString stringWithFormat:@"Error: transcevier not found!"]
+                                details:nil]);
+      return;
     }
-    RTCRtpCodecCapability* codec = [self findCodecCapability:kind
-                                                       codec:name
-                                                  parameters:parameters
-                                                     factory:factory];
-    if (codec != nil) {
-      [codecCaps addObject:codec];
+    NSMutableArray* codecCaps = [NSMutableArray array];
+    for (id c in codecs) {
+      NSArray* kindAndName = [c[@"mimeType"] componentsSeparatedByString:@"/"];
+      NSString* kind = [kindAndName[0] lowercaseString];
+      NSString* name = kindAndName[1];
+      NSLog(@"codec %@/%@", kind, name);
+      NSDictionary<NSString*, NSString*>* parameters = nil;
+      if (c[@"sdpFmtpLine"] != nil && ![((NSString*)c[@"sdpFmtpLine"]) isEqualToString:@""]) {
+        parameters = stringToParameters((NSString*)c[@"sdpFmtpLine"]);
+      }
+      RTCRtpCodecCapability* codec = [self findCodecCapability:kind
+                                                         codec:name
+                                                    parameters:parameters
+                                                       factory:factory];
+      if (codec != nil) {
+        [codecCaps addObject:codec];
+      }
     }
-  }
-  NSError* error = nil;
-  [transcevier setCodecPreferences:codecCaps error:&error];
-  if (error) {
-    result([FlutterError errorWithCode:@"SetCodecPreferencesError"
-                               message:error.localizedDescription
-                               details:nil]);
-  } else {
-    result(nil);
-  }
+    NSError* error = nil;
+    [transcevier setCodecPreferences:codecCaps error:&error];
+    if (error) {
+      reply([FlutterError errorWithCode:@"SetCodecPreferencesError"
+                                message:error.localizedDescription
+                                details:nil]);
+    } else {
+      reply(nil);
+    }
+  });
 }
 
 @end
