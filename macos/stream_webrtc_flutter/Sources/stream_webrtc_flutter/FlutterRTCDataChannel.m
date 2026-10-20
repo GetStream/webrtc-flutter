@@ -19,8 +19,9 @@
 }
 
 - (void)setEventSink:(FlutterEventSink)eventSink {
-  objc_setAssociatedObject(self, @selector(eventSink), eventSink,
-                           OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  // Atomic: WebRTC's threads read the sink while main sets or clears it, and an
+  // atomic association hands the reader a retained reference.
+  objc_setAssociatedObject(self, @selector(eventSink), eventSink, OBJC_ASSOCIATION_RETAIN);
 }
 
 - (NSArray<id>*)eventQueue {
