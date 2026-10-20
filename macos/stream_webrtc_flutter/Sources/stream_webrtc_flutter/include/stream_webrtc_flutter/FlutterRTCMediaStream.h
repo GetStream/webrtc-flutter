@@ -18,6 +18,15 @@
 
 - (void)getSources:(nonnull FlutterResult)result;
 
+#if TARGET_OS_IPHONE
+/**
+ * The audio inputs and outputs `getSources` reports, as source maps. Reads
+ * `availableInputs`, an IPC to the audio server, so call it on
+ * `deviceEnumerationQueue`, not on main.
+ */
+- (nonnull NSArray<NSDictionary*>*)audioSessionSources;
+#endif
+
 - (void)mediaStreamTrackCaptureFrame:(nonnull RTCMediaStreamTrack*)track
                               toPath:(nonnull NSString*)path
                               result:(nonnull FlutterResult)result;

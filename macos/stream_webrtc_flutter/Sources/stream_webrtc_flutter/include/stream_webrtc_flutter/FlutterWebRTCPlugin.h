@@ -117,6 +117,13 @@ typedef void (^CapturerStopHandler)(CompletionHandler _Nonnull handler);
 
 - (RTCMediaStreamTrack* _Nullable)remoteTrackForId:(NSString* _Nonnull)trackId;
 
+/**
+ * Serial queue that device enumeration (`getSources`) runs on, off the main
+ * thread. Separate from the audio-session queue, so a lookup never waits
+ * behind an audio session reconfiguration.
+ */
+@property(nonatomic, readonly, nonnull) dispatch_queue_t deviceEnumerationQueue;
+
 - (BOOL)hasLocalAudioTrack;
 - (void)applyMultitaskingCameraAccessToCaptureSession;
 - (void)ensureAudioSession;

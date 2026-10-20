@@ -858,21 +858,53 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 }
 
 - (void)getSources:(FlutterResult)result {
-  NSMutableArray* sources = [NSMutableArray array];
-  NSArray* videoDevices = [self captureDevices];
-  for (AVCaptureDevice* device in videoDevices) {
-    [sources addObject:@{
-      @"facing" : device.positionString,
-      @"deviceId" : device.uniqueID,
-      @"label" : device.localizedName,
-      @"kind" : @"videoinput",
-    }];
-  }
+  // Enumeration calls into the media daemons (the capture device discovery
+  // session, `availableInputs`, Core Audio device properties) and can take
+  // hundreds of milliseconds, notably while the audio route settles after the
+  // app returns from background. The platform main thread also runs the Dart UI
+  // isolate, so build the list on the device-enumeration queue and reply on
+  // main.
+  dispatch_async(self.deviceEnumerationQueue, ^{
+    NSMutableArray* sources = [NSMutableArray array];
+    NSArray* videoDevices = [self captureDevices];
+    for (AVCaptureDevice* device in videoDevices) {
+      [sources addObject:@{
+        @"facing" : device.positionString,
+        @"deviceId" : device.uniqueID,
+        @"label" : device.localizedName,
+        @"kind" : @"videoinput",
+      }];
+    }
 #if TARGET_OS_IPHONE
+    [sources addObjectsFromArray:[self audioSessionSources]];
+#endif
+#if TARGET_OS_OSX
+    for (NSDictionary* d in [StreamMacAudioDevices inputDevices]) {
+      [sources addObject:@{
+        @"deviceId" : d[@"deviceId"],
+        @"label" : d[@"label"],
+        @"kind" : @"audioinput",
+      }];
+    }
+    for (NSDictionary* d in [StreamMacAudioDevices outputDevices]) {
+      [sources addObject:@{
+        @"deviceId" : d[@"deviceId"],
+        @"label" : d[@"label"],
+        @"kind" : @"audiooutput",
+      }];
+    }
+#endif
+    dispatch_async(dispatch_get_main_queue(), ^{
+      result(@{@"sources" : sources});
+    });
+  });
+}
 
+#if TARGET_OS_IPHONE
+- (NSArray<NSDictionary*>*)audioSessionSources {
+  NSMutableArray<NSDictionary*>* sources = [NSMutableArray array];
   RTCAudioSession* session = [RTCAudioSession sharedInstance];
   for (AVAudioSessionPortDescription* port in session.session.availableInputs) {
-    // NSLog(@"input portName: %@, type %@", port.portName,port.portType);
     [sources addObject:@{
       @"deviceId" : port.UID,
       @"label" : port.portName,
@@ -881,9 +913,11 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     }];
   }
 
-  for (AVAudioSessionPortDescription* port in session.currentRoute.outputs) {
-    // NSLog(@"output portName: %@, type %@", port.portName,port.portType);
-    if (session.currentRoute.outputs.count == 1 && ![port.UID isEqualToString:@"Speaker"]) {
+  // Read the route once: each `currentRoute` read is a fresh query and the
+  // route can change between two of them.
+  NSArray<AVAudioSessionPortDescription*>* outputs = session.currentRoute.outputs;
+  for (AVAudioSessionPortDescription* port in outputs) {
+    if (outputs.count == 1 && ![port.UID isEqualToString:@"Speaker"]) {
       [sources addObject:@{
         @"deviceId" : @"Speaker",
         @"label" : @"Speaker",
@@ -898,25 +932,9 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
       @"kind" : @"audiooutput",
     }];
   }
-#endif
-#if TARGET_OS_OSX
-  for (NSDictionary* d in [StreamMacAudioDevices inputDevices]) {
-    [sources addObject:@{
-      @"deviceId" : d[@"deviceId"],
-      @"label" : d[@"label"],
-      @"kind" : @"audioinput",
-    }];
-  }
-  for (NSDictionary* d in [StreamMacAudioDevices outputDevices]) {
-    [sources addObject:@{
-      @"deviceId" : d[@"deviceId"],
-      @"label" : d[@"label"],
-      @"kind" : @"audiooutput",
-    }];
-  }
-#endif
-  result(@{@"sources" : sources});
+  return sources;
 }
+#endif
 
 - (void)selectAudioInput:(NSString*)deviceId result:(FlutterResult)result {
 #if TARGET_OS_OSX
