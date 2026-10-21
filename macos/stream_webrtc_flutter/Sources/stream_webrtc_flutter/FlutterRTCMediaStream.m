@@ -982,6 +982,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
   }
   if (result)
     result(nil);
+  return;
 #endif
   if (result)
     result([FlutterError errorWithCode:@"selectAudioInputFailed"
@@ -1042,7 +1043,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
             message:[NSString
                         stringWithFormat:@"Error: %@", [setCategoryError localizedFailureReason]]
             details:nil]);
-
+  return;
 #endif
   result([FlutterError errorWithCode:@"selectAudioOutputFailed"
                              message:[NSString stringWithFormat:@"Error: deviceId not found!"]
