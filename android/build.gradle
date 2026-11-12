@@ -22,6 +22,7 @@ rootProject.allprojects {
         maven { url 'https://jitpack.io' }
         maven { url = uri("https://central.sonatype.com/repository/maven-snapshots/") }
         maven { url = uri("https://stream-io-repo.com") }
+        maven { url = uri("https://snapshots.stream-io-repo.com") }
     }
 }
 
@@ -56,7 +57,7 @@ kotlin {
 }
 
 dependencies {
-    implementation("io.getstream:stream-video-webrtc-android:145.17.0")
+    implementation("io.getstream:stream-video-webrtc-android:156.0.4-SNAPSHOT")
     implementation 'com.github.davidliu:audioswitch:89582c47c9a04c62f90aa5e57251af4800a62c9a'
     implementation 'androidx.annotation:annotation:1.1.0'
     testImplementation 'junit:junit:4.13.2'
