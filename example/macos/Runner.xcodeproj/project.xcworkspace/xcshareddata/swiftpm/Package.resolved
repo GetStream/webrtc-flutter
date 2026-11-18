@@ -5,7 +5,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/GetStream/stream-video-swift-webrtc.git",
       "state" : {
-        "revision" : "61cd264753ddf22e175e2537369c3173c471c5a3",
+        "revision" : "e313c8689d98c4bf8ef9d77e2574d3e9115dce38",
         "version" : "156.0.7"
       }
     }
