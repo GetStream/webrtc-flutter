@@ -9,6 +9,15 @@ rootProject.buildDir = "../build"
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
 }
+// Some plugins (e.g. gallery_saver_plus) still compile against old SDKs, which
+// AGP 9 rejects in checkAarMetadata. Force a modern compileSdk on library modules.
+subprojects {
+    afterEvaluate { project ->
+        if (project.plugins.hasPlugin("com.android.library")) {
+            project.android.compileSdk = 36
+        }
+    }
+}
 subprojects {
     project.evaluationDependsOn(":app")
 }
