@@ -3354,9 +3354,11 @@ static FlutterWebRTCPlugin* sharedSingleton;
 
     config.cryptoOptions = [[RTCCryptoOptions alloc]
              initWithSrtpEnableGcmCryptoSuites:srtpEnableGcmCryptoSuites
+                     srtpPreferGcmCryptoSuites:NO
            srtpEnableAes128Sha1_32CryptoCipher:srtpEnableAes128Sha1_32CryptoCipher
+           srtpEnableAes128Sha1_80CryptoCipher:YES
         srtpEnableEncryptedRtpHeaderExtensions:srtpEnableEncryptedRtpHeaderExtensions
-                  sframeRequireFrameEncryption:(BOOL)sframeRequireFrameEncryption];
+                  sframeRequireFrameEncryption:sframeRequireFrameEncryption];
   }
 
   return config;

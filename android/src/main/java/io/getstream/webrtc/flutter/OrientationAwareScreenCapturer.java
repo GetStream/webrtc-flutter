@@ -217,6 +217,11 @@ public class OrientationAwareScreenCapturer implements VideoCapturer, VideoSink 
     }
 
     @Override
+    public synchronized boolean isCapturing() {
+        return virtualDisplay != null;
+    }
+
+    @Override
     public synchronized void dispose() {
         isStopping = true;
         isDisposed = true;
