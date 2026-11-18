@@ -47,6 +47,8 @@
                 audioProcessingModule:apm];
 
     RTCPeerConnectionFactoryOptions* options = [[RTCPeerConnectionFactoryOptions alloc] init];
+    // Match native WebRTC default (kDefaultNetworkIgnoreMask): skip loopback adapters.
+    options.ignoreLoopbackNetworkAdapter = YES;
     for (NSString* adapter in networkIgnoreMask) {
       if ([@"adapterTypeEthernet" isEqualToString:adapter]) {
         options.ignoreEthernetNetworkAdapter = YES;

@@ -372,7 +372,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       bypassVoiceProcessing = options.getBoolean("bypassVoiceProcessing");
     }
 
-    int networkIgnoreMask = Options.ADAPTER_TYPE_UNKNOWN;
+    int networkIgnoreMask = Options.ADAPTER_TYPE_LOOPBACK; // match native WebRTC default
     if (options.hasKey("networkIgnoreMask")
         && options.getType("networkIgnoreMask") == ObjectType.Array) {
       ConstraintsArray ignoredAdapters = options.getArray("networkIgnoreMask");
@@ -380,22 +380,22 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         for (Object adapter : ignoredAdapters.toArrayList()) {
           switch (adapter.toString()) {
             case "adapterTypeEthernet":
-              networkIgnoreMask += Options.ADAPTER_TYPE_ETHERNET;
+              networkIgnoreMask |= Options.ADAPTER_TYPE_ETHERNET;
               break;
             case "adapterTypeWifi":
-              networkIgnoreMask += Options.ADAPTER_TYPE_WIFI;
+              networkIgnoreMask |= Options.ADAPTER_TYPE_WIFI;
               break;
             case "adapterTypeCellular":
-              networkIgnoreMask += Options.ADAPTER_TYPE_CELLULAR;
+              networkIgnoreMask |= Options.ADAPTER_TYPE_CELLULAR;
               break;
             case "adapterTypeVpn":
-              networkIgnoreMask += Options.ADAPTER_TYPE_VPN;
+              networkIgnoreMask |= Options.ADAPTER_TYPE_VPN;
               break;
             case "adapterTypeLoopback":
-              networkIgnoreMask += Options.ADAPTER_TYPE_LOOPBACK;
+              networkIgnoreMask |= Options.ADAPTER_TYPE_LOOPBACK;
               break;
             case "adapterTypeAny":
-              networkIgnoreMask += Options.ADAPTER_TYPE_ANY;
+              networkIgnoreMask |= Options.ADAPTER_TYPE_ANY;
               break;
           }
         }
@@ -676,7 +676,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     final AnyThreadResult result = new AnyThreadResult(notSafeResult);
     switch (call.method) {
       case "initialize": {
-        int networkIgnoreMask = Options.ADAPTER_TYPE_UNKNOWN;
+        int networkIgnoreMask = Options.ADAPTER_TYPE_LOOPBACK; // match native WebRTC default
         Map<String, Object> options = call.argument("options");
         ConstraintsMap constraintsMap = new ConstraintsMap(options);
         if (constraintsMap.hasKey("networkIgnoreMask")
@@ -686,22 +686,22 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
             for (Object adapter : ignoredAdapters.toArrayList()) {
               switch (adapter.toString()) {
                 case "adapterTypeEthernet":
-                  networkIgnoreMask += Options.ADAPTER_TYPE_ETHERNET;
+                  networkIgnoreMask |= Options.ADAPTER_TYPE_ETHERNET;
                   break;
                 case "adapterTypeWifi":
-                  networkIgnoreMask += Options.ADAPTER_TYPE_WIFI;
+                  networkIgnoreMask |= Options.ADAPTER_TYPE_WIFI;
                   break;
                 case "adapterTypeCellular":
-                  networkIgnoreMask += Options.ADAPTER_TYPE_CELLULAR;
+                  networkIgnoreMask |= Options.ADAPTER_TYPE_CELLULAR;
                   break;
                 case "adapterTypeVpn":
-                  networkIgnoreMask += Options.ADAPTER_TYPE_VPN;
+                  networkIgnoreMask |= Options.ADAPTER_TYPE_VPN;
                   break;
                 case "adapterTypeLoopback":
-                  networkIgnoreMask += Options.ADAPTER_TYPE_LOOPBACK;
+                  networkIgnoreMask |= Options.ADAPTER_TYPE_LOOPBACK;
                   break;
                 case "adapterTypeAny":
-                  networkIgnoreMask += Options.ADAPTER_TYPE_ANY;
+                  networkIgnoreMask |= Options.ADAPTER_TYPE_ANY;
                   break;
               }
             }
@@ -3016,7 +3016,9 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
         trackIdSafe = null;
       }
       if (trackIdSafe != null) {
-        localTracks.remove(trackIdSafe);
+        // A missing entry means trackDispose already ran for this track and
+        // released its capturer, so there is nothing left to clean up here.
+        final boolean alreadyDisposed = localTracks.remove(trackIdSafe) == null;
         final NativePeerConnectionFactory nf = resolveFactoryForTrack(trackIdSafe);
         if (nf != null) {
           try {
@@ -3024,7 +3026,7 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
           } catch (Throwable t) {
             Log.w(TAG, "[streamDispose] removeVideoCapturer failed: " + t);
           }
-        } else {
+        } else if (!alreadyDisposed) {
           Log.w(TAG, "[streamDispose] no factory owns trackId "
               + trackIdSafe + "; capturer cleanup skipped");
         }
