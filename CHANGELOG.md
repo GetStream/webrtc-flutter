@@ -1,3 +1,11 @@
+[4.1.0] - 2026.11.18
+
+* [Android/iOS/macOS] Updated WebRTC to `156.0.7`.
+* [Android/iOS/macOS] fix: loopback network interfaces (`127.0.0.1` / `::1`) are now always ignored, matching native WebRTC.
+* [Android] fix: combining several `networkIgnoreMask` adapters (for example `adapterTypeLoopback` with `adapterTypeAny`) no longer produces a wrong mask.
+* [Android] fix: `streamDispose` no longer logs "no factory owns trackId" for a camera track that `trackDispose` already released.
+* [Android] The `org.jni_zero` ProGuard keep rule was removed, because the WebRTC AAR now ships its own consumer rules for it.
+
 [4.0.1] - 2026.10.22
 
 * [iOS/macOS] fix: peer connection operations (SDP, candidates, tracks, transceivers, senders, stats) now run on a serial queue per peer connection instead of the main thread, so joining a call or changing publish quality no longer freezes the app.
