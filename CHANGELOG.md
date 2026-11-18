@@ -1,4 +1,4 @@
-[4.0.2] - 2026.11.18
+[4.1.0] - 2026.11.18
 
 * [Android/iOS/macOS] Updated WebRTC to `156.0.7`.
 * [Android/iOS/macOS] fix: loopback network interfaces (`127.0.0.1` / `::1`) are now always ignored, matching native WebRTC.
