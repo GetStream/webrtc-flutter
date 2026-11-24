@@ -13,7 +13,7 @@ permissions:
 jobs:
   dart-format-and-analyze-check:
     name: Dart Format Check
-    runs-on: ubuntu-latest
+    runs-on: { group: github-public-amd64 }
 
     steps:
       - uses: actions/checkout@v2
@@ -37,7 +37,7 @@ jobs:
 
   build-for-android:
     name: Build for Flutter Android
-    runs-on: ubuntu-latest
+    runs-on: { group: github-public-amd64 }
 
     steps:
       - uses: actions/checkout@v2
@@ -101,7 +101,7 @@ jobs:
 
   build-for-linux:
     name: Build for Flutter Linux
-    runs-on: ubuntu-latest
+    runs-on: { group: github-public-amd64 }
 
     steps:
       - uses: actions/checkout@v2
@@ -124,7 +124,7 @@ jobs:
 
   build-for-elinux:
     name: Build for Flutter Embedded Linux
-    runs-on: ubuntu-latest
+    runs-on: { group: github-public-amd64 }
 
     steps:
       - uses: actions/checkout@v2
@@ -147,7 +147,7 @@ jobs:
 
   build-for-web:
     name: Build for Flutter Web
-    runs-on: ubuntu-latest
+    runs-on: { group: github-public-amd64 }
 
     steps:
       - uses: actions/checkout@v2
